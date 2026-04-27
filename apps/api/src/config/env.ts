@@ -1,9 +1,12 @@
+import path from 'node:path';
+import fs from 'node:fs';
 import { EnvSchema, type Env } from '@lakecost/shared';
 
 let cached: Env | undefined;
 
 export function loadEnv(): Env {
   if (cached) return cached;
+  loadDotenvFiles();
   const parsed = EnvSchema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -13,4 +16,38 @@ export function loadEnv(): Env {
   }
   cached = parsed.data;
   return cached;
+}
+
+let dotenvLoaded = false;
+
+function loadDotenvFiles(): void {
+  if (dotenvLoaded) return;
+  dotenvLoaded = true;
+  const root = findRepoRoot(process.cwd());
+  if (!root) return;
+  // Higher precedence first wins (process.loadEnvFile does not overwrite existing keys
+  // that are already set in process.env, so list .env.local before .env).
+  for (const name of ['.env.local', '.env']) {
+    const file = path.join(root, name);
+    if (fs.existsSync(file)) {
+      try {
+        process.loadEnvFile(file);
+      } catch {
+        // ignore parse errors and fall back to whatever is already in process.env
+      }
+    }
+  }
+}
+
+function findRepoRoot(start: string): string | undefined {
+  let dir = start;
+  for (let i = 0; i < 8; i++) {
+    if (fs.existsSync(path.join(dir, 'turbo.json'))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return undefined;
 }

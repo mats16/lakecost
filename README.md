@@ -17,8 +17,9 @@ npm install
 
 # Optional: copy the env example and fill in Databricks credentials if you
 # want to hit a real workspace. Without these the API still boots and serves
-# empty rows for /api/usage/* endpoints.
-cp apps/api/.env.example apps/api/.env
+# empty rows for /api/usage/* endpoints. Both the API (loadEnv) and the Vite
+# dev proxy read .env.local from the repo root.
+cp .env.example .env.local
 
 npm run dev
 # Vite dev server: http://localhost:3000  (proxies /api -> :8080)

@@ -20,7 +20,7 @@ export const EnvSchema = z.object({
   PGSSLMODE: z.string().optional(),
   LAKEBASE_ENDPOINT: z.string().optional(),
 
-  DATABRICKS_HOST: z.string().url().optional(),
+  DATABRICKS_HOST: z.string().min(1).optional(),
   DATABRICKS_CLIENT_ID: z.string().optional(),
   DATABRICKS_CLIENT_SECRET: z.string().optional(),
   DATABRICKS_APP_NAME: z.string().optional(),
