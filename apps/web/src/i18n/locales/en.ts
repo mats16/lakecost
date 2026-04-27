@@ -21,6 +21,13 @@ export const en = {
     english: 'English',
     japanese: '日本語',
   },
+  account: {
+    openMenu: 'Open account menu',
+    localUser: 'Local user',
+    sectionApp: 'LakeCost',
+    settings: 'Settings',
+    databricksConsole: 'Databricks Console',
+  },
   dashboard: {
     title: 'Dashboard',
     subtitle: 'Last 30 days of Databricks usage',
@@ -83,11 +90,14 @@ export const en = {
   },
   settings: {
     title: 'Settings',
-    subtitle: 'User preferences and workspace defaults',
-    body: 'Profile and workspace preferences are stored per user. PUT /api/settings/me to update.',
-    languageHeading: 'Language / 言語',
-    languageDesc:
-      'Choose the display language for the LakeCost UI. The setting is stored in your browser.',
+    subtitle: 'Application configuration',
+    body: 'Application-wide settings are stored as key/value pairs in the app_settings table.',
+    mainCatalogHeading: 'Main catalog',
+    mainCatalogDesc:
+      'Unity Catalog name to query by default (e.g. main, prod_finops). Saved to app_settings.',
+    mainCatalogPlaceholder: 'main',
+    save: 'Save',
+    saved: 'Saved',
   },
   configure: {
     title: 'Configure',

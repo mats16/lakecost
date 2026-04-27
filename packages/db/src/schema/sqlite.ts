@@ -49,6 +49,12 @@ export const tagChargebackRules = sqliteTable('tag_chargeback_rules', {
   priority: integer('priority').notNull().default(100),
 });
 
+export const appSettings = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const setupState = sqliteTable('setup_state', {
   workspaceId: text('workspace_id').primaryKey(),
   systemTablesOk: integer('system_tables_ok', { mode: 'boolean' }).notNull().default(false),

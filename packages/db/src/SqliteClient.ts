@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto';
 import * as s from './schema/sqlite.js';
 import type { DatabaseClient } from './DatabaseClient.js';
 import type {
+  AppSettingValue,
+  AppSettingsRepo,
   BudgetsRepo,
   CachedAggregationValue,
   CachedAggregationsRepo,
@@ -34,6 +36,7 @@ export class SqliteClient implements DatabaseClient {
       userPreferences: new SqliteUserPreferencesRepo(db),
       cachedAggregations: new SqliteCachedAggregationsRepo(db),
       setupState: new SqliteSetupStateRepo(db),
+      appSettings: new SqliteAppSettingsRepo(db),
     };
   }
 
@@ -93,6 +96,11 @@ export class SqliteClient implements DatabaseClient {
         cost_center TEXT NOT NULL,
         owner_email TEXT,
         priority INTEGER NOT NULL DEFAULT 100
+      );
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS setup_state (
         workspace_id TEXT PRIMARY KEY,
@@ -337,5 +345,38 @@ class SqliteSetupStateRepo implements SetupStateRepo {
     if (result.step === 'awsCur') next.curConfigured = result.status === 'ok';
     if (result.step === 'azureExport') next.azureExportConfigured = result.status === 'ok';
     await this.upsert(next);
+  }
+}
+
+class SqliteAppSettingsRepo implements AppSettingsRepo {
+  constructor(private db: Db) {}
+
+  async get(key: string): Promise<AppSettingValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.appSettings)
+      .where(eq(s.appSettings.key, key))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return { key: row.key, value: row.value, updatedAt: row.updatedAt };
+  }
+
+  async list(): Promise<AppSettingValue[]> {
+    const rows = await this.db.select().from(s.appSettings);
+    return rows.map((row) => ({ key: row.key, value: row.value, updatedAt: row.updatedAt }));
+  }
+
+  async upsert(key: string, value: string): Promise<AppSettingValue> {
+    const updatedAt = new Date().toISOString();
+    await this.db.insert(s.appSettings).values({ key, value, updatedAt }).onConflictDoUpdate({
+      target: s.appSettings.key,
+      set: { value, updatedAt },
+    });
+    return { key, value, updatedAt };
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.db.delete(s.appSettings).where(eq(s.appSettings.key, key));
   }
 }

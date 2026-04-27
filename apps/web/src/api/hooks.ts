@@ -78,6 +78,49 @@ export function useSetupState(workspaceId?: string) {
   });
 }
 
+export interface MeResponse {
+  email: string | null;
+  userId: string | null;
+  userName: string | null;
+  workspaceUrl: string | null;
+  workspaceId: string | null;
+  appName: string | null;
+}
+
+export function useMe() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: () => apiFetch<MeResponse>('/api/me'),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export interface AppSettingsResponse {
+  settings: Record<string, string>;
+}
+
+export function useAppSettings() {
+  return useQuery({
+    queryKey: ['appSettings'],
+    queryFn: () => apiFetch<AppSettingsResponse>('/api/settings/app'),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useUpdateAppSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: Record<string, string>) =>
+      apiFetch<AppSettingsResponse>('/api/settings/app', {
+        method: 'PUT',
+        body: JSON.stringify({ settings }),
+      }),
+    onSuccess: (data) => {
+      qc.setQueryData(['appSettings'], data);
+    },
+  });
+}
+
 export function useRunSetupCheck() {
   const qc = useQueryClient();
   return useMutation({

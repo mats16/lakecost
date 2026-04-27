@@ -57,6 +57,12 @@ export const tagChargebackRules = pgTable('tag_chargeback_rules', {
   priority: integer('priority').notNull().default(100),
 });
 
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const setupState = pgTable('setup_state', {
   workspaceId: text('workspace_id').primaryKey(),
   systemTablesOk: boolean('system_tables_ok').notNull().default(false),

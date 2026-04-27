@@ -23,6 +23,13 @@ export const ja: Dictionary = {
     english: 'English',
     japanese: '日本語',
   },
+  account: {
+    openMenu: 'アカウントメニューを開く',
+    localUser: 'ローカルユーザー',
+    sectionApp: 'LakeCost',
+    settings: '設定',
+    databricksConsole: 'Databricks コンソール',
+  },
   dashboard: {
     title: 'ダッシュボード',
     subtitle: '直近30日間の Databricks 利用状況',
@@ -87,10 +94,14 @@ export const ja: Dictionary = {
   },
   settings: {
     title: '設定',
-    subtitle: 'ユーザー設定とワークスペース既定値',
-    body: 'プロファイルとワークスペース設定はユーザー単位で保存されます。更新は PUT /api/settings/me から行えます。',
-    languageHeading: '言語 / Language',
-    languageDesc: 'LakeCost の表示言語を選択してください。設定はブラウザに保存されます。',
+    subtitle: 'アプリケーション設定',
+    body: 'アプリ全体の設定は app_settings テーブルに Key / Value 形式で保存されます。',
+    mainCatalogHeading: 'メインカタログ',
+    mainCatalogDesc:
+      '既定で参照する Unity Catalog のカタログ名 (例: main, prod_finops)。app_settings に保存されます。',
+    mainCatalogPlaceholder: 'main',
+    save: '保存',
+    saved: '保存しました',
   },
   configure: {
     title: '構成',

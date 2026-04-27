@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useI18n, type Locale } from '../../i18n';
+import { useMe } from '../../api/hooks';
 
 interface NavItem {
   to: string;
@@ -89,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="sidebar-footer">
-          <LanguageMenu />
+          <AccountMenu />
         </div>
       </aside>
       <main className="main">{children}</main>
@@ -97,18 +98,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function LanguageMenu() {
+function AccountMenu() {
   const { t, locale, setLocale } = useI18n();
+  const navigate = useNavigate();
+  const me = useMe();
   const [open, setOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDocMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setLangOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        setOpen(false);
+        setLangOpen(false);
+      }
     }
     document.addEventListener('mousedown', onDocMouseDown);
     document.addEventListener('keydown', onKey);
@@ -118,48 +128,132 @@ function LanguageMenu() {
     };
   }, [open]);
 
-  const select = (l: Locale) => {
+  useEffect(() => {
+    if (!open) setLangOpen(false);
+  }, [open]);
+
+  const email = me.data?.email ?? null;
+  const userName = me.data?.userName ?? null;
+  const displayName = email ?? userName ?? t('account.localUser');
+  const initial = (email ?? userName ?? 'U').trim().charAt(0).toUpperCase() || 'U';
+  const workspaceUrl = me.data?.workspaceUrl ?? null;
+
+  const selectLocale = (l: Locale) => {
     setLocale(l);
+    setLangOpen(false);
     setOpen(false);
   };
 
-  const currentLabel = locale === 'ja' ? t('common.japanese') : t('common.english');
+  const goToSettings = () => {
+    setOpen(false);
+    setLangOpen(false);
+    navigate('/settings');
+  };
 
   return (
-    <div className="lang-menu" ref={ref}>
+    <div className="account-menu" ref={ref}>
       <button
         type="button"
-        className="lang-menu-trigger"
-        onClick={() => setOpen((v) => !v)}
+        className="account-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={t('account.openMenu')}
+        onClick={() => setOpen((v) => !v)}
       >
-        <span className="icon" aria-hidden="true">
-          🌐
+        <span className="avatar" aria-hidden="true">
+          {initial}
         </span>
-        <span className="label">{t('common.language')}</span>
-        <span className="current">{currentLabel}</span>
       </button>
       {open ? (
-        <div className="lang-menu-popover" role="menu">
-          {(['en', 'ja'] as Locale[]).map((l) => {
-            const active = locale === l;
-            return (
-              <button
-                key={l}
-                type="button"
-                role="menuitemradio"
-                aria-checked={active}
-                className="lang-menu-item"
-                onClick={() => select(l)}
-              >
-                <span className="check" aria-hidden="true">
-                  {active ? '✓' : ''}
-                </span>
-                <span>{l === 'en' ? t('common.english') : t('common.japanese')}</span>
-              </button>
-            );
-          })}
+        <div className="account-popover" role="menu">
+          <div className="account-header">
+            <div className="account-name" title={displayName}>
+              {displayName}
+            </div>
+            {userName && email && userName !== email ? (
+              <div className="account-sub">{userName}</div>
+            ) : null}
+          </div>
+
+          <div className="account-section">
+            <div className="account-section-label">{t('account.sectionApp')}</div>
+            <button type="button" role="menuitem" className="account-item" onClick={goToSettings}>
+              <span className="account-item-icon" aria-hidden="true">
+                ⚙
+              </span>
+              <span className="account-item-label">{t('account.settings')}</span>
+            </button>
+          </div>
+
+          <div className="account-divider" />
+
+          <div className="account-section">
+            <button
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={langOpen}
+              className={`account-item account-item-expandable ${langOpen ? 'active' : ''}`}
+              onClick={() => setLangOpen((v) => !v)}
+            >
+              <span className="account-item-icon" aria-hidden="true">
+                🌐
+              </span>
+              <span className="account-item-label">{t('common.language')}</span>
+              <span className="account-item-current">
+                {locale === 'ja' ? t('common.japanese') : t('common.english')}
+              </span>
+              <span className="account-item-chevron" aria-hidden="true">
+                ›
+              </span>
+            </button>
+            {langOpen ? (
+              <div className="account-submenu" role="menu">
+                {(['en', 'ja'] as Locale[]).map((l) => {
+                  const active = locale === l;
+                  return (
+                    <button
+                      key={l}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={active}
+                      className="account-submenu-item"
+                      onClick={() => selectLocale(l)}
+                    >
+                      <span className="check" aria-hidden="true">
+                        {active ? '✓' : ''}
+                      </span>
+                      <span>{l === 'en' ? t('common.english') : t('common.japanese')}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          {workspaceUrl ? (
+            <>
+              <div className="account-divider" />
+              <div className="account-section">
+                <a
+                  href={workspaceUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  role="menuitem"
+                  className="account-item"
+                  onClick={() => {
+                    setOpen(false);
+                    setLangOpen(false);
+                  }}
+                >
+                  <span className="account-item-icon" aria-hidden="true">
+                    ↗
+                  </span>
+                  <span className="account-item-label">{t('account.databricksConsole')}</span>
+                </a>
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
