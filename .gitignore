@@ -150,3 +150,5 @@ data/*.db-shm
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+apps/api/data/*

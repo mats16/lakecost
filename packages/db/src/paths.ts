@@ -5,7 +5,11 @@ import type { Env } from '@lakecost/shared';
 export function resolveSqlitePath(env: Env): string {
   if (env.SQLITE_PATH) return env.SQLITE_PATH;
 
-  if (env.DATABRICKS_APP_NAME || fs.existsSync('/home/app')) {
+  // Databricks Apps mounts a writable volume at /home/app. Outside of that
+  // runtime (local dev, CI), /home/app does not exist — fall back to cwd.
+  // We can't use env vars like DATABRICKS_APP_NAME as the signal because
+  // they're commonly set in local .env files to identify the deploy target.
+  if (fs.existsSync('/home/app')) {
     return '/home/app/data/lakecost.db';
   }
 
