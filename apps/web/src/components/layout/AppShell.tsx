@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -14,26 +14,42 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@databricks/appkit-ui/react';
-import { ExternalLink, Globe, Settings as SettingsIcon } from 'lucide-react';
+import {
+  Bolt,
+  ChevronDown,
+  CircleDollarSign,
+  ExternalLink,
+  Folder,
+  Globe,
+  LayoutDashboard,
+  Library,
+  LineChart,
+  Settings as SettingsIcon,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import { useI18n, type Locale } from '../../i18n';
-import { useMe } from '../../api/hooks';
+import { useAppSettings, useMe } from '../../api/hooks';
 
 interface NavItem {
   to: string;
   labelKey: string;
+  icon?: LucideIcon;
   end?: boolean;
 }
 
 interface NavGroup {
   labelKey: string;
+  icon: LucideIcon;
   items: NavItem[];
   matchPrefix: string;
 }
 
-const PRIMARY: NavItem[] = [{ to: '/dashboard', labelKey: 'nav.overview' }];
+const PRIMARY: NavItem[] = [{ to: '/dashboard', labelKey: 'nav.overview', icon: CircleDollarSign }];
 
 const CONFIGURE: NavGroup = {
   labelKey: 'nav.configure',
+  icon: Bolt,
   matchPrefix: '/configure',
   items: [
     { to: '/configure/data-sources', labelKey: 'nav.dataSources' },
@@ -44,15 +60,45 @@ const CONFIGURE: NavGroup = {
 };
 
 const SECONDARY: NavItem[] = [
-  { to: '/explorer', labelKey: 'nav.costExplorer' },
-  { to: '/budgets', labelKey: 'nav.budgets' },
-  { to: '/settings', labelKey: 'nav.settings' },
+  { to: '/explorer', labelKey: 'nav.costExplorer', icon: LineChart },
+  { to: '/budgets', labelKey: 'nav.budgets', icon: Wallet },
+  { to: '/settings', labelKey: 'nav.settings', icon: SettingsIcon },
 ];
+
+interface ExternalNavItem {
+  path: string;
+  labelKey: string;
+  icon: LucideIcon;
+}
+
+function buildDatabricksItems(catalogName: string | null): ExternalNavItem[] {
+  return [
+    {
+      path: catalogName ? `/explore/data/${encodeURIComponent(catalogName)}` : '/explore/data',
+      labelKey: 'nav.catalog',
+      icon: Library,
+    },
+    { path: '/sql/dashboards', labelKey: 'nav.dashboards', icon: LayoutDashboard },
+    { path: '/browse', labelKey: 'nav.workspace', icon: Folder },
+  ];
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { t } = useI18n();
-  const configureOpen = location.pathname.startsWith(CONFIGURE.matchPrefix);
+  const me = useMe();
+  const workspaceUrl = me.data?.workspaceUrl ?? null;
+  const appSettings = useAppSettings();
+  const catalogName = appSettings.data?.settings.catalog_name?.trim() || null;
+  const databricksItems = buildDatabricksItems(catalogName);
+  const onConfigureRoute = location.pathname.startsWith(CONFIGURE.matchPrefix);
+  const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
+
+  useEffect(() => {
+    if (onConfigureRoute) {
+      setConfigureOpen(true);
+    }
+  }, [onConfigureRoute]);
 
   return (
     <div className="app-shell">
@@ -60,24 +106,40 @@ export function AppShell({ children }: { children: ReactNode }) {
         <h1>{t('appName')}</h1>
         <div className="nav-section-label">{t('nav.finops')}</div>
         <nav>
-          {PRIMARY.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => (isActive ? 'active' : '')}
-            >
-              {t(item.labelKey)}
-            </NavLink>
-          ))}
+          {PRIMARY.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                {Icon ? <Icon className="nav-icon" aria-hidden="true" /> : null}
+                <span>{t(item.labelKey)}</span>
+              </NavLink>
+            );
+          })}
 
           <div className={`nav-group ${configureOpen ? 'open' : ''}`}>
-            <NavLink
-              to={CONFIGURE.items[0]?.to ?? '/configure/data-sources'}
-              className={() => (configureOpen ? 'group-head active' : 'group-head')}
-            >
-              {t(CONFIGURE.labelKey)}
-            </NavLink>
+            <div className="nav-group-row">
+              <NavLink
+                to={CONFIGURE.items[0]?.to ?? '/configure/data-sources'}
+                className={() => (onConfigureRoute ? 'group-head active' : 'group-head')}
+              >
+                <CONFIGURE.icon className="nav-icon" aria-hidden="true" />
+                <span>{t(CONFIGURE.labelKey)}</span>
+              </NavLink>
+              <button
+                type="button"
+                className="nav-chevron"
+                aria-expanded={configureOpen}
+                aria-label={t(CONFIGURE.labelKey)}
+                onClick={() => setConfigureOpen((v) => !v)}
+              >
+                <ChevronDown className="nav-icon" aria-hidden="true" />
+              </button>
+            </div>
             {configureOpen ? (
               <div className="nav-children">
                 {CONFIGURE.items.map((item) => (
@@ -86,22 +148,48 @@ export function AppShell({ children }: { children: ReactNode }) {
                     to={item.to}
                     className={({ isActive }) => (isActive ? 'active' : '')}
                   >
-                    {t(item.labelKey)}
+                    <span>{t(item.labelKey)}</span>
                   </NavLink>
                 ))}
               </div>
             ) : null}
           </div>
 
-          {SECONDARY.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => (isActive ? 'active' : '')}
-            >
-              {t(item.labelKey)}
-            </NavLink>
-          ))}
+          {SECONDARY.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => (isActive ? 'active' : '')}
+              >
+                {Icon ? <Icon className="nav-icon" aria-hidden="true" /> : null}
+                <span>{t(item.labelKey)}</span>
+              </NavLink>
+            );
+          })}
+
+          {workspaceUrl ? (
+            <>
+              <div className="nav-section-label">{t('nav.databricks')}</div>
+              {databricksItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <a
+                    key={item.path}
+                    href={`${workspaceUrl}${item.path}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="nav-external"
+                  >
+                    <Icon className="nav-icon" aria-hidden="true" />
+                    <span>{t(item.labelKey)}</span>
+                    <ExternalLink className="nav-icon nav-icon-trailing" aria-hidden="true" />
+                  </a>
+                );
+              })}
+            </>
+          ) : null}
         </nav>
 
         <div className="sidebar-footer">

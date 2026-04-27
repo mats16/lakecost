@@ -11,6 +11,10 @@ export const en = {
     costExplorer: 'Cost Explorer',
     budgets: 'Budgets',
     settings: 'Settings',
+    databricks: 'Databricks',
+    catalog: 'Catalog',
+    dashboards: 'Dashboards',
+    workspace: 'Workspace',
   },
   common: {
     loading: 'Loading…',

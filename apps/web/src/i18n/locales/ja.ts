@@ -13,6 +13,10 @@ export const ja: Dictionary = {
     costExplorer: 'コストエクスプローラー',
     budgets: '予算',
     settings: '設定',
+    databricks: 'Databricks',
+    catalog: 'カタログ',
+    dashboards: 'ダッシュボード',
+    workspace: 'ワークスペース',
   },
   common: {
     loading: '読み込み中…',
