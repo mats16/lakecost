@@ -42,6 +42,8 @@ function quoteIdent(part: string): string {
   return `\`${part}\``;
 }
 
+export { quoteIdent };
+
 export function focusViewFqn({ catalog, schema, table }: FocusViewTarget): string {
   return `${quoteIdent(catalog)}.${quoteIdent(schema)}.${quoteIdent(table)}`;
 }

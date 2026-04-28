@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { DatabaseClient } from '@lakecost/db';
-import { CATALOG_SETTING_KEY, type Env, type ProvisionResult } from '@lakecost/shared';
+import { CATALOG_SETTING_KEY, type Env } from '@lakecost/shared';
 import { CatalogServiceError, provisionCatalog } from '../services/catalogs.js';
 import { logger } from '../config/logger.js';
 
@@ -55,8 +55,12 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
         return;
       }
 
-      const previous = await db.repos.appSettings.list();
-      const previousByKey = new Map(previous.map((r) => [r.key, r.value]));
+      const newCatalog = parsed.data.settings[CATALOG_SETTING_KEY]?.trim();
+      const previousCatalog =
+        newCatalog !== undefined
+          ? ((await db.repos.appSettings.get(CATALOG_SETTING_KEY))?.value?.trim() ?? '')
+          : '';
+
       for (const [key, value] of Object.entries(parsed.data.settings)) {
         await db.repos.appSettings.upsert(key, value);
       }
@@ -64,44 +68,29 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
       const settings: Record<string, string> = {};
       for (const row of rows) settings[row.key] = row.value;
 
-      let provision: ProvisionResult | undefined;
-      const newCatalog = parsed.data.settings[CATALOG_SETTING_KEY]?.trim();
       const catalogChanged =
-        newCatalog !== undefined &&
-        newCatalog.length > 0 &&
-        newCatalog !== (previousByKey.get(CATALOG_SETTING_KEY)?.trim() ?? '');
-      if (catalogChanged) {
-        try {
-          provision = await provisionCatalog(env, req.user?.accessToken, newCatalog, {
-            createIfMissing: parsed.data.provision?.createIfMissing,
-          });
-        } catch (err) {
-          if (err instanceof CatalogServiceError) {
-            logger.warn(
-              { err, catalog: newCatalog, status: err.status },
-              'provisionCatalog failed; settings persisted without provisioning',
-            );
-            provision = {
-              catalog: newCatalog,
-              catalogCreated: false,
-              schemasEnsured: { bronze: 'error', silver: 'error', gold: 'error' },
-              grants: {
-                catalog: `error:${err.message}`,
-                bronze: `error:${err.message}`,
-                silver: `error:${err.message}`,
-                gold: `error:${err.message}`,
-              },
-              servicePrincipalId: env.DATABRICKS_CLIENT_ID?.trim() || null,
-              warnings: [err.message],
-            };
-          } else {
-            logger.error({ err, catalog: newCatalog }, 'provisionCatalog threw unexpectedly');
-            throw err;
-          }
-        }
+        newCatalog !== undefined && newCatalog.length > 0 && newCatalog !== previousCatalog;
+      if (!catalogChanged) {
+        res.json({ settings });
+        return;
       }
 
-      res.json(provision ? { settings, provision } : { settings });
+      try {
+        const provision = await provisionCatalog(env, req.user?.accessToken, newCatalog, {
+          createIfMissing: parsed.data.provision?.createIfMissing,
+        });
+        res.json({ settings, provision });
+      } catch (err) {
+        if (err instanceof CatalogServiceError) {
+          logger.warn(
+            { err, catalog: newCatalog, status: err.status },
+            'provisionCatalog precondition failed; settings persisted without provisioning',
+          );
+          res.status(err.status).json({ error: { message: err.message }, settings });
+          return;
+        }
+        throw err;
+      }
     } catch (err) {
       next(err);
     }

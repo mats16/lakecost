@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import {
   Alert,
   AlertDescription,
@@ -21,7 +21,31 @@ import { useI18n } from '../../i18n';
 import { useAppSettings, useCatalogs, useUpdateAppSettings } from '../../api/hooks';
 import { CatalogCombobox, type CatalogSelection } from '../../components/CatalogCombobox';
 
-const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+type Severity = 'success' | 'warning' | 'error';
+
+const SEVERITY_VARIANT: Record<Severity, 'default' | 'destructive'> = {
+  success: 'default',
+  warning: 'default',
+  error: 'destructive',
+};
+
+const SEVERITY_ICON: Record<Severity, () => ReactElement> = {
+  success: () => <CheckCircle2 />,
+  warning: () => <Info />,
+  error: () => <AlertCircle />,
+};
+
+const SEVERITY_TITLE_KEY: Record<Severity, string> = {
+  success: 'settings.provisionSuccess',
+  warning: 'settings.provisionWarning',
+  error: 'settings.provisionFailed',
+};
+
+function messageOf(err: unknown): string | null {
+  return err && typeof err === 'object'
+    ? ((err as { message?: string }).message ?? null)
+    : null;
+}
 
 export function Admin() {
   const { t } = useI18n();
@@ -35,7 +59,6 @@ export function Admin() {
     create: false,
   });
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [provision, setProvision] = useState<ProvisionResult | null>(null);
 
   useEffect(() => {
     setSelection({ name: remoteCatalog, create: false });
@@ -45,33 +68,21 @@ export function Admin() {
     e.preventDefault();
     const name = selection.name.trim();
     if (!name) return;
-    setProvision(null);
     updateSettings.mutate(
       {
         settings: { [CATALOG_SETTING_KEY]: name },
         provision: { createIfMissing: selection.create },
       },
-      {
-        onSuccess: (data) => {
-          setSavedAt(Date.now());
-          setProvision(data.provision ?? null);
-        },
-      },
+      { onSuccess: () => setSavedAt(Date.now()) },
     );
   };
 
   const dirty = selection.name.trim() !== remoteCatalog;
   const saving = updateSettings.isPending;
-  const errorMessage =
-    updateSettings.error && typeof updateSettings.error === 'object'
-      ? ((updateSettings.error as { message?: string }).message ?? null)
-      : null;
+  const errorMessage = messageOf(updateSettings.error);
+  const catalogsError = messageOf(catalogs.error);
 
-  const catalogsError =
-    catalogs.error && typeof catalogs.error === 'object'
-      ? ((catalogs.error as { message?: string }).message ?? null)
-      : null;
-
+  const provision = updateSettings.data?.provision ?? null;
   const provisionMessages = useMemo(
     () => (provision ? buildProvisionMessages(provision, t) : null),
     [provision, t],
@@ -98,7 +109,6 @@ export function Admin() {
                 searchPlaceholder={t('settings.catalogSearchPlaceholder')}
                 emptyText={t('settings.catalogEmpty')}
                 createLabel={(name) => t('settings.catalogCreateOption', { name })}
-                validateName={(s) => IDENT_RE.test(s)}
               />
               <FieldDescription>{t('settings.mainCatalogDesc')}</FieldDescription>
             </Field>
@@ -139,15 +149,9 @@ export function Admin() {
             ) : null}
 
             {provisionMessages ? (
-              <Alert variant={provisionMessages.variant}>
-                {provisionMessages.variant === 'destructive' ? (
-                  <AlertCircle />
-                ) : provisionMessages.isWarning ? (
-                  <Info />
-                ) : (
-                  <CheckCircle2 />
-                )}
-                <AlertTitle>{provisionMessages.title}</AlertTitle>
+              <Alert variant={SEVERITY_VARIANT[provisionMessages.severity]}>
+                {SEVERITY_ICON[provisionMessages.severity]()}
+                <AlertTitle>{t(SEVERITY_TITLE_KEY[provisionMessages.severity])}</AlertTitle>
                 <AlertDescription>
                   <ul className="list-disc pl-4 text-xs">
                     {provisionMessages.lines.map((line) => (
@@ -170,9 +174,7 @@ export function Admin() {
 }
 
 interface ProvisionMessages {
-  variant: 'default' | 'destructive';
-  isWarning: boolean;
-  title: string;
+  severity: Severity;
   lines: string[];
   remediation: string | null;
 }
@@ -186,10 +188,7 @@ function buildProvisionMessages(
     lines.push(t('settings.provisionCatalogCreated', { name: p.catalog }));
   }
   for (const s of MEDALLION_SCHEMAS) {
-    const status = p.schemasEnsured[s];
-    if (status === 'created') {
-      lines.push(t('settings.provisionSchemaCreated', { schema: s }));
-    } else if (status === 'error') {
+    if (p.schemasEnsured[s] === 'error') {
       lines.push(t('settings.provisionSchemaFailed', { schema: s }));
     }
   }
@@ -213,13 +212,13 @@ function buildProvisionMessages(
 
   for (const w of p.warnings) lines.push(w);
 
-  const isErr = grantFailures.length > 0 || Object.values(p.schemasEnsured).includes('error');
-  const isWarn = !isErr && grantSkips.length > 0;
-
-  let title: string;
-  if (isErr) title = t('settings.provisionFailed');
-  else if (isWarn) title = t('settings.provisionWarning');
-  else title = t('settings.provisionSuccess');
+  const hasSchemaError = Object.values(p.schemasEnsured).includes('error');
+  const severity: Severity =
+    grantFailures.length > 0 || hasSchemaError
+      ? 'error'
+      : grantSkips.length > 0
+        ? 'warning'
+        : 'success';
 
   if (lines.length === 0 && grantsOk) {
     lines.push(t('settings.provisionAllOk', { name: p.catalog }));
@@ -230,13 +229,7 @@ function buildProvisionMessages(
       ? renderRemediationSql(p.catalog, p.servicePrincipalId)
       : null;
 
-  return {
-    variant: isErr ? 'destructive' : 'default',
-    isWarning: isWarn,
-    title,
-    lines,
-    remediation,
-  };
+  return { severity, lines, remediation };
 }
 
 function renderRemediationSql(catalog: string, sp: string): string {

@@ -134,7 +134,9 @@ export function useUpdateAppSettings() {
       }),
     onSuccess: (data) => {
       qc.setQueryData(['appSettings'], { settings: data.settings });
-      qc.invalidateQueries({ queryKey: ['catalogs'] });
+      if (data.provision?.catalogCreated) {
+        qc.invalidateQueries({ queryKey: ['catalogs'] });
+      }
     },
   });
 }

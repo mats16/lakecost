@@ -116,12 +116,9 @@ export const ja: Dictionary = {
     provisionAllOk:
       'カタログ「{name}」には bronze/silver/gold スキーマとサービスプリンシパル権限が既に揃っています。',
     provisionCatalogCreated: 'カタログ「{name}」を作成しました。',
-    provisionSchemaCreated: 'スキーマ「{schema}」を作成しました。',
     provisionSchemaFailed: 'スキーマ「{schema}」を作成できませんでした。下の警告を確認してください。',
     provisionGrantFailed: '{scope} への GRANT に失敗しました: {message}',
     provisionScopeCatalog: 'catalog',
-    provisionRemediationHint:
-      'DATABRICKS_CLIENT_ID が未設定のため自動付与をスキップしました。App のサービスプリンシパルを設定すると、次回以降の保存で自動付与されます。',
   },
   configure: {
     title: '構成',

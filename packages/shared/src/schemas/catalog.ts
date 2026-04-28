@@ -20,7 +20,7 @@ export const CatalogListResponseSchema = z.object({
 });
 export type CatalogListResponse = z.infer<typeof CatalogListResponseSchema>;
 
-const SchemaEnsureStatus = z.enum(['created', 'existed', 'error']);
+const SchemaEnsureStatus = z.enum(['ensured', 'error']);
 export type SchemaEnsureStatus = z.infer<typeof SchemaEnsureStatus>;
 
 /**

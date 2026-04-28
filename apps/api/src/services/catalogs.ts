@@ -1,10 +1,10 @@
 import {
-  IDENT_RE,
   MEDALLION_SCHEMAS,
+  quoteIdent,
   type CatalogSummary,
   type Env,
-  type MedallionSchema,
   type ProvisionResult,
+  type SchemaEnsureStatus,
 } from '@lakecost/shared';
 import { logger } from '../config/logger.js';
 import {
@@ -40,16 +40,6 @@ export function filterSelectableCatalogs(items: CatalogInfoLike[]): CatalogSumma
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
-}
-
-/** Validates a catalog or schema name against the same identifier rule used by FOCUS targets. */
-export function validateCatalogIdentifier(name: string): string {
-  if (!IDENT_RE.test(name)) {
-    throw new Error(
-      `Invalid identifier "${name}": must match /^[A-Za-z_][A-Za-z0-9_]*$/ (no quoting required).`,
-    );
-  }
-  return name;
 }
 
 /**
@@ -100,17 +90,13 @@ interface ProvisionOptions {
 /**
  * Provisions the medallion layout (`bronze` / `silver` / `gold`) under
  * `catalog`, optionally creating the catalog itself, and grants the App
- * Service Principal the minimum read access needed by `system.billing.*`
- * style aggregates.
+ * Service Principal the minimum read access (USE CATALOG / USE SCHEMA /
+ * SELECT) it needs to read aggregates from the materialized view.
  *
  * All DDL/GRANT statements are run **as the calling user** (OBO) so the SP
- * does not need any prior privileges. The user must have `CREATE CATALOG`
- * (when `createIfMissing`) and `CREATE SCHEMA` / ownership on the target
- * catalog.
- *
- * Failures of any single step are captured in the result rather than thrown
- * — the `app_settings` write should not roll back just because (e.g.) one
- * GRANT was rejected.
+ * does not need any prior privileges. Schema creates and GRANTs are
+ * collected as best-effort: a single GRANT failure does not abort the
+ * remaining ones — the per-step status is captured in the result instead.
  */
 export async function provisionCatalog(
   env: Env,
@@ -118,8 +104,9 @@ export async function provisionCatalog(
   catalog: string,
   opts: ProvisionOptions = {},
 ): Promise<ProvisionResult> {
-  validateCatalogIdentifier(catalog);
-  for (const s of MEDALLION_SCHEMAS) validateCatalogIdentifier(s);
+  // Fail fast on bad identifiers so we never interpolate them into SQL.
+  const catalogIdent = quoteIdent(catalog);
+  const schemaIdents = MEDALLION_SCHEMAS.map((s) => ({ name: s, ident: quoteIdent(s) }));
 
   const executor = buildUserExecutor(env, userToken);
   if (!executor) {
@@ -131,65 +118,74 @@ export async function provisionCatalog(
 
   const sp = (env.DATABRICKS_CLIENT_ID ?? '').trim();
   const warnings: string[] = [];
-  const result: ProvisionResult = {
-    catalog,
-    catalogCreated: false,
-    schemasEnsured: { bronze: 'existed', silver: 'existed', gold: 'existed' },
-    grants: {
-      catalog: 'skipped:sp_id_not_configured',
-      bronze: 'skipped:sp_id_not_configured',
-      silver: 'skipped:sp_id_not_configured',
-      gold: 'skipped:sp_id_not_configured',
-    },
-    servicePrincipalId: sp.length > 0 ? sp : null,
-    warnings,
-  };
 
+  let catalogCreated = false;
   if (opts.createIfMissing) {
-    const sql = `CREATE CATALOG IF NOT EXISTS \`${catalog}\``;
     try {
       const before = await catalogExists(executor, catalog);
-      await executor.run(sql, [], z.unknown());
-      const after = await catalogExists(executor, catalog);
-      result.catalogCreated = !before && after;
+      await executor.run(`CREATE CATALOG IF NOT EXISTS ${catalogIdent}`, [], z.unknown());
+      catalogCreated = !before;
     } catch (err) {
       throw new CatalogServiceError(
-        `CREATE CATALOG failed for \`${catalog}\`: ${(err as Error).message}`,
+        `CREATE CATALOG failed for ${catalogIdent}: ${(err as Error).message}`,
         isPermissionDenied(err) ? 403 : 500,
       );
     }
   }
 
-  for (const schema of MEDALLION_SCHEMAS) {
-    result.schemasEnsured[schema] = await ensureSchema(executor, catalog, schema, warnings);
-  }
-
-  if (sp.length > 0) {
-    result.grants.catalog = await grant(
-      executor,
-      `GRANT USE CATALOG ON CATALOG \`${catalog}\` TO \`${sp}\``,
-      warnings,
-    );
-    for (const schema of MEDALLION_SCHEMAS) {
-      result.grants[schema] = await grant(
+  // Schemas: independent CREATEs run in parallel.
+  const schemaResults = await Promise.all(
+    schemaIdents.map(async ({ name, ident }) => {
+      const status = await ensureSchema(
         executor,
-        `GRANT USE SCHEMA, SELECT ON SCHEMA \`${catalog}\`.\`${schema}\` TO \`${sp}\``,
+        `CREATE SCHEMA IF NOT EXISTS ${catalogIdent}.${ident}`,
         warnings,
       );
-    }
+      return [name, status] as const;
+    }),
+  );
+  const schemasEnsured = Object.fromEntries(schemaResults) as Record<
+    (typeof MEDALLION_SCHEMAS)[number],
+    SchemaEnsureStatus
+  >;
+
+  // Grants: catalog-level + per-schema all independent — issue concurrently.
+  const grants: ProvisionResult['grants'] = {
+    catalog: 'skipped:sp_id_not_configured',
+    bronze: 'skipped:sp_id_not_configured',
+    silver: 'skipped:sp_id_not_configured',
+    gold: 'skipped:sp_id_not_configured',
+  };
+  if (sp.length > 0) {
+    const spIdent = quoteIdent(sp);
+    const grantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
+      { key: 'catalog', sql: `GRANT USE CATALOG ON CATALOG ${catalogIdent} TO ${spIdent}` },
+      ...schemaIdents.map(({ name, ident }) => ({
+        key: name,
+        sql: `GRANT USE SCHEMA, SELECT ON SCHEMA ${catalogIdent}.${ident} TO ${spIdent}`,
+      })),
+    ];
+    const results = await Promise.all(grantStmts.map((g) => grant(executor, g.sql, warnings)));
+    grantStmts.forEach((g, i) => {
+      grants[g.key] = results[i] as ProvisionResult['grants'][keyof ProvisionResult['grants']];
+    });
   } else {
     warnings.push(
       'DATABRICKS_CLIENT_ID is not set — App Service Principal grants were skipped.',
     );
   }
 
-  return result;
+  return {
+    catalog,
+    catalogCreated,
+    schemasEnsured,
+    grants,
+    servicePrincipalId: sp.length > 0 ? sp : null,
+    warnings,
+  };
 }
 
-async function catalogExists(
-  executor: StatementExecutor,
-  catalog: string,
-): Promise<boolean> {
+async function catalogExists(executor: StatementExecutor, catalog: string): Promise<boolean> {
   try {
     const rows = await executor.run(
       `SHOW CATALOGS LIKE '${catalog.replace(/'/g, "''")}'`,
@@ -204,43 +200,15 @@ async function catalogExists(
 
 async function ensureSchema(
   executor: StatementExecutor,
-  catalog: string,
-  schema: MedallionSchema,
+  sql: string,
   warnings: string[],
-): Promise<'created' | 'existed' | 'error'> {
-  const before = await schemaExists(executor, catalog, schema);
+): Promise<SchemaEnsureStatus> {
   try {
-    await executor.run(
-      `CREATE SCHEMA IF NOT EXISTS \`${catalog}\`.\`${schema}\``,
-      [],
-      z.unknown(),
-    );
+    await executor.run(sql, [], z.unknown());
+    return 'ensured';
   } catch (err) {
-    warnings.push(
-      `CREATE SCHEMA \`${catalog}\`.\`${schema}\` failed: ${(err as Error).message}`,
-    );
+    warnings.push(`${sql} failed: ${(err as Error).message}`);
     return 'error';
-  }
-  return before ? 'existed' : 'created';
-}
-
-async function schemaExists(
-  executor: StatementExecutor,
-  catalog: string,
-  schema: string,
-): Promise<boolean> {
-  try {
-    const rows = await executor.run(
-      `SHOW SCHEMAS IN \`${catalog}\` LIKE '${schema.replace(/'/g, "''")}'`,
-      [],
-      z.object({
-        databaseName: z.string().optional(),
-        schemaName: z.string().optional(),
-      }),
-    );
-    return rows.some((r) => (r.databaseName ?? r.schemaName) === schema);
-  } catch {
-    return false;
   }
 }
 
