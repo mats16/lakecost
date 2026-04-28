@@ -55,6 +55,16 @@ function quoteIdent(part: string): string {
 
 export { quoteIdent };
 
+/**
+ * Quote a Databricks principal name (service principal client_id, user email, etc.)
+ * by wrapping in backticks and escaping any embedded backticks. Unlike `quoteIdent`,
+ * this does NOT validate against IDENT_RE — principal names can contain hyphens,
+ * dots, `@`, etc.
+ */
+export function quotePrincipal(name: string): string {
+  return `\`${name.replace(/`/g, '``')}\``;
+}
+
 export function focusViewFqn({ catalog, schema, table }: FocusViewTarget): string {
   return `${quoteIdent(catalog)}.${quoteIdent(schema)}.${quoteIdent(table)}`;
 }

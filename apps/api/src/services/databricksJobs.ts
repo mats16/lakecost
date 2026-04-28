@@ -152,8 +152,19 @@ export async function upsertPipelineSchedule(
 }
 
 function isManagePermissionDenied(err: unknown): boolean {
+  const code = hasErrorCode(err) ? err.errorCode : '';
   const message = err instanceof Error ? err.message : String(err);
-  return /PERMISSION_DENIED/i.test(message) && /Manage permissions/i.test(message);
+  const isPermDenied = code === 'PERMISSION_DENIED' || /PERMISSION_DENIED/i.test(message);
+  return isPermDenied && /Manage permissions/i.test(message);
+}
+
+function hasErrorCode(err: unknown): err is { errorCode: string } {
+  return (
+    err != null &&
+    typeof err === 'object' &&
+    'errorCode' in err &&
+    typeof (err as { errorCode: unknown }).errorCode === 'string'
+  );
 }
 
 /**

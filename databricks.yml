@@ -13,6 +13,8 @@ variables:
 
 targets:
   dev:
+    # Bare `databricks bundle deploy` targets dev; prod always requires `-t prod`.
+    # mode: development prefixes resources with [dev <user>] to avoid prod collisions.
     default: true
     mode: development
     workspace:

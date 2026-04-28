@@ -61,6 +61,9 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
           ? ((await db.repos.appSettings.get(CATALOG_SETTING_KEY))?.value?.trim() ?? '')
           : '';
 
+      // Persist settings before provisioning. If provisionCatalog fails below,
+      // the catalog name stays saved so the user can retry via "Fix permission"
+      // without re-entering it. This is intentional — no rollback on failure.
       for (const [key, value] of Object.entries(parsed.data.settings)) {
         await db.repos.appSettings.upsert(key, value);
       }

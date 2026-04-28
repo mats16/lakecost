@@ -1,6 +1,7 @@
 import {
   MEDALLION_SCHEMAS,
   quoteIdent,
+  quotePrincipal,
   schemaGrantPrivileges,
   type CatalogSummary,
   type Env,
@@ -80,12 +81,11 @@ export class CatalogServiceError extends Error {
 }
 
 function isPermissionDenied(err: unknown): boolean {
+  if (err != null && typeof err === 'object' && 'errorCode' in err) {
+    return (err as { errorCode: unknown }).errorCode === 'PERMISSION_DENIED';
+  }
   const message = err instanceof Error ? err.message : String(err);
   return /PERMISSION_DENIED|not authorized/i.test(message);
-}
-
-function quotePrincipal(name: string): string {
-  return `\`${name.replace(/`/g, '``')}\``;
 }
 
 interface ProvisionOptions {
@@ -139,20 +139,23 @@ export async function provisionCatalog(
   }
 
   // Schemas: independent CREATEs run in parallel.
+  // Promise.all preserves input order in its output array, so warnings are
+  // collected deterministically regardless of which SQL statement resolves first.
   const schemaResults = await Promise.all(
     schemaIdents.map(async ({ name, ident }) => {
-      const status = await ensureSchema(
+      const { status, warning } = await ensureSchema(
         executor,
         `CREATE SCHEMA IF NOT EXISTS ${catalogIdent}.${ident}`,
-        warnings,
       );
-      return [name, status] as const;
+      return { name, status, warning };
     }),
   );
-  const schemasEnsured = Object.fromEntries(schemaResults) as Record<
-    (typeof MEDALLION_SCHEMAS)[number],
-    SchemaEnsureStatus
-  >;
+  const schemasEnsured = Object.fromEntries(
+    schemaResults.map(({ name, status }) => [name, status]),
+  ) as Record<(typeof MEDALLION_SCHEMAS)[number], SchemaEnsureStatus>;
+  for (const r of schemaResults) {
+    if (r.warning) warnings.push(r.warning);
+  }
 
   // Grants: catalog-level + per-schema all independent — issue concurrently.
   const grants: ProvisionResult['grants'] = {
@@ -170,10 +173,14 @@ export async function provisionCatalog(
         sql: `GRANT ${schemaGrantPrivileges(name)} ON SCHEMA ${catalogIdent}.${ident} TO ${spIdent}`,
       })),
     ];
-    const results = await Promise.all(grantStmts.map((g) => grant(executor, g.sql, warnings)));
+    const grantResults = await Promise.all(grantStmts.map((g) => grant(executor, g.sql)));
     grantStmts.forEach((g, i) => {
-      grants[g.key] = results[i] as ProvisionResult['grants'][keyof ProvisionResult['grants']];
+      grants[g.key] = grantResults[i]!
+        .status as ProvisionResult['grants'][keyof ProvisionResult['grants']];
     });
+    for (const r of grantResults) {
+      if (r.warning) warnings.push(r.warning);
+    }
   } else {
     warnings.push('DATABRICKS_CLIENT_ID is not set — App Service Principal grants were skipped.');
   }
@@ -205,28 +212,24 @@ async function catalogExists(executor: StatementExecutor, catalog: string): Prom
 async function ensureSchema(
   executor: StatementExecutor,
   sql: string,
-  warnings: string[],
-): Promise<SchemaEnsureStatus> {
+): Promise<{ status: SchemaEnsureStatus; warning: string | null }> {
   try {
     await executor.run(sql, [], z.unknown());
-    return 'ensured';
+    return { status: 'ensured', warning: null };
   } catch (err) {
-    warnings.push(`${sql} failed: ${(err as Error).message}`);
-    return 'error';
+    return { status: 'error', warning: `${sql} failed: ${(err as Error).message}` };
   }
 }
 
 async function grant(
   executor: StatementExecutor,
   sql: string,
-  warnings: string[],
-): Promise<string> {
+): Promise<{ status: string; warning: string | null }> {
   try {
     await executor.run(sql, [], z.unknown());
-    return 'granted';
+    return { status: 'granted', warning: null };
   } catch (err) {
     const msg = (err as Error).message;
-    warnings.push(`${sql} failed: ${msg}`);
-    return `error:${msg}`;
+    return { status: `error:${msg}`, warning: `${sql} failed: ${msg}` };
   }
 }

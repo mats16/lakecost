@@ -25,6 +25,7 @@ import {
   CATALOG_SETTING_KEY,
   IDENT_RE,
   MEDALLION_SCHEMAS,
+  quotePrincipal,
   schemaGrantPrivileges,
   type ProvisionResult,
 } from '@lakecost/shared';
@@ -93,6 +94,7 @@ export function Admin() {
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!validName) return;
+    updateSettings.reset();
     updateSettings.mutate(
       {
         settings: { [CATALOG_SETTING_KEY]: catalogName },
@@ -291,10 +293,12 @@ function buildProvisionMessages(
 }
 
 function renderRemediationSql(catalog: string, sp: string): string {
+  const cat = quotePrincipal(catalog);
+  const principal = quotePrincipal(sp);
   const lines: string[] = [];
-  lines.push(`GRANT USE CATALOG ON CATALOG \`${catalog}\` TO \`${sp}\`;`);
+  lines.push(`GRANT USE CATALOG ON CATALOG ${cat} TO ${principal};`);
   for (const s of MEDALLION_SCHEMAS) {
-    lines.push(`GRANT ${schemaGrantPrivileges(s)} ON SCHEMA \`${catalog}\`.\`${s}\` TO \`${sp}\`;`);
+    lines.push(`GRANT ${schemaGrantPrivileges(s)} ON SCHEMA ${cat}.\`${s}\` TO ${principal};`);
   }
   return lines.join('\n');
 }
