@@ -87,10 +87,10 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
       } catch (err) {
         if (err instanceof CatalogServiceError) {
           logger.warn(
-            { err, catalog: newCatalog, status: err.status },
+            { err, catalog: newCatalog, status: err.statusCode },
             'provisionCatalog precondition failed; settings persisted without provisioning',
           );
-          res.status(err.status).json({ error: { message: err.message }, settings });
+          res.status(err.statusCode).json({ error: { message: err.message }, settings });
           return;
         }
         throw err;

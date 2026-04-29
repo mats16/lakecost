@@ -12,7 +12,7 @@ export function catalogsRouter(env: Env): Router {
       res.json({ catalogs });
     } catch (err) {
       if (err instanceof CatalogServiceError) {
-        res.status(err.status).json({ error: { message: err.message } });
+        res.status(err.statusCode).json({ error: { message: err.message } });
         return;
       }
       next(err);

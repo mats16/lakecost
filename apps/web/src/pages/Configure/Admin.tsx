@@ -25,6 +25,7 @@ import {
   CATALOG_SETTING_KEY,
   IDENT_RE,
   MEDALLION_SCHEMAS,
+  quoteIdent,
   quotePrincipal,
   schemaGrantPrivileges,
   type ProvisionResult,
@@ -293,7 +294,7 @@ function buildProvisionMessages(
 }
 
 function renderRemediationSql(catalog: string, sp: string): string {
-  const cat = quotePrincipal(catalog);
+  const cat = quoteIdent(catalog);
   const principal = quotePrincipal(sp);
   const lines: string[] = [];
   lines.push(`GRANT USE CATALOG ON CATALOG ${cat} TO ${principal};`);

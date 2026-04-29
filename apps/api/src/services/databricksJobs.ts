@@ -91,7 +91,7 @@ async function upsertPipeline(
       if (!isManagePermissionDenied(err)) throw err;
       // The saved pipeline may be owned by a different principal. Create a
       // replacement owned by the current OBO user.
-      wc.pipelines.delete({ pipeline_id: existingPipelineId }).catch(() => {});
+      await wc.pipelines.delete({ pipeline_id: existingPipelineId }).catch(() => {});
     }
   }
   const created = await wc.pipelines.create({ ...settings, allow_duplicate_names: true });
@@ -166,7 +166,7 @@ export async function upsertPipelineSchedule(
       if (!isManagePermissionDenied(err)) throw err;
       // The saved job may be owned by a different principal. Create a new
       // user-owned job and persist its id in the data source row.
-      wc.jobs.delete({ job_id: existing.jobId }).catch(() => {});
+      await wc.jobs.delete({ job_id: existing.jobId }).catch(() => {});
     }
   }
   const created = await wc.jobs.create(jobSettings);

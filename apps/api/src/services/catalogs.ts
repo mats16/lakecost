@@ -74,7 +74,7 @@ export class CatalogServiceError extends Error {
   override readonly name = 'CatalogServiceError';
   constructor(
     message: string,
-    readonly status: number,
+    readonly statusCode: number,
   ) {
     super(message);
   }
