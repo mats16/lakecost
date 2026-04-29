@@ -7,12 +7,14 @@ export interface PipelineScheduleParams {
   jobName: string;
   /** DLT SQL body — must use `CREATE OR REFRESH` syntax (no catalog/schema). */
   pipelineSql: string;
-  /** Absolute workspace path (e.g. `/Workspace/Shared/lakecost/data_sources/databricks/focus-pipeline.sql`). */
+  /** Absolute workspace path for the uploaded pipeline SQL source. */
   workspacePath: string;
   /** Unity Catalog target catalog. */
   catalog: string;
   /** Unity Catalog target schema (e.g. `silver`). */
   schema: string;
+  /** Lakeflow pipeline parameters exposed to SQL as `${key}` references. */
+  configuration?: Record<string, string>;
   /** Quartz cron expression: `seconds minutes hours day-of-month month day-of-week`. */
   cronExpression: string;
   /** Java timezone id, e.g. `UTC`. */
@@ -72,6 +74,7 @@ async function upsertPipeline(
     continuous: false,
     channel: 'CURRENT',
     libraries: [{ file: { path: params.workspacePath } }],
+    ...(params.configuration ? { configuration: params.configuration } : {}),
     tags: { managed_by: 'lakecost' },
   };
 

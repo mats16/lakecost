@@ -1,93 +1,91 @@
-/**
- * FOCUS 1.3 mapping over Databricks system tables.
- * Source: https://github.com/databricks-solutions/cloud-infra-costs/blob/main/aws/focus/focus_query.sql
- *
- * The FOCUS table is exposed as a Unity Catalog Materialized View at
- * `<catalog>.silver.<table>` (the schema is fixed at `silver`). The same
- * pipeline also publishes curated rollups under `<catalog>.gold`. A periodic
- * refresh job is created via the Jobs API and stamped onto the data source
- * row's `job_id` column. Identifier parts and the `accountPricesTable` (1- to
- * 3-part identifier) are validated before being used in generated SQL or
- * pipeline parameters.
- */
+CREATE TEMPORARY VIEW pipeline_names AS
+SELECT account_id, workspace_id, pipeline_id, name AS pipeline_name
+FROM system.lakeflow.pipelines
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY account_id, workspace_id, pipeline_id ORDER BY create_time DESC
+) = 1;
 
-export const FOCUS_VIEW_SCHEMA_DEFAULT = 'silver';
-export const FOCUS_VIEW_TABLE_DEFAULT = 'databricks_billing';
-export const ACCOUNT_PRICES_DEFAULT = 'system.billing.list_prices';
+CREATE TEMPORARY VIEW cluster_names AS
+SELECT account_id, workspace_id, cluster_id, cluster_name
+FROM system.compute.clusters
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY account_id, workspace_id, cluster_id ORDER BY change_time DESC
+) = 1;
 
-/**
- * Medallion schemas auto-provisioned alongside the catalog. `silver` houses the
- * FOCUS materialized view (see `FOCUS_VIEW_SCHEMA_DEFAULT`); `bronze` is
- * reserved for raw provider exports (CUR, Cost Mgmt) and `gold` for curated
- * cost facts.
- */
-export const MEDALLION_SCHEMAS = ['bronze', 'silver', 'gold'] as const;
-export type MedallionSchema = (typeof MEDALLION_SCHEMAS)[number];
+CREATE TEMPORARY VIEW warehouse_names AS
+SELECT account_id, workspace_id, warehouse_id, warehouse_name
+FROM system.compute.warehouses
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY account_id, workspace_id, warehouse_id ORDER BY change_time DESC
+) = 1;
 
-/** SQL privilege list needed by the App SP for each medallion schema. */
-export function schemaGrantPrivileges(schema: MedallionSchema): string {
-  return schema === 'silver' || schema === 'gold'
-    ? 'USE SCHEMA, SELECT, CREATE TABLE'
-    : 'USE SCHEMA, SELECT';
-}
+CREATE TEMPORARY VIEW workspace_names AS
+SELECT account_id, workspace_id, workspace_name
+FROM system.access.workspaces_latest;
 
-export interface FocusViewTarget {
-  catalog: string;
-  schema: string;
-  table: string;
-}
+CREATE TEMPORARY VIEW list_prices AS
+SELECT COALESCE(price_end_time, date_add(current_date, 1)) AS coalesced_price_end_time, *
+FROM system.billing.list_prices
+WHERE currency_code = 'USD';
 
-/** Single source of truth for unquoted SQL identifiers used across the app. */
-export const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const QUALIFIED_RE = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,2}$/;
+CREATE TEMPORARY VIEW account_prices AS
+SELECT COALESCE(price_end_time, date_add(current_date, 1)) AS coalesced_price_end_time, *
+FROM ${account_prices}
+WHERE currency_code = 'USD';
 
-function quoteIdent(part: string): string {
-  if (!IDENT_RE.test(part)) {
-    throw new Error(
-      `Invalid identifier "${part}": must match /^[A-Za-z_][A-Za-z0-9_]*$/ (no quoting required).`,
-    );
-  }
-  return `\`${part}\``;
-}
+CREATE TEMPORARY VIEW usage_with_pricing AS
+SELECT
+  u.record_id,
+  u.account_id,
+  u.workspace_id,
+  w.workspace_name,
+  u.sku_name,
+  u.cloud,
+  u.usage_start_time,
+  u.usage_end_time,
+  u.usage_date,
+  u.usage_quantity,
+  u.usage_unit,
+  u.usage_type,
+  u.custom_tags,
+  u.usage_metadata,
+  u.product_features,
+  u.billing_origin_product,
+  pip.pipeline_name,
+  cl.cluster_name,
+  wh.warehouse_name,
+  lp.currency_code,
+  lp.price_start_time,
+  CAST(lp.pricing.default AS DECIMAL(30, 15)) AS list_unit_price,
+  CAST(ap.pricing.default AS DECIMAL(30, 15)) AS account_unit_price
+FROM system.billing.usage u
+  LEFT JOIN list_prices lp
+    ON u.sku_name = lp.sku_name
+    AND u.usage_unit = lp.usage_unit
+    AND u.account_id = lp.account_id
+    AND u.usage_end_time BETWEEN lp.price_start_time AND lp.coalesced_price_end_time
+  LEFT JOIN account_prices ap
+    ON u.sku_name = ap.sku_name
+    AND u.usage_unit = ap.usage_unit
+    AND u.account_id = ap.account_id
+    AND u.usage_end_time BETWEEN ap.price_start_time AND ap.coalesced_price_end_time
+  LEFT JOIN workspace_names w
+    ON u.account_id = w.account_id
+    AND u.workspace_id = w.workspace_id
+  LEFT JOIN pipeline_names pip
+    ON u.account_id = pip.account_id
+    AND u.workspace_id = pip.workspace_id
+    AND u.usage_metadata.dlt_pipeline_id = pip.pipeline_id
+  LEFT JOIN cluster_names cl
+    ON u.account_id = cl.account_id
+    AND u.workspace_id = cl.workspace_id
+    AND u.usage_metadata.cluster_id = cl.cluster_id
+  LEFT JOIN warehouse_names wh
+    ON u.account_id = wh.account_id
+    AND u.workspace_id = wh.workspace_id
+    AND u.usage_metadata.warehouse_id = wh.warehouse_id;
 
-export { quoteIdent };
-
-/**
- * Quote a Databricks principal name (service principal client_id, user email, etc.)
- * by wrapping in backticks and escaping any embedded backticks. Unlike `quoteIdent`,
- * this does NOT validate against IDENT_RE — principal names can contain hyphens,
- * dots, `@`, etc.
- */
-export function quotePrincipal(name: string): string {
-  return `\`${name.replace(/`/g, '``')}\``;
-}
-
-export function focusViewFqn({ catalog, schema, table }: FocusViewTarget): string {
-  return `${quoteIdent(catalog)}.${quoteIdent(schema)}.${quoteIdent(table)}`;
-}
-
-export function validateAccountPricesTable(value: string): string {
-  if (!QUALIFIED_RE.test(value)) {
-    throw new Error(
-      `Invalid account_prices table "${value}": expected up to 3 dot-separated identifiers.`,
-    );
-  }
-  return value;
-}
-
-function quoteQualified(value: string): string {
-  return value
-    .split('.')
-    .map((p) => quoteIdent(p))
-    .join('.');
-}
-
-/**
- * The FOCUS 1.3 SELECT projection over `usage_with_pricing`. Shared between
- * the standalone MV DDL and the DLT pipeline SQL so changes only need to be
- * made once.
- */
-const FOCUS_SELECT_PROJECTION = /* sql */ `\
+CREATE OR REFRESH MATERIALIZED VIEW `${table_name}` AS
 SELECT
   CAST(NULL AS STRING) AS AvailabilityZone,
   CAST(COALESCE(usage_quantity * account_unit_price, 0) AS DECIMAL(30, 15)) AS BilledCost,
@@ -138,7 +136,6 @@ SELECT
   'Databricks' AS PublisherName,
   split(current_metastore(), ':')[1] AS RegionId,
   split(current_metastore(), ':')[1] AS RegionName,
-  -- ResourceId: primary resource identifier per billing_origin_product
   CASE
     WHEN u.billing_origin_product IN ('JOBS')
       THEN COALESCE(u.usage_metadata.job_id, u.billing_origin_product)
@@ -195,7 +192,6 @@ SELECT
       THEN COALESCE(u.usage_metadata.notebook_id, u.billing_origin_product)
     ELSE u.billing_origin_product
   END AS ResourceId,
-  -- ResourceName: human-friendly name for the resource
   CASE
     WHEN u.billing_origin_product IN ('JOBS')
       THEN COALESCE(u.usage_metadata.job_name, u.usage_metadata.job_id)
@@ -227,7 +223,6 @@ SELECT
       THEN u.usage_metadata.sharing_materialization_id
     ELSE u.billing_origin_product
   END AS ResourceName,
-  -- ResourceType / ServiceCategory / ServiceSubcategory
   CASE
     WHEN u.billing_origin_product = 'JOBS' THEN 'Job'
     WHEN u.billing_origin_product = 'DLT' THEN 'Spark Declarative Pipeline'
@@ -332,130 +327,116 @@ SELECT
   u.workspace_name AS SubAccountName,
   'Workspace' AS SubAccountType,
   u.custom_tags AS Tags
-FROM usage_with_pricing u
-`;
+FROM usage_with_pricing u;
 
-const FOCUS_SELECT_BODY = /* sql */ `
-WITH pipeline_names AS (
-  SELECT account_id, workspace_id, pipeline_id, name AS pipeline_name
-  FROM system.lakeflow.pipelines
-  QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY account_id, workspace_id, pipeline_id ORDER BY create_time DESC
-  ) = 1
-),
-cluster_names AS (
-  SELECT account_id, workspace_id, cluster_id, cluster_name
-  FROM system.compute.clusters
-  QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY account_id, workspace_id, cluster_id ORDER BY change_time DESC
-  ) = 1
-),
-warehouse_names AS (
-  SELECT account_id, workspace_id, warehouse_id, warehouse_name
-  FROM system.compute.warehouses
-  QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY account_id, workspace_id, warehouse_id ORDER BY change_time DESC
-  ) = 1
-),
-workspace_names AS (
-  SELECT account_id, workspace_id, workspace_name
-  FROM system.access.workspaces_latest
-),
-list_prices AS (
-  SELECT COALESCE(price_end_time, date_add(current_date, 1)) AS coalesced_price_end_time, *
-  FROM system.billing.list_prices
-  WHERE currency_code = 'USD'
-),
-account_prices AS (
-  SELECT COALESCE(price_end_time, date_add(current_date, 1)) AS coalesced_price_end_time, *
-  FROM __ACCOUNT_PRICES__
-  WHERE currency_code = 'USD'
-),
-usage_with_pricing AS (
-  SELECT
-    u.record_id,
-    u.account_id,
-    u.workspace_id,
-    w.workspace_name,
-    u.sku_name,
-    u.cloud,
-    u.usage_start_time,
-    u.usage_end_time,
-    u.usage_date,
-    u.usage_quantity,
-    u.usage_unit,
-    u.usage_type,
-    u.custom_tags,
-    u.usage_metadata,
-    u.product_features,
-    u.billing_origin_product,
-    pip.pipeline_name,
-    cl.cluster_name,
-    wh.warehouse_name,
-    lp.currency_code,
-    lp.price_start_time,
-    CAST(lp.pricing.default AS DECIMAL(30, 15)) AS list_unit_price,
-    CAST(ap.pricing.default AS DECIMAL(30, 15)) AS account_unit_price
-  FROM system.billing.usage u
-    LEFT JOIN list_prices lp
-      ON u.sku_name = lp.sku_name
-      AND u.usage_unit = lp.usage_unit
-      AND u.account_id = lp.account_id
-      AND u.usage_end_time BETWEEN lp.price_start_time AND lp.coalesced_price_end_time
-    LEFT JOIN account_prices ap
-      ON u.sku_name = ap.sku_name
-      AND u.usage_unit = ap.usage_unit
-      AND u.account_id = ap.account_id
-      AND u.usage_end_time BETWEEN ap.price_start_time AND ap.coalesced_price_end_time
-    LEFT JOIN workspace_names w
-      ON u.account_id = w.account_id
-      AND u.workspace_id = w.workspace_id
-    LEFT JOIN pipeline_names pip
-      ON u.account_id = pip.account_id
-      AND u.workspace_id = pip.workspace_id
-      AND u.usage_metadata.dlt_pipeline_id = pip.pipeline_id
-    LEFT JOIN cluster_names cl
-      ON u.account_id = cl.account_id
-      AND u.workspace_id = cl.workspace_id
-      AND u.usage_metadata.cluster_id = cl.cluster_id
-    LEFT JOIN warehouse_names wh
-      ON u.account_id = wh.account_id
-      AND u.workspace_id = wh.workspace_id
-      AND u.usage_metadata.warehouse_id = wh.warehouse_id
-)
-${FOCUS_SELECT_PROJECTION}`;
+CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_daily`
+COMMENT 'Databricks FOCUS daily billing rollup managed by LakeCost'
+AS
+SELECT
+  CAST(ChargePeriodEnd AS DATE) AS ChargeDate,
+  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM') AS BillingMonth,
+  BillingAccountId AS billing_account_id,
+  BillingAccountName AS billing_account_name,
+  BillingCurrency AS billing_currency,
+  SubAccountId AS workspace_id,
+  SubAccountName AS workspace_name,
+  SubAccountType AS workspace_type,
+  ProviderName AS provider_name,
+  PublisherName AS publisher_name,
+  ServiceProviderName AS service_provider_name,
+  ServiceCategory AS service_category,
+  ServiceSubcategory AS service_subcategory,
+  ServiceName AS service_name,
+  ResourceId AS resource_id,
+  ResourceName AS resource_name,
+  ResourceType AS resource_type,
+  SkuId AS sku_id,
+  SkuMeter AS sku_meter,
+  ChargeDescription AS charge_description,
+  PricingUnit AS pricing_unit,
+  ConsumedUnit AS consumed_unit,
+  CAST(SUM(COALESCE(ConsumedQuantity, 0)) AS DECIMAL(30, 15)) AS consumed_quantity,
+  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS list_cost,
+  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS billed_cost,
+  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS contracted_cost,
+  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS effective_cost
+FROM `${table_name}`
+GROUP BY
+  CAST(ChargePeriodEnd AS DATE),
+  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM'),
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  PublisherName,
+  ServiceProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  ResourceId,
+  ResourceName,
+  ResourceType,
+  SkuId,
+  SkuMeter,
+  ChargeDescription,
+  PricingUnit,
+  ConsumedUnit;
 
-export interface FocusViewSqlOptions extends FocusViewTarget {
-  /** Account-level prices table (1-3 dot-separated identifiers). Defaults to `system.billing.list_prices`. */
-  accountPricesTable?: string;
-}
-
-function resolveAccountPrices(value: string | undefined): string {
-  const raw = value && value.trim().length > 0 ? value.trim() : ACCOUNT_PRICES_DEFAULT;
-  return quoteQualified(validateAccountPricesTable(raw));
-}
-
-/**
- * Builds the `CREATE OR REPLACE MATERIALIZED VIEW` DDL for the FOCUS 1.3
- * mapping. Currently only used by tests / previews — production scheduling
- * goes through the API-side Databricks Focus transform pipeline template.
- */
-export function buildFocusViewSql(opts: FocusViewSqlOptions): string {
-  const accountPrices = resolveAccountPrices(opts.accountPricesTable);
-  const body = FOCUS_SELECT_BODY.replaceAll('__ACCOUNT_PRICES__', accountPrices);
-  return `CREATE OR REPLACE MATERIALIZED VIEW ${focusViewFqn(opts)} AS${body}`;
-}
-
-/** `CREATE SCHEMA IF NOT EXISTS \`catalog\`.\`schema\`` — prerequisite for the view. */
-export function buildEnsureSchemaSql({
-  catalog,
-  schema,
-}: {
-  catalog: string;
-  schema: string;
-}): string {
-  return `CREATE SCHEMA IF NOT EXISTS ${quoteIdent(catalog)}.${quoteIdent(schema)}`;
-}
-
-/** Standalone SELECT (no DDL wrapper, no account_prices substitution) — useful for previews. */
-export const focusSelectSql: string = FOCUS_SELECT_BODY;
+CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_hourly`
+COMMENT 'Databricks FOCUS hourly billing rollup managed by LakeCost'
+AS
+SELECT
+  CAST(DATE_TRUNC('HOUR', ChargePeriodStart) AS TIMESTAMP) AS ChargeHour,
+  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM') AS BillingMonth,
+  BillingAccountId AS billing_account_id,
+  BillingAccountName AS billing_account_name,
+  BillingCurrency AS billing_currency,
+  SubAccountId AS workspace_id,
+  SubAccountName AS workspace_name,
+  SubAccountType AS workspace_type,
+  ProviderName AS provider_name,
+  PublisherName AS publisher_name,
+  ServiceProviderName AS service_provider_name,
+  ServiceCategory AS service_category,
+  ServiceSubcategory AS service_subcategory,
+  ServiceName AS service_name,
+  ResourceId AS resource_id,
+  ResourceName AS resource_name,
+  ResourceType AS resource_type,
+  SkuId AS sku_id,
+  SkuMeter AS sku_meter,
+  ChargeDescription AS charge_description,
+  PricingUnit AS pricing_unit,
+  ConsumedUnit AS consumed_unit,
+  CAST(SUM(COALESCE(ConsumedQuantity, 0)) AS DECIMAL(30, 15)) AS consumed_quantity,
+  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS list_cost,
+  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS billed_cost,
+  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS contracted_cost,
+  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS effective_cost
+FROM `${table_name}`
+GROUP BY
+  CAST(DATE_TRUNC('HOUR', ChargePeriodStart) AS TIMESTAMP),
+  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM'),
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  PublisherName,
+  ServiceProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  ResourceId,
+  ResourceName,
+  ResourceType,
+  SkuId,
+  SkuMeter,
+  ChargeDescription,
+  PricingUnit,
+  ConsumedUnit;

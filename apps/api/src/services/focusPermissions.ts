@@ -2,7 +2,6 @@ import type { DatabaseClient } from '@lakecost/db';
 import {
   CATALOG_SETTING_KEY,
   FOCUS_VIEW_SCHEMA_DEFAULT,
-  buildFocusPipelineSql,
   focusSourceTables,
   focusViewFqn,
   quoteIdent,
@@ -30,6 +29,10 @@ import {
 } from './databricksJobs.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import { readFocusConfig, resourceLabelBase, workspacePathFor } from './dataSourceSetup.js';
+import {
+  buildFocusPipelineConfiguration,
+  buildFocusPipelineSql,
+} from './databricksFocusTransformPipelineSql.js';
 import { z } from 'zod';
 
 const RowSchema = z.record(z.unknown());
@@ -224,6 +227,7 @@ export async function preflightFocusDataSource(
       workspacePath,
       catalog,
       schema: FOCUS_VIEW_SCHEMA_DEFAULT,
+      configuration: buildFocusPipelineConfiguration(tableName, accountPricesTable),
       cronExpression,
       timezoneId,
       servicePrincipalId: sp,

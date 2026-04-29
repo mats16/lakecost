@@ -6,7 +6,6 @@ import {
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
   FOCUS_VIEW_SCHEMA_DEFAULT,
-  buildFocusPipelineSql,
   focusViewFqn,
   tableLeafName,
   unquotedFqn,
@@ -23,6 +22,10 @@ import {
   type PipelineScheduleParams,
 } from './databricksJobs.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
+import {
+  buildFocusPipelineConfiguration,
+  buildFocusPipelineSql,
+} from './databricksFocusTransformPipelineSql.js';
 
 interface FocusConfig {
   accountPricesTable: string;
@@ -47,7 +50,7 @@ export function readFocusConfig(config: Record<string, unknown>): FocusConfig {
 }
 
 export function workspacePathFor(appName: string, dataSourceId: string): string {
-  return `/Workspace/Shared/${appName}/data_sources/${dataSourceId}/focus-pipeline.sql`;
+  return `/Workspace/Shared/${appName}/data_sources/${dataSourceId}/databricksFocusTransformPipeline.sql`;
 }
 
 /**
@@ -165,6 +168,7 @@ export async function setupFocusDataSource(
     workspacePath,
     catalog,
     schema: FOCUS_VIEW_SCHEMA_DEFAULT,
+    configuration: buildFocusPipelineConfiguration(tableName, accountPricesTable),
     cronExpression,
     timezoneId,
   };
