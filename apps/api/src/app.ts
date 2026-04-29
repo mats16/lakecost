@@ -11,7 +11,7 @@ import { healthRouter } from './routes/health.js';
 import { usageRouter } from './routes/usage.js';
 import { budgetsRouter } from './routes/budgets.js';
 import { setupRouter } from './routes/setup.js';
-import { settingsRouter } from './routes/settings.js';
+import { appSettingsRouter, settingsRouter } from './routes/settings.js';
 import { meRouter } from './routes/me.js';
 import { dataSourcesRouter } from './routes/dataSources.js';
 import { catalogsRouter } from './routes/catalogs.js';
@@ -35,7 +35,8 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/usage', usageRouter(db, env));
   app.use('/api/budgets', budgetsRouter(db));
   app.use('/api/setup', setupRouter(db, env));
-  app.use('/api/settings', settingsRouter(db, env));
+  app.use('/api/app-settings', appSettingsRouter(db, env));
+  app.use('/api/settings', settingsRouter(db));
   app.use('/api/me', meRouter(env));
   app.use('/api/data-sources', dataSourcesRouter(db, env));
   app.use('/api/catalogs', catalogsRouter(env));

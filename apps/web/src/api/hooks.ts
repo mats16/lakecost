@@ -119,7 +119,7 @@ export interface UpdateAppSettingsArgs {
 export function useAppSettings() {
   return useQuery({
     queryKey: ['appSettings'],
-    queryFn: () => apiFetch<AppSettingsResponse>('/api/settings/app'),
+    queryFn: () => apiFetch<AppSettingsResponse>('/api/app-settings'),
     staleTime: 60 * 1000,
   });
 }
@@ -128,7 +128,7 @@ export function useUpdateAppSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (args: UpdateAppSettingsArgs) =>
-      apiFetch<AppSettingsUpdateResponse>('/api/settings/app', {
+      apiFetch<AppSettingsUpdateResponse>('/api/app-settings', {
         method: 'PUT',
         body: JSON.stringify(args),
       }),

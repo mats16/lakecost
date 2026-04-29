@@ -33,10 +33,10 @@ const AppSettingSingleBodySchema = z.object({
   value: AppSettingValueSchema,
 });
 
-export function settingsRouter(db: DatabaseClient, env: Env): Router {
+export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
   const router = Router();
 
-  router.get('/app', async (_req, res, next) => {
+  router.get('/', async (_req, res, next) => {
     try {
       const rows = await db.repos.appSettings.list();
       const settings: Record<string, string> = {};
@@ -47,7 +47,7 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.put('/app', async (req, res, next) => {
+  router.put('/', async (req, res, next) => {
     try {
       const parsed = AppSettingsBulkBodySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -100,7 +100,7 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.get('/app/:key', async (req, res, next) => {
+  router.get('/:key', async (req, res, next) => {
     try {
       const keyParse = AppSettingKeySchema.safeParse(req.params.key);
       if (!keyParse.success) {
@@ -118,7 +118,7 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.put('/app/:key', async (req, res, next) => {
+  router.put('/:key', async (req, res, next) => {
     try {
       const keyParse = AppSettingKeySchema.safeParse(req.params.key);
       if (!keyParse.success) {
@@ -137,7 +137,7 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.delete('/app/:key', async (req, res, next) => {
+  router.delete('/:key', async (req, res, next) => {
     try {
       const keyParse = AppSettingKeySchema.safeParse(req.params.key);
       if (!keyParse.success) {
@@ -150,6 +150,12 @@ export function settingsRouter(db: DatabaseClient, env: Env): Router {
       next(err);
     }
   });
+
+  return router;
+}
+
+export function settingsRouter(db: DatabaseClient): Router {
+  const router = Router();
 
   router.get('/me', async (req, res, next) => {
     try {
