@@ -137,7 +137,6 @@ export const ja: Dictionary = {
     currentTitle: '現在のデータソース',
     filterPlaceholder: 'データソースを絞り込み…',
     addTitle: 'データソースを追加',
-    tileNoHistory: '履歴はまだありません',
     empty: 'データソースがまだ登録されていません。下のカタログから追加してください。',
     delete: 'データソースを削除',
     confirmDelete: '「{name}」を削除しますか？スケジュール済みのリフレッシュジョブも削除されます。',

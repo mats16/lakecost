@@ -13,7 +13,7 @@ export interface TileMetric {
 
 export interface TileBadge {
   label: string;
-  variant: 'enabled' | 'disabled' | 'healthy' | 'error' | 'unknown';
+  variant: 'enabled' | 'disabled' | 'healthy' | 'error' | 'unknown' | 'neutral';
 }
 
 interface Props {
@@ -25,6 +25,7 @@ interface Props {
   /** Override the rendered description. */
   displayDescription?: string;
   badges?: TileBadge[];
+  footerBadges?: TileBadge[];
   metric?: TileMetric;
   onClick?: () => void;
   rightAccessory?: ReactNode;
@@ -37,6 +38,7 @@ const BADGE_VARIANT: Record<TileBadge['variant'], React.ComponentProps<typeof Ba
   healthy: 'default',
   error: 'destructive',
   unknown: 'outline',
+  neutral: 'outline',
 };
 
 const BADGE_CLASSES: Record<TileBadge['variant'], string> = {
@@ -45,7 +47,16 @@ const BADGE_CLASSES: Record<TileBadge['variant'], string> = {
   healthy: 'bg-(--success)/15 text-(--success) border-(--success)/30',
   error: '',
   unknown: 'bg-(--warning)/15 text-(--warning) border-(--warning)/30',
+  neutral: 'border-border bg-muted/70 text-muted-foreground',
 };
+
+function renderBadges(items: TileBadge[]) {
+  return items.map((b) => (
+    <Badge key={b.label} variant={BADGE_VARIANT[b.variant]} className={BADGE_CLASSES[b.variant]}>
+      {b.label}
+    </Badge>
+  ));
+}
 
 export function DataSourceTile({
   source,
@@ -53,6 +64,7 @@ export function DataSourceTile({
   displayName,
   displayDescription,
   badges = [],
+  footerBadges = [],
   metric,
   onClick,
   rightAccessory,
@@ -63,6 +75,11 @@ export function DataSourceTile({
   const subtitle = t(`dataSources.catalog.${source.id}.subtitle`);
   const name = displayName ?? source.name;
   const interactive = Boolean(onClick);
+
+  const headerBadges = badges;
+  const footerBadgeItems: TileBadge[] = source.focus_version
+    ? [...footerBadges, { label: `FOCUS ${source.focus_version}`, variant: 'neutral' }]
+    : footerBadges;
 
   return (
     <Card
@@ -92,17 +109,11 @@ export function DataSourceTile({
           <p className="text-muted-foreground mt-1 text-xs">{description}</p>
           {subtitle ? <p className="text-muted-foreground mt-0.5 text-[11px]">{subtitle}</p> : null}
         </div>
-        <div className="flex flex-col items-end gap-1">
-          {badges.map((b) => (
-            <Badge
-              key={b.label}
-              variant={BADGE_VARIANT[b.variant]}
-              className={BADGE_CLASSES[b.variant]}
-            >
-              {b.label}
-            </Badge>
-          ))}
-        </div>
+        {headerBadges.length > 0 ? (
+          <div className="flex flex-col items-end gap-1">
+            {renderBadges(headerBadges)}
+          </div>
+        ) : null}
       </div>
 
       <CardContent className="flex min-h-14 items-center justify-center px-0">
@@ -121,11 +132,14 @@ export function DataSourceTile({
                 <span className="text-muted-foreground text-[11px]">{metric.secondary}</span>
               ) : null}
             </>
-          ) : (
-            <span className="text-muted-foreground italic">{t('dataSources.tileNoHistory')}</span>
-          )}
+          ) : null}
         </div>
-        {metric?.sparkline ? <Sparkline values={metric.sparkline} /> : null}
+        {footerBadgeItems.length > 0 || metric?.sparkline ? (
+          <div className="flex items-center gap-1">
+            {renderBadges(footerBadgeItems)}
+            {metric?.sparkline ? <Sparkline values={metric.sparkline} /> : null}
+          </div>
+        ) : null}
       </div>
     </Card>
   );

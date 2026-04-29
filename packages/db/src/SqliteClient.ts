@@ -108,7 +108,8 @@ export class SqliteClient implements DatabaseClient {
         updated_at TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS data_sources (
-        id TEXT PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
         provider_name TEXT NOT NULL,
@@ -376,7 +377,7 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     return rows.map(toDataSource);
   }
 
-  async get(id: string): Promise<DataSourceValue | null> {
+  async get(id: number): Promise<DataSourceValue | null> {
     const rows = await this.db
       .select()
       .from(s.dataSources)
@@ -390,7 +391,7 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     const inserted = await this.db
       .insert(s.dataSources)
       .values({
-        id: input.id,
+        templateId: input.templateId,
         name: input.name,
         description: input.description ?? null,
         providerName: input.providerName,
@@ -409,7 +410,7 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     return toDataSource(row);
   }
 
-  async update(id: string, patch: DataSourceUpdatePatch): Promise<DataSourceValue> {
+  async update(id: number, patch: DataSourceUpdatePatch): Promise<DataSourceValue> {
     const set: Partial<typeof s.dataSources.$inferInsert> = {
       updatedAt: new Date().toISOString(),
     };
@@ -434,7 +435,7 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     return toDataSource(row);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: number): Promise<void> {
     await this.db.delete(s.dataSources).where(eq(s.dataSources.id, id));
   }
 }
@@ -442,6 +443,7 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
 function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
   return {
     id: row.id,
+    templateId: row.templateId,
     name: row.name,
     description: row.description,
     providerName: row.providerName,

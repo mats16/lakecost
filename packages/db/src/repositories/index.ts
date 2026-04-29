@@ -51,7 +51,8 @@ export interface SetupStateRepo {
 }
 
 export interface DataSourceValue {
-  id: string;
+  id: number;
+  templateId: string;
   name: string;
   description: string | null;
   providerName: string;
@@ -67,21 +68,23 @@ export interface DataSourceValue {
 
 export type DataSourceCreateInput = Omit<
   DataSourceValue,
-  'updatedAt' | 'jobId' | 'pipelineId' | 'focusVersion'
+  'id' | 'updatedAt' | 'jobId' | 'pipelineId' | 'focusVersion'
 > & {
   jobId?: number | null;
   pipelineId?: string | null;
   focusVersion?: string | null;
 };
 
-export type DataSourceUpdatePatch = Partial<Omit<DataSourceValue, 'id' | 'updatedAt'>>;
+export type DataSourceUpdatePatch = Partial<
+  Omit<DataSourceValue, 'id' | 'templateId' | 'updatedAt'>
+>;
 
 export interface DataSourcesRepo {
   list(): Promise<DataSourceValue[]>;
-  get(id: string): Promise<DataSourceValue | null>;
+  get(id: number): Promise<DataSourceValue | null>;
   create(input: DataSourceCreateInput): Promise<DataSourceValue>;
-  update(id: string, patch: DataSourceUpdatePatch): Promise<DataSourceValue>;
-  delete(id: string): Promise<void>;
+  update(id: number, patch: DataSourceUpdatePatch): Promise<DataSourceValue>;
+  delete(id: number): Promise<void>;
 }
 
 export interface AppSettingValue {

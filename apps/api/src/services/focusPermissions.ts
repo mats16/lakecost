@@ -42,7 +42,7 @@ export async function grantFocusSystemTables(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: string,
+  dataSourceId: number,
   body: DataSourceSystemTableGrantsBody,
 ): Promise<DataSourceSystemTableGrantsResult> {
   const source = await getDatabricksSource(db, dataSourceId);
@@ -53,7 +53,7 @@ export async function revokeFocusSystemTables(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: string,
+  dataSourceId: number,
 ): Promise<DataSourceSystemTableGrantsResult> {
   const source = await getDatabricksSource(db, dataSourceId);
   const existing = readFocusConfig(source.config);
@@ -66,7 +66,7 @@ async function applyFocusSystemTableGrants(
   mode: 'grant' | 'revoke',
   env: Env,
   userToken: string | undefined,
-  dataSourceId: string,
+  dataSourceId: number,
   source: Awaited<ReturnType<typeof getDatabricksSource>>,
   body: DataSourceSystemTableGrantsBody,
 ): Promise<DataSourceSystemTableGrantsResult> {
@@ -130,7 +130,7 @@ async function applyFocusSystemTableGrants(
 export async function preflightFocusDataSource(
   env: Env,
   db: DatabaseClient,
-  dataSourceId: string,
+  dataSourceId: number,
   body: DataSourcePreflightBody,
 ): Promise<DataSourcePreflightResult> {
   const [source, catalogSetting] = await Promise.all([
@@ -259,7 +259,7 @@ export function assertPreflightOk(result: DataSourcePreflightResult): void {
 }
 
 function preflightResult(
-  dataSourceId: string,
+  dataSourceId: number,
   sp: string | null,
   steps: DataSourcePermissionStep[],
   warnings: string[],
@@ -275,7 +275,7 @@ function preflightResult(
   };
 }
 
-async function getDatabricksSource(db: DatabaseClient, dataSourceId: string) {
+async function getDatabricksSource(db: DatabaseClient, dataSourceId: number) {
   const source = await db.repos.dataSources.get(dataSourceId);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
   if (source.providerName !== 'Databricks') {

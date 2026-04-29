@@ -6,6 +6,7 @@ import {
   doublePrecision,
   boolean,
   jsonb,
+  serial,
   timestamp,
   unique,
 } from 'drizzle-orm/pg-core';
@@ -68,7 +69,8 @@ export const appSettings = pgTable('app_settings', {
 export const dataSources = pgTable(
   'data_sources',
   {
-    id: text('id').primaryKey(),
+    id: serial('id').primaryKey(),
+    templateId: text('template_id').notNull(),
     name: text('name').notNull(),
     description: text('description'),
     providerName: text('provider_name').notNull(),

@@ -3,11 +3,9 @@ import { z } from 'zod';
 import type { DatabaseClient } from '@lakecost/db';
 import {
   DATA_SOURCE_TEMPLATES,
-  DATABRICKS_FOCUS_VERSION,
   DataSourceCreateBodySchema,
   DataSourceSetupBodySchema,
   DataSourceUpdateBodySchema,
-  buildDataSourceId,
   type Env,
 } from '@lakecost/shared';
 import {
@@ -19,9 +17,9 @@ import { DataSourceSetupError } from '../services/dataSourceErrors.js';
 
 const IdSchema = z
   .string()
-  .min(1)
-  .max(128)
-  .regex(/^[A-Za-z0-9_.\-]+$/, 'invalid id');
+  .regex(/^\d+$/, 'invalid id')
+  .transform(Number)
+  .refine((id) => Number.isSafeInteger(id) && id > 0, 'invalid id');
 
 export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
   const router = Router();
@@ -46,15 +44,19 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
         return;
       }
-      const id = buildDataSourceId(parsed.data.providerName, parsed.data.billingAccountId);
+      const template = DATA_SOURCE_TEMPLATES.find((tpl) => tpl.id === parsed.data.templateId);
+      if (!template || !template.available) {
+        res.status(400).json({ error: { message: 'Invalid templateId' } });
+        return;
+      }
       const created = await db.repos.dataSources.create({
-        id,
+        templateId: parsed.data.templateId,
         name: parsed.data.name,
         description: parsed.data.description ?? null,
         providerName: parsed.data.providerName,
         billingAccountId: parsed.data.billingAccountId ?? null,
         tableName: parsed.data.tableName,
-        focusVersion: parsed.data.providerName === 'Databricks' ? DATABRICKS_FOCUS_VERSION : null,
+        focusVersion: template.focus_version,
         enabled: parsed.data.enabled ?? false,
         config: parsed.data.config ?? {},
       });

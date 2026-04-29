@@ -49,7 +49,7 @@ export function readFocusConfig(config: Record<string, unknown>): FocusConfig {
   };
 }
 
-export function workspacePathFor(appName: string, dataSourceId: string): string {
+export function workspacePathFor(appName: string, dataSourceId: number): string {
   return `/Workspace/Shared/${appName}/data_sources/${dataSourceId}/databricksFocusTransformPipeline.sql`;
 }
 
@@ -59,7 +59,7 @@ export function workspacePathFor(appName: string, dataSourceId: string): string 
  * the name is always unique even before the per-provider config is filled in.
  */
 function resourceSlug(source: {
-  id: string;
+  id: number;
   providerName: string;
   config: Record<string, unknown>;
 }): string {
@@ -71,16 +71,16 @@ function resourceSlug(source: {
     case 'Databricks':
       return 'focus';
     case 'AWS':
-      return fromConfig('awsAccountId') ?? source.id;
+      return fromConfig('awsAccountId') ?? String(source.id);
     case 'Azure':
-      return fromConfig('subscriptionId') ?? source.id;
+      return fromConfig('subscriptionId') ?? String(source.id);
     default:
-      return source.id;
+      return String(source.id);
   }
 }
 
 export function resourceLabelBase(source: {
-  id: string;
+  id: number;
   providerName: string;
   config: Record<string, unknown>;
 }): string {
@@ -97,7 +97,7 @@ export async function setupFocusDataSource(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: string,
+  dataSourceId: number,
   body: DataSourceSetupBody,
 ): Promise<DataSourceSetupResult> {
   if (!userToken) {
@@ -295,8 +295,8 @@ export async function runDataSourceJob(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: string,
-): Promise<{ dataSourceId: string; jobId: number; runId: number }> {
+  dataSourceId: number,
+): Promise<{ dataSourceId: number; jobId: number; runId: number }> {
   if (!userToken) {
     throw new DataSourceSetupError(
       'Missing OBO access token. Run behind Databricks Apps or `databricks apps run-local`.',

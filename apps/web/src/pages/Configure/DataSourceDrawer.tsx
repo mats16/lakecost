@@ -37,7 +37,7 @@ import { displayNameForRow, findTemplateForRow } from './dataSourceCatalog';
 import { tableLeafName, unquotedFqn } from '@lakecost/shared';
 
 interface Props {
-  dataSourceId: string | null;
+  dataSourceId: number | null;
   onClose: () => void;
 }
 

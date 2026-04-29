@@ -167,12 +167,15 @@ export function useDataSourceTemplates() {
   });
 }
 
-export function useDataSource(id: string | undefined) {
+function dsConfigPath(id: number, suffix = '') {
+  return `/api/data-sources/configurations/${id}${suffix}`;
+}
+
+export function useDataSource(id: number | undefined) {
   return useQuery({
     queryKey: ['dataSources', id],
-    enabled: typeof id === 'string',
-    queryFn: () =>
-      apiFetch<DataSource>(`/api/data-sources/configurations/${encodeURIComponent(id!)}`),
+    enabled: typeof id === 'number',
+    queryFn: () => apiFetch<DataSource>(dsConfigPath(id!)),
     staleTime: 60 * 1000,
   });
 }
@@ -195,8 +198,8 @@ export function useCreateDataSource() {
 export function useUpdateDataSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: DataSourceUpdateBody }) =>
-      apiFetch<DataSource>(`/api/data-sources/configurations/${encodeURIComponent(id)}`, {
+    mutationFn: ({ id, body }: { id: number; body: DataSourceUpdateBody }) =>
+      apiFetch<DataSource>(dsConfigPath(id), {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
@@ -210,8 +213,8 @@ export function useUpdateDataSource() {
 export function useDeleteDataSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<void>(`/api/data-sources/configurations/${encodeURIComponent(id)}`, {
+    mutationFn: (id: number) =>
+      apiFetch<void>(dsConfigPath(id), {
         method: 'DELETE',
       }),
     onSuccess: (_data, id) => {
@@ -224,9 +227,9 @@ export function useDeleteDataSource() {
 export function useSetupDataSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: DataSourceSetupBody }) =>
+    mutationFn: ({ id, body }: { id: number; body: DataSourceSetupBody }) =>
       apiFetch<DataSourceSetupResult>(
-        `/api/data-sources/configurations/${encodeURIComponent(id)}/setup`,
+        dsConfigPath(id, '/setup'),
         {
           method: 'POST',
           body: JSON.stringify(body),
@@ -241,9 +244,9 @@ export function useSetupDataSource() {
 
 export function useRunDataSourceJob() {
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: (id: number) =>
       apiFetch<DataSourceRunResult>(
-        `/api/data-sources/configurations/${encodeURIComponent(id)}/run`,
+        dsConfigPath(id, '/run'),
         {
           method: 'POST',
           body: JSON.stringify({}),

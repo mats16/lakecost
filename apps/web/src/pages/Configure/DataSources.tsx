@@ -27,6 +27,7 @@ const FALLBACK_TEMPLATE: DataSourceTemplate = {
   name: 'Custom data source',
   description: '',
   subtitle: '',
+  focus_version: null,
   available: true,
   appearance: {
     brandColor: '#475467',
@@ -49,7 +50,7 @@ function rowMatchesTemplate(row: DataSource, template: DataSourceTemplate): bool
 export function DataSources() {
   const { t } = useI18n();
   const [filter, setFilter] = useState('');
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
   const dataSources = useDataSources();
   const templates = useDataSourceTemplates();
   const settings = useAppSettings();
@@ -105,6 +106,7 @@ export function DataSources() {
       return;
     }
     const created = await createDs.mutateAsync({
+      templateId: tpl.id,
       name: tpl.name,
       providerName: input.providerName,
       tableName: initialTableName(input, settings.data?.settings[CATALOG_SETTING_KEY]?.trim() ?? ''),
@@ -167,9 +169,9 @@ export function DataSources() {
               badges={
                 existing
                   ? badgesFor(existing)
-                  : canCreate
-                    ? [{ label: t('dataSources.badges.add'), variant: 'unknown' }]
-                    : [{ label: t('dataSources.badges.comingSoon'), variant: 'unknown' }]
+                  : !canCreate
+                  ? [{ label: t('dataSources.badges.comingSoon'), variant: 'unknown' }]
+                  : []
               }
               onClick={canCreate ? () => onAddTemplate(tpl) : undefined}
               muted={!canCreate}

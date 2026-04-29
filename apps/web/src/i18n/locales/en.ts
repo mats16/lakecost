@@ -132,7 +132,6 @@ export const en = {
     currentTitle: 'Current data sources',
     filterPlaceholder: 'Filter sources…',
     addTitle: 'Add data source',
-    tileNoHistory: 'no history yet',
     empty: 'No data sources yet — add one from the catalog below.',
     delete: 'Delete data source',
     confirmDelete: 'Delete "{name}"? Its scheduled refresh job will also be removed.',

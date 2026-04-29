@@ -83,9 +83,14 @@ export function findTemplateById(id: string): DataSourceTemplate | undefined {
 
 /** Matches a DB row to its template using frontend-only input metadata. */
 export function findTemplateForRow(row: {
+  templateId?: string | null;
   providerName: string;
   tableName: string;
 }): DataSourceTemplate | undefined {
+  if (row.templateId) {
+    const byId = findTemplateById(row.templateId);
+    if (byId) return byId;
+  }
   const leaf = tableLeafName(row.tableName);
   return DATA_SOURCE_TEMPLATES.find((template) =>
     (DATA_SOURCE_TEMPLATE_REGISTRY[template.id]?.matches ?? []).some(

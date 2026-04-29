@@ -58,7 +58,8 @@ export const appSettings = sqliteTable('app_settings', {
 export const dataSources = sqliteTable(
   'data_sources',
   {
-    id: text('id').primaryKey(),
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    templateId: text('template_id').notNull(),
     name: text('name').notNull(),
     description: text('description'),
     providerName: text('provider_name').notNull(),
