@@ -42,6 +42,7 @@ export const DATA_SOURCE_TEMPLATE_REGISTRY: Record<string, DataSourceTemplateReg
       defaultTableName: 'aws_billing',
       setupSteps: ['awsCur'],
     },
+    // 'Amazon Web Services' is kept for legacy DB rows created before providerName was standardized to 'AWS'.
     matches: [
       { providerName: 'Amazon Web Services', defaultTableName: 'aws_billing' },
       { providerName: 'AWS', defaultTableName: 'aws_billing' },

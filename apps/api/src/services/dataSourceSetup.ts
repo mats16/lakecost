@@ -109,17 +109,10 @@ function resourceSlug(source: {
     const v = source.config[k];
     return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
   };
-  switch (source.providerName) {
-    case 'Databricks':
-      return 'focus';
-    case 'AWS':
-    case 'Amazon Web Services':
-      return fromConfig('awsAccountId') ?? String(source.id);
-    case 'Azure':
-      return fromConfig('subscriptionId') ?? String(source.id);
-    default:
-      return String(source.id);
-  }
+  if (source.providerName === 'Databricks') return 'focus';
+  if (isAwsProvider(source.providerName)) return fromConfig('awsAccountId') ?? String(source.id);
+  if (source.providerName === 'Azure') return fromConfig('subscriptionId') ?? String(source.id);
+  return String(source.id);
 }
 
 export function resourceLabelBase(source: {

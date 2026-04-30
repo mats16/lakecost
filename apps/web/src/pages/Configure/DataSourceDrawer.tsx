@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { BCMDataExportsClient, CreateExportCommand } from '@aws-sdk/client-bcm-data-exports';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   AlertDescription,
@@ -25,12 +24,9 @@ import {
   useAppSettings,
   useDataSource,
   useDeleteDataSource,
-  useExternalLocations,
   useMe,
   useRunDataSourceJob,
   useSetupDataSource,
-  useStorageCredentials,
-  useUpdateDataSource,
 } from '../../api/hooks';
 import {
   ACCOUNT_PRICES_DEFAULT,
@@ -39,27 +35,20 @@ import {
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
   FOCUS_VIEW_SCHEMA_DEFAULT,
   normalizeS3Prefix,
-  s3BucketFromUrl,
-  s3ExportPath,
   tableLeafName,
   unquotedFqn,
   type DataSource,
   type DataSourceSetupResult,
   type ExternalLocationSummary,
-  type StorageCredentialSummary,
 } from '@lakecost/shared';
 import { useI18n } from '../../i18n';
-import { messageOf } from './utils';
 import { displayNameForRow, findTemplateForRow } from './dataSourceCatalog';
+import { useAwsFocusForm } from './useAwsFocusForm';
 
 interface Props {
   dataSourceId: number | null;
   onClose: () => void;
 }
-
-const AWS_FOCUS_12_QUERY_STATEMENT =
-  'SELECT AvailabilityZone, BilledCost, BillingAccountId, BillingAccountName, BillingAccountType, BillingCurrency, BillingPeriodEnd, BillingPeriodStart, CapacityReservationId, CapacityReservationStatus, ChargeCategory, ChargeClass, ChargeDescription, ChargeFrequency, ChargePeriodEnd, ChargePeriodStart, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountQuantity, CommitmentDiscountStatus, CommitmentDiscountType, CommitmentDiscountUnit, ConsumedQuantity, ConsumedUnit, ContractedCost, ContractedUnitPrice, EffectiveCost, InvoiceId, InvoiceIssuerName, ListCost, ListUnitPrice, PricingCategory, PricingCurrency, PricingCurrencyContractedUnitPrice, PricingCurrencyEffectiveCost, PricingCurrencyListUnitPrice, PricingQuantity, PricingUnit, ProviderName, PublisherName, RegionId, RegionName, ResourceId, ResourceName, ResourceType, ServiceCategory, ServiceName, ServiceSubcategory, SkuId, SkuMeter, SkuPriceDetails, SkuPriceId, SubAccountId, SubAccountName, SubAccountType, Tags, x_Discounts, x_Operation, x_ServiceCode FROM FOCUS_1_2_AWS';
-const AWS_BCM_REGION = 'us-east-1';
 
 function catalogTableUrl(workspaceUrl: string, fqn: string): string {
   return `${workspaceUrl}/explore/data/${fqn.split('.').map(encodeURIComponent).join('/')}`;
@@ -117,7 +106,7 @@ function Configurator({ row, onClose }: { row: DataSource; onClose: () => void }
       {template?.id === 'databricks_focus13' ? (
         <FocusViewSection row={row} />
       ) : template?.id === 'aws' ? (
-        <AwsCurSection row={row} />
+        <AwsFocusSection row={row} />
       ) : (
         <Alert>
           <Info />
@@ -140,573 +129,342 @@ function Configurator({ row, onClose }: { row: DataSource; onClose: () => void }
   );
 }
 
-function configString(config: Record<string, unknown>, key: string): string {
-  const value = config[key];
-  return typeof value === 'string' ? value : '';
-}
-
-function AwsCurSection({ row }: { row: DataSource }) {
-  const { t } = useI18n();
-  const storageCredentials = useStorageCredentials();
-  const locations = useExternalLocations();
-  const updateDs = useUpdateDataSource();
-  const me = useMe();
-  const settings = useAppSettings();
-  const setupDs = useSetupDataSource();
-  const runJob = useRunDataSourceJob();
-
-  const remoteAwsAccountId = configString(row.config, 'awsAccountId');
-  const remoteExternalLocationName = configString(row.config, 'externalLocationName');
-  const remoteExportName = configString(row.config, 'exportName');
-  const remoteS3Prefix = configString(row.config, 's3Prefix');
-  const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
-  const remoteCron = configString(row.config, 'cronExpression') || FOCUS_REFRESH_CRON_DEFAULT;
-  const remoteTz = configString(row.config, 'timezoneId') || FOCUS_REFRESH_TIMEZONE_DEFAULT;
-  const [awsAccountId, setAwsAccountId] = useState(remoteAwsAccountId);
-  const [externalLocationName, setExternalLocationName] = useState(remoteExternalLocationName);
-  const [accessKeyId, setAccessKeyId] = useState('');
-  const [secretAccessKey, setSecretAccessKey] = useState('');
-  const [sessionToken, setSessionToken] = useState('');
-  const [exportName, setExportName] = useState(remoteExportName || 'finlake-focus-1-2');
-  const [s3Prefix, setS3Prefix] = useState(normalizeS3Prefix(remoteS3Prefix || 'export'));
-  const [tableName, setTableName] = useState(tableLeafName(row.tableName));
-  const [cron, setCron] = useState(remoteCron);
-  const [timezone, setTimezone] = useState(remoteTz);
-  const [result, setResult] = useState<DataSourceSetupResult | null>(null);
-  const [exportArn, setExportArn] = useState(configString(row.config, 'exportArn'));
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [creatingExport, setCreatingExport] = useState(false);
-  const [exportPanelOpen, setExportPanelOpen] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-
-  useEffect(() => setAwsAccountId(remoteAwsAccountId), [remoteAwsAccountId]);
-  useEffect(
-    () => setExternalLocationName(remoteExternalLocationName),
-    [remoteExternalLocationName],
-  );
-  useEffect(() => setExportName(remoteExportName || 'finlake-focus-1-2'), [remoteExportName]);
-  useEffect(() => setS3Prefix(normalizeS3Prefix(remoteS3Prefix || 'export')), [remoteS3Prefix]);
-  useEffect(() => setTableName(tableLeafName(row.tableName)), [row.tableName]);
-  useEffect(() => setCron(remoteCron), [remoteCron]);
-  useEffect(() => setTimezone(remoteTz), [remoteTz]);
-
-  const awsCredentials = useMemo(
-    () =>
-      (storageCredentials.data?.storageCredentials ?? []).filter(
-        (cred): cred is StorageCredentialSummary & { awsAccountId: string } =>
-          typeof cred.awsAccountId === 'string',
-      ),
-    [storageCredentials.data],
-  );
-  const accountOptions = useMemo(
-    () => Array.from(new Set(awsCredentials.map((cred) => cred.awsAccountId))).sort(),
-    [awsCredentials],
-  );
-  const credentialNamesForAccount = useMemo(() => {
-    const names = new Set<string>();
-    for (const cred of awsCredentials) {
-      if (cred.awsAccountId === awsAccountId) names.add(cred.name);
-    }
-    return names;
-  }, [awsCredentials, awsAccountId]);
-  const allLocations = locations.data?.externalLocations ?? [];
-  const linkedLocations = useMemo(
-    () =>
-      allLocations.filter(
-        (loc) =>
-          loc.url?.toLowerCase().startsWith('s3://') &&
-          loc.credentialName &&
-          credentialNamesForAccount.has(loc.credentialName),
-      ),
-    [allLocations, credentialNamesForAccount],
-  );
-  const selectedLocation =
-    allLocations.find((loc) => loc.name === externalLocationName) ??
-    (externalLocationName ? ({ name: externalLocationName } as ExternalLocationSummary) : null);
-  const selectedS3Url = selectedLocation?.url ?? null;
-  const selectedS3Bucket = selectedS3Url ? s3BucketFromUrl(selectedS3Url) : null;
-  const normalizedS3Prefix = normalizeS3Prefix(s3Prefix);
-  const exportDestinationPreview =
-    selectedS3Bucket && exportName && normalizedS3Prefix
-      ? s3ExportPath(selectedS3Bucket, normalizedS3Prefix, exportName)
-      : null;
-  const dirty =
-    awsAccountId !== remoteAwsAccountId ||
-    externalLocationName !== remoteExternalLocationName ||
-    exportName !== remoteExportName ||
-    s3Prefix !== remoteS3Prefix;
-  const loadingInputs = storageCredentials.isLoading || locations.isLoading;
-  const saveDisabled = updateDs.isPending || !awsAccountId || !externalLocationName || !dirty;
-  const jobId = result?.jobId ?? row.jobId;
-  const pipelineId = result?.pipelineId ?? row.pipelineId;
-  const workspaceUrl = me.data?.workspaceUrl ?? null;
-  const fqn = remoteCatalog
-    ? unquotedFqn(remoteCatalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName)
-    : `${FOCUS_VIEW_SCHEMA_DEFAULT}.${tableName}`;
-  const hadScheduleBeforeSetup = row.jobId !== null;
-  const setupDisabled =
-    setupDs.isPending || !remoteCatalog || !selectedS3Url || !tableName || !cron || !timezone;
-  const createExportDisabled =
-    creatingExport ||
-    updateDs.isPending ||
-    !selectedS3Bucket ||
-    !accessKeyId ||
-    !secretAccessKey ||
-    !exportName ||
-    !normalizedS3Prefix;
-  const errorMessage =
-    messageOf(storageCredentials.error) ?? messageOf(locations.error) ?? messageOf(updateDs.error);
-
-  const onSave = async () => {
-    const selected = allLocations.find((loc) => loc.name === externalLocationName);
-    const storageCredentialName = selected?.credentialName ?? null;
-    const s3Bucket = selected?.url ? s3BucketFromUrl(selected.url) : null;
-    await updateDs.mutateAsync({
-      id: row.id,
-      body: {
-        config: {
-          ...row.config,
-          awsAccountId,
-          externalLocationName,
-          externalLocationUrl: selected?.url ?? null,
-          storageCredentialName,
-          s3Bucket,
-          exportName,
-          s3Prefix: normalizedS3Prefix,
-          s3Region: AWS_BCM_REGION,
-        },
-      },
-    });
-    setSavedAt(Date.now());
-  };
-
-  const onCreateExport = async () => {
-    if (!selectedS3Bucket) return;
-    setCreatingExport(true);
-    setExportError(null);
-    try {
-      const client = new BCMDataExportsClient({
-        region: AWS_BCM_REGION,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-          sessionToken: sessionToken.trim() || undefined,
-        },
-      });
-      const result = await client.send(
-        new CreateExportCommand({
-          Export: {
-            Name: exportName,
-            Description: 'FOCUS 1.2 billing export',
-            DataQuery: {
-              QueryStatement: AWS_FOCUS_12_QUERY_STATEMENT,
-              TableConfigurations: {
-                FOCUS_1_2_AWS: {
-                  TIME_GRANULARITY: 'DAILY',
-                },
-              },
-            },
-            DestinationConfigurations: {
-              S3Destination: {
-                S3Bucket: selectedS3Bucket,
-                S3Prefix: normalizedS3Prefix,
-                S3Region: AWS_BCM_REGION,
-                S3OutputConfigurations: {
-                  Format: 'PARQUET',
-                  Compression: 'PARQUET',
-                  OutputType: 'CUSTOM',
-                  Overwrite: 'OVERWRITE_REPORT',
-                },
-              },
-            },
-            RefreshCadence: {
-              Frequency: 'SYNCHRONOUS',
-            },
-          },
-          ResourceTags: [{ Key: 'Environment', Value: 'production' }],
-        }),
-      );
-      const nextExportArn = result.ExportArn ?? '';
-      setExportArn(nextExportArn);
-      await updateDs.mutateAsync({
-        id: row.id,
-        body: {
-          config: {
-            ...row.config,
-            awsAccountId,
-            externalLocationName,
-            externalLocationUrl: selectedS3Url,
-            storageCredentialName: selectedLocation?.credentialName ?? null,
-            s3Bucket: selectedS3Bucket,
-            exportName,
-            s3Prefix: normalizedS3Prefix,
-            s3Region: AWS_BCM_REGION,
-            exportArn: nextExportArn,
-            exportCreatedAt: new Date().toISOString(),
-          },
-        },
-      });
-    } catch (err) {
-      setExportError(messageOf(err) ?? String(err));
-    } finally {
-      setCreatingExport(false);
-    }
-  };
-
-  const onSetup = async () => {
-    const r = await setupDs.mutateAsync({
-      id: row.id,
-      body: {
-        tableName,
-        cronExpression: cron,
-        timezoneId: timezone,
-      },
-    });
-    setResult(r);
-  };
-
-  const onRunJob = async () => {
-    await runJob.mutateAsync(row.id);
-  };
-
+function AwsFocusSection({ row }: { row: DataSource }) {
+  const form = useAwsFocusForm(row);
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">{t('dataSources.awsCur.title')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3">
-            <label className="grid gap-1 text-xs">
-              <span className="text-muted-foreground">{t('dataSources.awsCur.awsAccountId')}</span>
-              <Select
-                value={awsAccountId}
-                onValueChange={(value: string) => {
-                  updateDs.reset();
-                  setSavedAt(null);
-                  setAwsAccountId(value);
-                  setExternalLocationName('');
-                }}
-                disabled={storageCredentials.isLoading || updateDs.isPending}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t('dataSources.awsCur.awsAccountIdPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {accountOptions.map((accountId) => (
-                    <SelectItem key={accountId} value={accountId}>
-                      {accountId}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+      <AwsSourceForm form={form} />
+      {form.selectedS3Url ? <AwsTransformationSection form={form} /> : null}
+    </>
+  );
+}
 
-            <label className="grid gap-1 text-xs">
-              <span className="text-muted-foreground">{t('dataSources.awsCur.s3Url')}</span>
-              <Select
-                value={externalLocationName}
-                onValueChange={(value: string) => {
-                  updateDs.reset();
-                  setSavedAt(null);
-                  setExternalLocationName(value);
-                }}
-                disabled={!awsAccountId || loadingInputs || updateDs.isPending}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t('dataSources.awsCur.s3UrlPlaceholder')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {linkedLocations.map((loc) => (
-                    <SelectItem key={loc.name} value={loc.name}>
-                      {s3UrlLabel(loc)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
+function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+  const { t } = useI18n();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{t('dataSources.awsCur.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3">
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.awsCur.awsAccountId')}</span>
+            <Select
+              value={form.awsAccountId}
+              onValueChange={form.onAccountChange}
+              disabled={form.storageCredentialsLoading || form.updatePending}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t('dataSources.awsCur.awsAccountIdPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {form.accountOptions.map((accountId) => (
+                  <SelectItem key={accountId} value={accountId}>
+                    {accountId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
 
-            {selectedS3Url ? (
-              <>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <label className="grid gap-1 text-xs">
-                    <span className="text-muted-foreground">
-                      {t('dataSources.awsCur.s3Prefix')}
-                    </span>
-                    <Input
-                      value={s3Prefix}
-                      onChange={(e) => setS3Prefix(e.target.value)}
-                      onBlur={() => setS3Prefix((value) => normalizeS3Prefix(value))}
-                      placeholder="export"
-                    />
-                  </label>
-                  <label className="grid gap-1 text-xs">
-                    <span className="text-muted-foreground">
-                      {t('dataSources.awsCur.exportName')}
-                    </span>
-                    <Input value={exportName} onChange={(e) => setExportName(e.target.value)} />
-                  </label>
-                </div>
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.awsCur.s3Url')}</span>
+            <Select
+              value={form.externalLocationName}
+              onValueChange={form.onLocationChange}
+              disabled={!form.awsAccountId || form.loadingInputs || form.updatePending}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t('dataSources.awsCur.s3UrlPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {form.linkedLocations.map((loc) => (
+                  <SelectItem key={loc.name} value={loc.name}>
+                    {s3UrlLabel(loc)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
 
-                {exportDestinationPreview ? (
-                  <div className="text-muted-foreground break-all text-xs">
-                    {t('dataSources.awsCur.exportDestination')}:{' '}
-                    <span className="text-foreground font-mono">{exportDestinationPreview}</span>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                disabled={saveDisabled}
-                onClick={onSave}
-                className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-              >
-                {updateDs.isPending ? <Spinner /> : null}
-                {t('dataSources.awsCur.saveExternalLocation')}
-              </Button>
-              {savedAt && !dirty && !updateDs.isPending ? (
-                <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
-              ) : null}
-            </div>
-
-            {selectedS3Url ? (
-              <div className="border-border bg-background/35 rounded-md border">
-                <button
-                  type="button"
-                  className="text-foreground hover:bg-muted/30 flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors"
-                  aria-expanded={exportPanelOpen}
-                  aria-controls="aws-cur-export-panel"
-                  onClick={() => setExportPanelOpen((open) => !open)}
-                >
-                  <span>{t('dataSources.awsCur.exportCreateSection')}</span>
-                  <ChevronDown
-                    className={`text-muted-foreground size-4 shrink-0 transition-transform ${
-                      exportPanelOpen ? 'rotate-180' : ''
-                    }`}
-                    aria-hidden="true"
+          {form.selectedS3Url ? (
+            <>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs">
+                  <span className="text-muted-foreground">{t('dataSources.awsCur.s3Prefix')}</span>
+                  <Input
+                    value={form.s3Prefix}
+                    onChange={(e) => form.setS3Prefix(e.target.value)}
+                    onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
+                    placeholder="export"
                   />
-                </button>
-                {exportPanelOpen ? (
-                  <div id="aws-cur-export-panel" className="grid gap-3 border-t px-3 py-3">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <label className="grid gap-1 text-xs">
-                        <span className="text-muted-foreground">
-                          {t('dataSources.awsCur.accessKeyId')}
-                        </span>
-                        <Input
-                          value={accessKeyId}
-                          onChange={(e) => setAccessKeyId(e.target.value)}
-                          autoComplete="off"
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs">
-                        <span className="text-muted-foreground">
-                          {t('dataSources.awsCur.secretAccessKey')}
-                        </span>
-                        <Input
-                          type="password"
-                          value={secretAccessKey}
-                          onChange={(e) => setSecretAccessKey(e.target.value)}
-                          autoComplete="new-password"
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs sm:col-span-2">
-                        <span className="text-muted-foreground">
-                          {t('dataSources.awsCur.sessionToken')}
-                        </span>
-                        <Input
-                          type="password"
-                          value={sessionToken}
-                          onChange={(e) => setSessionToken(e.target.value)}
-                          autoComplete="off"
-                          placeholder={t('dataSources.awsCur.sessionTokenPlaceholder')}
-                        />
-                      </label>
-                    </div>
-                    <div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={createExportDisabled}
-                        onClick={onCreateExport}
-                      >
-                        {creatingExport ? <Spinner /> : null}
-                        {t('dataSources.awsCur.createExport')}
-                      </Button>
-                    </div>
-                    {exportArn ? (
-                      <Alert>
-                        <Info />
-                        <AlertDescription>
-                          {t('dataSources.awsCur.exportCreated', { exportArn })}
-                        </AlertDescription>
-                      </Alert>
-                    ) : null}
-                    {exportError ? (
-                      <Alert variant="destructive">
-                        <Info />
-                        <AlertDescription>{exportError}</AlertDescription>
-                      </Alert>
-                    ) : null}
-                  </div>
-                ) : null}
+                </label>
+                <label className="grid gap-1 text-xs">
+                  <span className="text-muted-foreground">
+                    {t('dataSources.awsCur.exportName')}
+                  </span>
+                  <Input
+                    value={form.exportName}
+                    onChange={(e) => form.setExportName(e.target.value)}
+                  />
+                </label>
               </div>
-            ) : null}
 
-            {!storageCredentials.isLoading && accountOptions.length === 0 ? (
-              <Alert>
-                <Info />
-                <AlertDescription>{t('dataSources.awsCur.noStorageCredentials')}</AlertDescription>
-              </Alert>
-            ) : null}
+              {form.exportDestinationPreview ? (
+                <div className="text-muted-foreground break-all text-xs">
+                  {t('dataSources.awsCur.exportDestination')}:{' '}
+                  <span className="text-foreground font-mono">{form.exportDestinationPreview}</span>
+                </div>
+              ) : null}
+            </>
+          ) : null}
 
-            {awsAccountId && !loadingInputs && linkedLocations.length === 0 ? (
-              <Alert>
-                <Info />
-                <AlertDescription>
-                  {t('dataSources.awsCur.noLinkedExternalLocations')}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-
-            {errorMessage ? (
-              <Alert variant="destructive">
-                <Info />
-                <AlertDescription>{errorMessage}</AlertDescription>
-              </Alert>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              disabled={form.saveDisabled}
+              onClick={form.onSave}
+              className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
+            >
+              {form.updatePending ? <Spinner /> : null}
+              {t('dataSources.awsCur.saveExternalLocation')}
+            </Button>
+            {form.savedAt && !form.dirty && !form.updatePending ? (
+              <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
             ) : null}
           </div>
-        </CardContent>
-      </Card>
 
-      {selectedS3Url ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">{t('dataSources.systemTables.title')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t('dataSources.systemTables.catalog')}
-                </span>
-                <Input value={remoteCatalog} disabled placeholder="main" />
-              </label>
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t('dataSources.systemTables.schema')}
-                </span>
-                <Input value={FOCUS_VIEW_SCHEMA_DEFAULT} disabled />
-              </label>
-              <label className="grid gap-1 text-xs sm:col-span-2">
-                <span className="text-muted-foreground">
-                  {t('dataSources.systemTables.tableName')}
-                </span>
-                <Input value={tableName} onChange={(e) => setTableName(e.target.value)} />
-              </label>
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">{t('dataSources.systemTables.cron')}</span>
-                <Input
-                  value={cron}
-                  onChange={(e) => setCron(e.target.value)}
-                  placeholder={FOCUS_REFRESH_CRON_DEFAULT}
-                />
-              </label>
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">
-                  {t('dataSources.systemTables.timezone')}
-                </span>
-                <Input
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  placeholder={FOCUS_REFRESH_TIMEZONE_DEFAULT}
-                />
-              </label>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                disabled={setupDisabled}
-                onClick={onSetup}
-                className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-              >
-                {setupDs.isPending ? <Spinner /> : null}
-                {t(
-                  hadScheduleBeforeSetup
-                    ? 'dataSources.systemTables.updateSchedule'
-                    : 'dataSources.systemTables.setupAndSchedule',
-                )}
-              </Button>
-              {jobId !== null ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={runJob.isPending}
-                  onClick={onRunJob}
-                >
-                  {runJob.isPending ? <Spinner /> : null}
-                  {t('dataSources.systemTables.runJob')}
-                </Button>
-              ) : null}
-            </div>
-            <DatabricksResourceLinks
-              workspaceUrl={workspaceUrl}
-              jobId={jobId}
-              pipelineId={pipelineId}
-              tableFqn={jobId !== null && remoteCatalog ? fqn : null}
-            />
-            {!remoteCatalog ? (
-              <Alert className="mt-3">
-                <Info />
-                <AlertDescription>{t('dataSources.systemTables.catalogMissing')}</AlertDescription>
-              </Alert>
-            ) : null}
-            {result ? (
-              <Alert className="mt-3">
-                <Info />
-                <AlertDescription>
-                  {t(
-                    hadScheduleBeforeSetup
-                      ? 'dataSources.systemTables.updateOk'
-                      : 'dataSources.systemTables.setupOk',
-                    {
-                      fqn: result.fqn,
-                      jobId: String(result.jobId),
-                    },
-                  )}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {runJob.data ? (
-              <Alert className="mt-3">
-                <Info />
-                <AlertDescription>
-                  {t('dataSources.systemTables.runOk', {
-                    jobId: String(runJob.data.jobId),
-                    runId: String(runJob.data.runId),
-                  })}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {setupDs.error ? (
-              <Alert className="mt-3" variant="destructive">
-                <Info />
-                <AlertDescription>{(setupDs.error as Error).message}</AlertDescription>
-              </Alert>
-            ) : null}
-            {runJob.error ? (
-              <Alert className="mt-3" variant="destructive">
-                <Info />
-                <AlertDescription>{(runJob.error as Error).message}</AlertDescription>
-              </Alert>
-            ) : null}
-          </CardContent>
-        </Card>
+          {form.selectedS3Url ? <AwsExportPanel form={form} /> : null}
+
+          {!form.storageCredentialsLoading && form.accountOptions.length === 0 ? (
+            <Alert>
+              <Info />
+              <AlertDescription>{t('dataSources.awsCur.noStorageCredentials')}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {form.awsAccountId && !form.loadingInputs && form.linkedLocations.length === 0 ? (
+            <Alert>
+              <Info />
+              <AlertDescription>
+                {t('dataSources.awsCur.noLinkedExternalLocations')}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {form.errorMessage ? (
+            <Alert variant="destructive">
+              <Info />
+              <AlertDescription>{form.errorMessage}</AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+  const { t } = useI18n();
+  return (
+    <div className="border-border bg-background/35 rounded-md border">
+      <button
+        type="button"
+        className="text-foreground hover:bg-muted/30 flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors"
+        aria-expanded={form.exportPanelOpen}
+        aria-controls="aws-export-panel"
+        onClick={() => form.setExportPanelOpen((open) => !open)}
+      >
+        <span>{t('dataSources.awsCur.exportCreateSection')}</span>
+        <ChevronDown
+          className={`text-muted-foreground size-4 shrink-0 transition-transform ${
+            form.exportPanelOpen ? 'rotate-180' : ''
+          }`}
+          aria-hidden="true"
+        />
+      </button>
+      {form.exportPanelOpen ? (
+        <div id="aws-export-panel" className="grid gap-3 border-t px-3 py-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">{t('dataSources.awsCur.accessKeyId')}</span>
+              <Input
+                value={form.accessKeyId}
+                onChange={(e) => form.setAccessKeyId(e.target.value)}
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">
+                {t('dataSources.awsCur.secretAccessKey')}
+              </span>
+              <Input
+                type="password"
+                value={form.secretAccessKey}
+                onChange={(e) => form.setSecretAccessKey(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="grid gap-1 text-xs sm:col-span-2">
+              <span className="text-muted-foreground">{t('dataSources.awsCur.sessionToken')}</span>
+              <Input
+                type="password"
+                value={form.sessionToken}
+                onChange={(e) => form.setSessionToken(e.target.value)}
+                autoComplete="off"
+                placeholder={t('dataSources.awsCur.sessionTokenPlaceholder')}
+              />
+            </label>
+          </div>
+          <div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={form.createExportDisabled}
+              onClick={form.onCreateExport}
+            >
+              {form.creatingExport ? <Spinner /> : null}
+              {t('dataSources.awsCur.createExport')}
+            </Button>
+          </div>
+          {form.exportArn ? (
+            <Alert>
+              <Info />
+              <AlertDescription>
+                {t('dataSources.awsCur.exportCreated', { exportArn: form.exportArn })}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {form.exportError ? (
+            <Alert variant="destructive">
+              <Info />
+              <AlertDescription>{form.exportError}</AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
       ) : null}
-    </>
+    </div>
+  );
+}
+
+function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+  const { t } = useI18n();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{t('dataSources.systemTables.title')}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.systemTables.catalog')}</span>
+            <Input value={form.remoteCatalog} disabled placeholder="main" />
+          </label>
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
+            <Input value={FOCUS_VIEW_SCHEMA_DEFAULT} disabled />
+          </label>
+          <label className="grid gap-1 text-xs sm:col-span-2">
+            <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
+            <Input value={form.tableName} onChange={(e) => form.setTableName(e.target.value)} />
+          </label>
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.systemTables.cron')}</span>
+            <Input
+              value={form.cron}
+              onChange={(e) => form.setCron(e.target.value)}
+              placeholder={FOCUS_REFRESH_CRON_DEFAULT}
+            />
+          </label>
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.systemTables.timezone')}</span>
+            <Input
+              value={form.timezone}
+              onChange={(e) => form.setTimezone(e.target.value)}
+              placeholder={FOCUS_REFRESH_TIMEZONE_DEFAULT}
+            />
+          </label>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            disabled={form.setupDisabled}
+            onClick={form.onSetup}
+            className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
+          >
+            {form.setupDs.isPending ? <Spinner /> : null}
+            {t(
+              form.hadScheduleBeforeSetup
+                ? 'dataSources.systemTables.updateSchedule'
+                : 'dataSources.systemTables.setupAndSchedule',
+            )}
+          </Button>
+          {form.jobId !== null ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={form.runJob.isPending}
+              onClick={form.onRunJob}
+            >
+              {form.runJob.isPending ? <Spinner /> : null}
+              {t('dataSources.systemTables.runJob')}
+            </Button>
+          ) : null}
+        </div>
+        <DatabricksResourceLinks
+          workspaceUrl={form.workspaceUrl}
+          jobId={form.jobId}
+          pipelineId={form.pipelineId}
+          tableFqn={form.jobId !== null && form.remoteCatalog ? form.fqn : null}
+        />
+        {!form.remoteCatalog ? (
+          <Alert className="mt-3">
+            <Info />
+            <AlertDescription>{t('dataSources.systemTables.catalogMissing')}</AlertDescription>
+          </Alert>
+        ) : null}
+        {form.result ? (
+          <Alert className="mt-3">
+            <Info />
+            <AlertDescription>
+              {t(
+                form.hadScheduleBeforeSetup
+                  ? 'dataSources.systemTables.updateOk'
+                  : 'dataSources.systemTables.setupOk',
+                {
+                  fqn: form.result.fqn,
+                  jobId: String(form.result.jobId),
+                },
+              )}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {form.runJob.data ? (
+          <Alert className="mt-3">
+            <Info />
+            <AlertDescription>
+              {t('dataSources.systemTables.runOk', {
+                jobId: String(form.runJob.data.jobId),
+                runId: String(form.runJob.data.runId),
+              })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {form.setupDs.error ? (
+          <Alert className="mt-3" variant="destructive">
+            <Info />
+            <AlertDescription>{(form.setupDs.error as Error).message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {form.runJob.error ? (
+          <Alert className="mt-3" variant="destructive">
+            <Info />
+            <AlertDescription>{(form.runJob.error as Error).message}</AlertDescription>
+          </Alert>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

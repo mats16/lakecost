@@ -36,7 +36,8 @@ export function buildAwsFocusPipelineSql(): string {
   return pipelineTemplate;
 }
 
-let pipelineTemplate: string;
+// Definite assignment: the guard below throws if no candidate is found.
+let pipelineTemplate!: string;
 const candidates = [
   new URL('../sql/awsFocusTransformPipeline.sql', import.meta.url),
   new URL('../../src/sql/awsFocusTransformPipeline.sql', import.meta.url),
@@ -49,6 +50,6 @@ for (const candidate of candidates) {
     // Try the next location. Dev may run from src, production from dist.
   }
 }
-if (!pipelineTemplate!) {
+if (!pipelineTemplate) {
   throw new Error('awsFocusTransformPipeline.sql template not found');
 }
