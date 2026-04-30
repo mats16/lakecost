@@ -37,9 +37,14 @@ export const DATA_SOURCE_TEMPLATE_REGISTRY: Record<string, DataSourceTemplateReg
     logo: { kind: 'databricks' },
   },
   aws: {
+    input: {
+      providerName: 'AWS',
+      defaultTableName: 'aws_billing',
+      setupSteps: ['awsCur'],
+    },
     matches: [
-      { providerName: 'Amazon Web Services', defaultTableName: 'aws_cur' },
-      { providerName: 'AWS', defaultTableName: 'aws_cur' },
+      { providerName: 'Amazon Web Services', defaultTableName: 'aws_billing' },
+      { providerName: 'AWS', defaultTableName: 'aws_billing' },
     ],
     logo: { kind: 'abbr', label: 'AWS' },
   },
@@ -106,8 +111,15 @@ export const LEGACY_TEMPLATE_NAMES: Record<string, string[]> = {
 export const LEGACY_TEMPLATE_DESCRIPTIONS: Record<string, string[]> = {
   databricks_focus13: [
     'DBU consumption from system.billing.usage and system.billing.list_prices',
+    'System tables transformed to FOCUS format',
     'Databricks usage and list prices normalized to FOCUS 1.3',
     'system.billing.usage および system.billing.list_prices からの DBU 消費量',
+    'Databricks の利用量とリスト価格を FOCUS 1.3 形式に正規化',
+  ],
+  aws: [
+    'A data export tool that enables you to create customized exports from multiple AWS cost management and billing datasets.',
+    'Ingest AWS Cost & Usage Reports from a Unity Catalog external location.',
+    'Unity Catalog の外部ロケーションから AWS Cost & Usage Report を取り込みます。',
   ],
 };
 

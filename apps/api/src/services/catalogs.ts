@@ -15,6 +15,7 @@ import {
   type StatementExecutor,
 } from './statementExecution.js';
 import { z } from 'zod';
+import { WorkspaceServiceError, isPermissionDenied } from './workspaceClientErrors.js';
 
 /** Catalogs hidden from the picker — not user-selectable for FOCUS provisioning. */
 const HIDDEN_CATALOG_NAMES = new Set(['system', 'samples', '__databricks_internal']);
@@ -70,23 +71,7 @@ export async function listAccessibleCatalogs(
   return filterSelectableCatalogs(collected);
 }
 
-export class CatalogServiceError extends Error {
-  override readonly name = 'CatalogServiceError';
-  constructor(
-    message: string,
-    readonly statusCode: number,
-  ) {
-    super(message);
-  }
-}
-
-function isPermissionDenied(err: unknown): boolean {
-  if (err != null && typeof err === 'object' && 'errorCode' in err) {
-    return (err as { errorCode: unknown }).errorCode === 'PERMISSION_DENIED';
-  }
-  const message = err instanceof Error ? err.message : String(err);
-  return /PERMISSION_DENIED|not authorized/i.test(message);
-}
+export class CatalogServiceError extends WorkspaceServiceError {}
 
 interface ProvisionOptions {
   createIfMissing?: boolean;

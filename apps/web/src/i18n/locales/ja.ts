@@ -158,7 +158,7 @@ export const ja: Dictionary = {
         'このプロバイダーはまだ実装されていません。FinLake のロードマップで進捗を追跡しています。',
     },
     systemTables: {
-      title: 'FOCUS マテリアライズドビュー',
+      title: '変換',
       step1: 'ステップ 1 — システムテーブルの有効化',
       verifySchemas: 'システムスキーマを検証',
       step2: 'ステップ 2 — アプリのサービスプリンシパル権限',
@@ -194,9 +194,32 @@ export const ja: Dictionary = {
       catalogMissing: '先に「構成 → 管理」でメインカタログを設定してください。',
     },
     awsCur: {
-      title: 'AWS Cost & Usage Report の設定',
-      placeholder: 'S3 バケット名',
+      title: 'データエクスポート',
+      placeholder: 'S3 URL',
       verify: 'CUR を検証',
+      awsAccountId: 'AWS アカウント ID',
+      awsAccountIdPlaceholder: 'ストレージ資格情報から選択',
+      s3Url: 'S3 URL',
+      s3UrlPlaceholder: '紐づく外部ロケーションから選択',
+      externalLocation: '外部ロケーション',
+      externalLocationUrl: 'URL',
+      credential: 'ストレージ資格情報',
+      exportName: 'エクスポート名',
+      s3Prefix: 'プレフィックス',
+      accessKeyId: 'アクセスキー ID',
+      secretAccessKey: 'シークレットアクセスキー',
+      sessionToken: 'セッショントークン',
+      sessionTokenPlaceholder: '一時認証情報の場合のみ任意で入力',
+      saveExternalLocation: '取り込み元を保存',
+      exportCreateSection: 'エクスポートを作成',
+      createExport: '作成',
+      exportCreated: 'エクスポートを設定しました: {exportArn}',
+      exportDestination: 'URL',
+      selectedS3Url: '選択中の S3 URL: {url}',
+      noStorageCredentials:
+        '表示できる AWS ストレージ資格情報がありません。Unity Catalog でストレージ資格情報を作成し、このユーザーにアクセス権を付与してください。',
+      noLinkedExternalLocations:
+        'この AWS アカウントに紐づく S3 外部ロケーションがありません。選択したストレージ資格情報を使って外部ロケーションを作成してください。',
     },
     azure: {
       title: 'Azure Cost Management エクスポートの設定',
@@ -216,12 +239,12 @@ export const ja: Dictionary = {
     },
     catalog: {
       databricks_focus13: {
-        description: 'Databricks の利用量とリスト価格を FOCUS 1.3 形式に正規化',
+        description: 'システムテーブルを FOCUS 形式に変換',
         subtitle: '',
       },
       aws: {
-        description: 'AWS Cost & Usage Report は近日公開予定です。',
-        subtitle: 'Amazon Web Services 提供',
+        description: '請求とコスト管理',
+        subtitle: '',
       },
       gcp: {
         description: 'Google Cloud 課金エクスポートは近日公開予定です。',

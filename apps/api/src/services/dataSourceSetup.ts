@@ -1,12 +1,16 @@
 import type { DatabaseClient } from '@lakecost/db';
 import {
   ACCOUNT_PRICES_DEFAULT,
+  AWS_FOCUS_VERSION,
   CATALOG_SETTING_KEY,
   DATABRICKS_FOCUS_VERSION,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
   FOCUS_VIEW_SCHEMA_DEFAULT,
   focusViewFqn,
+  normalizeS3Prefix,
+  s3BucketFromUrl,
+  s3ExportPath,
   tableLeafName,
   unquotedFqn,
   validateAccountPricesTable,
@@ -23,12 +27,27 @@ import {
 } from './databricksJobs.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import {
+  buildAwsFocusPipelineConfiguration,
+  buildAwsFocusPipelineSql,
+} from './awsFocusTransformPipelineSql.js';
+import {
   buildFocusPipelineConfiguration,
   buildFocusPipelineSql,
 } from './databricksFocusTransformPipelineSql.js';
 
 interface FocusConfig {
   accountPricesTable: string;
+  cronExpression: string;
+  timezoneId: string;
+  legacyPipelineId: string | null;
+  workspacePath: string | null;
+}
+
+interface AwsFocusConfig {
+  awsAccountId: string | null;
+  s3Bucket: string | null;
+  s3Prefix: string | null;
+  exportName: string | null;
   cronExpression: string;
   timezoneId: string;
   legacyPipelineId: string | null;
@@ -49,8 +68,31 @@ export function readFocusConfig(config: Record<string, unknown>): FocusConfig {
   };
 }
 
-export function workspacePathFor(appName: string, dataSourceId: number): string {
-  return `/Workspace/Shared/${appName}/data_sources/${dataSourceId}/databricksFocusTransformPipeline.sql`;
+function readAwsFocusConfig(config: Record<string, unknown>): AwsFocusConfig {
+  const get = (k: string): string | null => {
+    const v = config[k];
+    return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
+  };
+  const externalLocationUrl = get('externalLocationUrl');
+  return {
+    awsAccountId: get('awsAccountId'),
+    s3Bucket:
+      get('s3Bucket') ?? (externalLocationUrl ? s3BucketFromUrl(externalLocationUrl) : null),
+    s3Prefix: get('s3Prefix'),
+    exportName: get('exportName'),
+    cronExpression: get('cronExpression') ?? FOCUS_REFRESH_CRON_DEFAULT,
+    timezoneId: get('timezoneId') ?? FOCUS_REFRESH_TIMEZONE_DEFAULT,
+    legacyPipelineId: get('pipelineId'),
+    workspacePath: get('workspacePath'),
+  };
+}
+
+export function workspacePathFor(
+  appName: string,
+  dataSourceId: number,
+  filename = 'databricksFocusTransformPipeline.sql',
+): string {
+  return `/Workspace/Shared/${appName}/data_sources/${dataSourceId}/${filename}`;
 }
 
 /**
@@ -71,6 +113,7 @@ function resourceSlug(source: {
     case 'Databricks':
       return 'focus';
     case 'AWS':
+    case 'Amazon Web Services':
       return fromConfig('awsAccountId') ?? String(source.id);
     case 'Azure':
       return fromConfig('subscriptionId') ?? String(source.id);
@@ -84,7 +127,10 @@ export function resourceLabelBase(source: {
   providerName: string;
   config: Record<string, unknown>;
 }): string {
-  return `finops-${source.providerName.toLowerCase()}-${resourceSlug(source)}`;
+  const providerSlug = isAwsProvider(source.providerName)
+    ? 'aws'
+    : source.providerName.toLowerCase();
+  return `finops-${providerSlug}-${resourceSlug(source)}`;
 }
 
 /**
@@ -117,9 +163,9 @@ export async function setupFocusDataSource(
     db.repos.appSettings.get(CATALOG_SETTING_KEY),
   ]);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
-  if (source.providerName !== 'Databricks') {
+  if (source.providerName !== 'Databricks' && !isAwsProvider(source.providerName)) {
     throw new DataSourceSetupError(
-      `Setup is only supported for providerName='Databricks' (got '${source.providerName}')`,
+      `Setup is only supported for Databricks and AWS data sources (got '${source.providerName}')`,
       400,
     );
   }
@@ -132,33 +178,69 @@ export async function setupFocusDataSource(
     );
   }
 
-  const existing = readFocusConfig(source.config);
   const tableName = body.tableName ?? tableLeafName(source.tableName);
-  const accountPricesRaw = body.accountPricesTable ?? existing.accountPricesTable;
-  const cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
-  const timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
-
-  let accountPricesTable: string;
-  try {
-    accountPricesTable = validateAccountPricesTable(accountPricesRaw);
-  } catch (err) {
-    throw new DataSourceSetupError((err as Error).message, 400);
-  }
 
   const target = { catalog, schema: FOCUS_VIEW_SCHEMA_DEFAULT, table: tableName };
   let pipelineSql: string;
   let fqn: string;
+  let configuration: Record<string, string> | undefined;
+  let cronExpression: string;
+  let timezoneId: string;
+  let workspacePath: string;
+  let pipelineId: string | null;
+  let nextConfig: Record<string, unknown>;
+  let focusVersion: string;
   try {
-    pipelineSql = buildFocusPipelineSql({ catalog, table: tableName, accountPricesTable });
     fqn = focusViewFqn(target);
+    if (source.providerName === 'Databricks') {
+      const existing = readFocusConfig(source.config);
+      const accountPricesRaw = body.accountPricesTable ?? existing.accountPricesTable;
+      const accountPricesTable = validateAccountPricesTable(accountPricesRaw);
+      pipelineSql = buildFocusPipelineSql({ catalog, table: tableName, accountPricesTable });
+      configuration = buildFocusPipelineConfiguration(tableName, accountPricesTable);
+      cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
+      timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
+      workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, dataSourceId);
+      pipelineId = source.pipelineId ?? existing.legacyPipelineId;
+      focusVersion = DATABRICKS_FOCUS_VERSION;
+      nextConfig = {
+        ...source.config,
+        accountPricesTable,
+        cronExpression,
+        timezoneId,
+      };
+    } else {
+      const existing = readAwsFocusConfig(source.config);
+      const awsSource = readAwsFocusSource(existing);
+      configuration = buildAwsFocusPipelineConfiguration(
+        tableName,
+        awsSource.s3Bucket,
+        awsSource.s3Prefix,
+        awsSource.exportName,
+      );
+      pipelineSql = buildAwsFocusPipelineSql();
+      cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
+      timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
+      workspacePath = workspacePathFor(
+        env.DATABRICKS_APP_NAME,
+        dataSourceId,
+        'awsFocusTransformPipeline.sql',
+      );
+      pipelineId = source.pipelineId ?? existing.legacyPipelineId;
+      focusVersion = AWS_FOCUS_VERSION;
+      nextConfig = {
+        ...source.config,
+        cronExpression,
+        timezoneId,
+        sourcePath: s3ExportDataPath(awsSource),
+      };
+    }
   } catch (err) {
     throw new DataSourceSetupError(`Invalid view target: ${(err as Error).message}`, 400);
   }
 
   const wc = buildUserWorkspaceClient(env, userToken);
   if (!wc) throw new DataSourceSetupError('Failed to build Databricks workspace client', 500);
-
-  const workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, dataSourceId);
 
   const labelBase = resourceLabelBase(source);
   const scheduleParams: PipelineScheduleParams = {
@@ -168,18 +250,20 @@ export async function setupFocusDataSource(
     workspacePath,
     catalog,
     schema: FOCUS_VIEW_SCHEMA_DEFAULT,
-    configuration: buildFocusPipelineConfiguration(tableName, accountPricesTable),
+    configuration,
     cronExpression,
     timezoneId,
   };
 
-  await assertCanReadUsageTable(env, userToken);
+  if (source.providerName === 'Databricks') {
+    await assertCanReadUsageTable(env, userToken);
+  }
 
   let result;
   try {
     result = await upsertPipelineSchedule(wc, scheduleParams, {
       jobId: source.jobId,
-      pipelineId: source.pipelineId ?? existing.legacyPipelineId,
+      pipelineId,
     });
   } catch (err) {
     throw new DataSourceSetupError(
@@ -192,13 +276,10 @@ export async function setupFocusDataSource(
     tableName: unquotedFqn(catalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName),
     jobId: result.jobId,
     pipelineId: result.pipelineId,
-    focusVersion: DATABRICKS_FOCUS_VERSION,
+    focusVersion,
     enabled: true,
     config: {
-      ...source.config,
-      accountPricesTable,
-      cronExpression,
-      timezoneId,
+      ...nextConfig,
       workspacePath: result.workspacePath,
     },
   });
@@ -212,6 +293,40 @@ export async function setupFocusDataSource(
     timezoneId,
     createdView: false,
   };
+}
+
+function isAwsProvider(providerName: string): boolean {
+  return providerName === 'AWS' || providerName === 'Amazon Web Services';
+}
+
+function readAwsFocusSource(config: AwsFocusConfig): {
+  s3Bucket: string;
+  s3Prefix: string;
+  exportName: string;
+} {
+  if (!config.s3Bucket) {
+    throw new Error('S3 bucket is not configured. Save the AWS source before creating the job.');
+  }
+  const s3Prefix = normalizeS3Prefix(config.s3Prefix ?? '');
+  if (!s3Prefix) {
+    throw new Error('S3 prefix is not configured. Save the AWS source before creating the job.');
+  }
+  if (!config.exportName) {
+    throw new Error('Export name is not configured. Save the AWS source before creating the job.');
+  }
+  return { s3Bucket: config.s3Bucket, s3Prefix, exportName: config.exportName };
+}
+
+function s3ExportDataPath({
+  s3Bucket,
+  s3Prefix,
+  exportName,
+}: {
+  s3Bucket: string;
+  s3Prefix: string;
+  exportName: string;
+}): string {
+  return `${s3ExportPath(s3Bucket, s3Prefix, exportName)}/data`;
 }
 
 async function assertCanReadUsageTable(env: Env, userToken: string): Promise<void> {
