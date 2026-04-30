@@ -33,6 +33,7 @@ import {
 import { useI18n } from '../../i18n';
 import { useAppSettings, useCatalogs, useUpdateAppSettings } from '../../api/hooks';
 import { CatalogCombobox } from '../../components/CatalogCombobox';
+import { messageOf } from './utils';
 
 type CatalogMode = 'existing' | 'create';
 type Severity = 'success' | 'warning' | 'error';
@@ -54,10 +55,6 @@ const SEVERITY_TITLE_KEY: Record<Severity, string> = {
   warning: 'settings.provisionWarning',
   error: 'settings.provisionFailed',
 };
-
-function messageOf(err: unknown): string | null {
-  return err && typeof err === 'object' ? ((err as { message?: string }).message ?? null) : null;
-}
 
 export function Admin() {
   const { t } = useI18n();

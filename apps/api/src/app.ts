@@ -15,6 +15,8 @@ import { appSettingsRouter, settingsRouter } from './routes/settings.js';
 import { meRouter } from './routes/me.js';
 import { dataSourcesRouter } from './routes/dataSources.js';
 import { catalogsRouter } from './routes/catalogs.js';
+import { externalLocationsRouter } from './routes/externalLocations.js';
+import { storageCredentialsRouter } from './routes/storageCredentials.js';
 
 export interface AppDeps {
   env: Env;
@@ -40,6 +42,8 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/me', meRouter(env));
   app.use('/api/data-sources', dataSourcesRouter(db, env));
   app.use('/api/catalogs', catalogsRouter(env));
+  app.use('/api/external-locations', externalLocationsRouter(env));
+  app.use('/api/storage-credentials', storageCredentialsRouter(env));
 
   if (env.NODE_ENV === 'production') {
     const distDir = resolveWebDistDir(env);

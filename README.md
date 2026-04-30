@@ -1,4 +1,4 @@
-# LakeCost
+# FinLake
 
 A FinOps web app for Databricks, deployed as a Databricks App.
 

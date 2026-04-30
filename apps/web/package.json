@@ -12,6 +12,7 @@
     "test": "echo \"no tests yet\""
   },
   "dependencies": {
+    "@aws-sdk/client-bcm-data-exports": "^3.1035.0",
     "@databricks/appkit-ui": "^0.25.0",
     "@lakecost/shared": "*",
     "@tailwindcss/vite": "^4.2.2",

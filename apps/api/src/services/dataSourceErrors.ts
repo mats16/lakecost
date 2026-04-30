@@ -1,9 +1,3 @@
-export class DataSourceSetupError extends Error {
-  override readonly name = 'DataSourceSetupError';
-  constructor(
-    message: string,
-    readonly statusCode: number,
-  ) {
-    super(message);
-  }
-}
+import { WorkspaceServiceError } from './workspaceClientErrors.js';
+
+export class DataSourceSetupError extends WorkspaceServiceError {}

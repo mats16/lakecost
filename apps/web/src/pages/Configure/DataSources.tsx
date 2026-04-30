@@ -1,5 +1,10 @@
 import { useMemo, useState } from 'react';
-import { CATALOG_SETTING_KEY, FOCUS_VIEW_SCHEMA_DEFAULT, type DataSource } from '@lakecost/shared';
+import {
+  CATALOG_SETTING_KEY,
+  FOCUS_VIEW_SCHEMA_DEFAULT,
+  tableLeafName,
+  type DataSource,
+} from '@lakecost/shared';
 import { Input, Separator } from '@databricks/appkit-ui/react';
 import {
   useAppSettings,
@@ -45,6 +50,21 @@ function initialTableName(input: DataSourceTemplateInputConfig, catalog: string)
 
 function rowMatchesTemplate(row: DataSource, template: DataSourceTemplate): boolean {
   return findTemplateForRow(row)?.id === template.id;
+}
+
+function canAddMultiple(template: DataSourceTemplate): boolean {
+  return template.id === 'aws';
+}
+
+function nextTableName(base: string, rows: DataSource[]): string {
+  const used = new Set(rows.map((row) => tableLeafName(row.tableName)));
+  if (!used.has(base)) return base;
+
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base}_${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base}_${Date.now()}`;
 }
 
 export function DataSources() {
@@ -101,18 +121,18 @@ export function DataSources() {
       return;
     }
     const existing = rows.find((row) => rowMatchesTemplate(row, tpl));
-    if (existing) {
+    if (existing && !canAddMultiple(tpl)) {
       setOpenId(existing.id);
       return;
     }
+    const tableName = canAddMultiple(tpl)
+      ? nextTableName(input.defaultTableName, rows)
+      : initialTableName(input, settings.data?.settings[CATALOG_SETTING_KEY]?.trim() ?? '');
     const created = await createDs.mutateAsync({
       templateId: tpl.id,
       name: tpl.name,
       providerName: input.providerName,
-      tableName: initialTableName(
-        input,
-        settings.data?.settings[CATALOG_SETTING_KEY]?.trim() ?? '',
-      ),
+      tableName,
       description: tpl.description,
       enabled: false,
     });
@@ -161,7 +181,9 @@ export function DataSources() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {candidates.map((tpl) => {
-          const existing = rows.find((row) => rowMatchesTemplate(row, tpl));
+          const existing = canAddMultiple(tpl)
+            ? undefined
+            : rows.find((row) => rowMatchesTemplate(row, tpl));
           const registryEntry = getTemplateRegistryEntry(tpl);
           const canCreate = canCreateTemplate(tpl);
           return (

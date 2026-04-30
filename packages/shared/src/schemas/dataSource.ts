@@ -60,6 +60,7 @@ export const DataSourceUpdateBodySchema = z.object({
 export type DataSourceUpdateBody = z.infer<typeof DataSourceUpdateBodySchema>;
 
 export const DATABRICKS_FOCUS_VERSION = '1.3';
+export const AWS_FOCUS_VERSION = '1.2';
 
 export const DataSourceTemplateSchema = z.object({
   id: z.string().min(1).max(128),
@@ -79,7 +80,7 @@ export const DATA_SOURCE_TEMPLATES = [
   {
     id: 'databricks_focus13',
     name: 'Databricks',
-    description: 'Databricks usage and list prices normalized to FOCUS 1.3',
+    description: 'System tables transformed to FOCUS format',
     subtitle: '',
     focus_version: DATABRICKS_FOCUS_VERSION,
     available: true,
@@ -90,10 +91,10 @@ export const DATA_SOURCE_TEMPLATES = [
   {
     id: 'aws',
     name: 'Amazon Web Services',
-    description: 'AWS Cost & Usage Report support is coming soon.',
-    subtitle: 'by Amazon Web Services',
-    focus_version: '1.2',
-    available: false,
+    description: 'Billing and Cost Management',
+    subtitle: '',
+    focus_version: AWS_FOCUS_VERSION,
+    available: true,
     appearance: {
       brandColor: '#FF9900',
       brandTextColor: '#232F3E',

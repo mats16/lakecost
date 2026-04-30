@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-LakeCost is a FinOps web app deployed as a Databricks App. The runtime is Node.js 22.16, the UI is React 19 (Vite), and the API is Express extended by `@databricks/appkit`. The same Express process serves the SPA in production (`/api/*` is the API; everything else falls through to `index.html`).
+FinLake is a FinOps web app deployed as a Databricks App. The runtime is Node.js 22.16, the UI is React 19 (Vite), and the API is Express extended by `@databricks/appkit`. The same Express process serves the SPA in production (`/api/*` is the API; everything else falls through to `index.html`).
 
 ## Commands
 
@@ -98,4 +98,4 @@ When adding a new data source: add an entry to `dataSourceCatalog.ts`, add a ste
 
 ### Naming
 
-The app name is **LakeCost** (capital L and C) in any user-visible surface — page titles, sidebar, README. The package/identifier `lakecost` (all lowercase) stays in code: workspace names (`@lakecost/*`), Databricks Apps `name:`, Terraform resource names, the SQLite filename, etc. Don't capitalize identifiers.
+The app name is **FinLake** (capital F and L) in any user-visible surface — page titles, sidebar, README. The package/identifier `lakecost` (all lowercase) stays in code: workspace names (`@lakecost/*`), Databricks Apps `name:`, Terraform resource names, the SQLite filename, etc. Don't capitalize identifiers.

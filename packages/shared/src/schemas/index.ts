@@ -5,3 +5,5 @@ export * from './setup.js';
 export * from './health.js';
 export * from './dataSource.js';
 export * from './catalog.js';
+export * from './externalLocation.js';
+export * from './storageCredential.js';

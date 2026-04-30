@@ -330,7 +330,7 @@ SELECT
 FROM usage_with_pricing u;
 
 CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_daily`
-COMMENT 'Databricks FOCUS daily billing rollup managed by LakeCost'
+COMMENT 'Databricks FOCUS daily billing rollup managed by FinLake'
 AS
 SELECT
   CAST(ChargePeriodEnd AS DATE) AS ChargeDate,
@@ -386,7 +386,7 @@ GROUP BY
   ConsumedUnit;
 
 CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_hourly`
-COMMENT 'Databricks FOCUS hourly billing rollup managed by LakeCost'
+COMMENT 'Databricks FOCUS hourly billing rollup managed by FinLake'
 AS
 SELECT
   CAST(DATE_TRUNC('HOUR', ChargePeriodStart) AS TIMESTAMP) AS ChargeHour,

@@ -7,7 +7,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * LakeCost overrides for the AppKit dark palette.
+ * FinLake overrides for the AppKit dark palette.
  * AppKit ships a neutral dark theme; we want the brand's deep navy + Databricks red accent.
  */
 .dark {
@@ -50,7 +50,7 @@
 }
 
 /*
- * Legacy LakeCost CSS variables, kept so any remaining inline references render.
+ * Legacy FinLake CSS variables, kept so any remaining inline references render.
  * These are aliased to the AppKit tokens so light/dark switching stays consistent.
  */
 :root {

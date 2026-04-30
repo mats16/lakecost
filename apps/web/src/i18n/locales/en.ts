@@ -1,5 +1,5 @@
 export const en = {
-  appName: 'LakeCost',
+  appName: 'FinLake',
   nav: {
     finops: 'FinOps',
     overview: 'Overview',
@@ -27,7 +27,7 @@ export const en = {
   account: {
     openMenu: 'Open account menu',
     localUser: 'Local user',
-    sectionApp: 'LakeCost',
+    sectionApp: 'FinLake',
     settings: 'Settings',
     databricksConsole: 'Databricks Console',
   },
@@ -126,7 +126,7 @@ export const en = {
       title: 'Transformations',
       desc: 'Author the medallion pipeline that normalizes raw cost feeds (CUR, Cost Mgmt) into the gold cost facts table.',
     },
-    stubBanner: 'Coming soon. Track progress in the LakeCost roadmap.',
+    stubBanner: 'Coming soon. Track progress in the FinLake roadmap.',
   },
   dataSources: {
     currentTitle: 'Current data sources',
@@ -150,10 +150,10 @@ export const en = {
     },
     drawer: {
       notImplemented:
-        "This provider is not yet implemented. We're tracking it on the LakeCost roadmap.",
+        "This provider is not yet implemented. We're tracking it on the FinLake roadmap.",
     },
     systemTables: {
-      title: 'FOCUS materialized view',
+      title: 'Transformation',
       step1: 'Step 1 — System tables enabled',
       verifySchemas: 'Verify system schemas',
       step2: 'Step 2 — App service principal grants',
@@ -189,9 +189,32 @@ export const en = {
       catalogMissing: 'Set the main catalog in Configure → Admin first.',
     },
     awsCur: {
-      title: 'Configure AWS Cost & Usage Report',
-      placeholder: 's3 bucket name',
+      title: 'Data Export',
+      placeholder: 's3 url',
       verify: 'Verify CUR',
+      awsAccountId: 'AWS account ID',
+      awsAccountIdPlaceholder: 'Select from storage credentials',
+      s3Url: 'S3 URL',
+      s3UrlPlaceholder: 'Select from linked external locations',
+      externalLocation: 'External location',
+      externalLocationUrl: 'URL',
+      credential: 'Storage credential',
+      exportName: 'Export name',
+      s3Prefix: 'Prefix',
+      accessKeyId: 'Access key ID',
+      secretAccessKey: 'Secret access key',
+      sessionToken: 'Session token',
+      sessionTokenPlaceholder: 'Optional for temporary credentials',
+      saveExternalLocation: 'Save source',
+      exportCreateSection: 'Create export',
+      createExport: 'Create',
+      exportCreated: 'Export configured: {exportArn}',
+      exportDestination: 'URL',
+      selectedS3Url: 'Selected S3 URL: {url}',
+      noStorageCredentials:
+        'No AWS storage credentials are visible to you. Create one in Unity Catalog, then grant this user access.',
+      noLinkedExternalLocations:
+        'No S3 external locations are linked to this AWS account. Create an external location with the selected storage credential.',
     },
     azure: {
       title: 'Configure Azure Cost Management Export',
@@ -211,12 +234,12 @@ export const en = {
     },
     catalog: {
       databricks_focus13: {
-        description: 'Databricks usage and list prices normalized to FOCUS 1.3',
+        description: 'System tables transformed to FOCUS format',
         subtitle: '',
       },
       aws: {
-        description: 'AWS Cost & Usage Report support is coming soon.',
-        subtitle: 'by Amazon Web Services',
+        description: 'Billing and Cost Management',
+        subtitle: '',
       },
       gcp: {
         description: 'Google Cloud billing export support is coming soon.',

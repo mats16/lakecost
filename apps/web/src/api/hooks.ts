@@ -10,10 +10,12 @@ import type {
   DataSourceSetupResult,
   DataSourceTemplate,
   DataSourceUpdateBody,
+  ExternalLocationListResponse,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
   SetupStepId,
+  StorageCredentialListResponse,
   UsageBySkuRow,
   UsageDailyResponse,
   UsageTopWorkloadRow,
@@ -146,6 +148,24 @@ export function useCatalogs() {
   return useQuery({
     queryKey: ['catalogs'],
     queryFn: () => apiFetch<CatalogListResponse>('/api/catalogs'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useExternalLocations() {
+  return useQuery({
+    queryKey: ['externalLocations'],
+    queryFn: () => apiFetch<ExternalLocationListResponse>('/api/external-locations'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useStorageCredentials() {
+  return useQuery({
+    queryKey: ['storageCredentials'],
+    queryFn: () => apiFetch<StorageCredentialListResponse>('/api/storage-credentials'),
     staleTime: 60 * 1000,
     retry: false,
   });
