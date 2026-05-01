@@ -6,7 +6,7 @@ export const en = {
     configure: 'Configure',
     dataSources: 'Data sources',
     transformations: 'Transformations',
-    admin: 'Admin',
+    configureCatalog: 'Catalog',
     costExplorer: 'Cost Explorer',
     budgets: 'Budgets',
     settings: 'Settings',
@@ -185,7 +185,7 @@ export const en = {
       updateOk:
         'Job #{jobId} updated. The next run will create or refresh {fqn} on the SQL warehouse.',
       saveTarget: 'Save target',
-      catalogMissing: 'Set the main catalog in Configure → Admin first.',
+      catalogMissing: 'Set the main catalog in Configure → Catalog first.',
     },
     aws: {
       title: 'Data Export',

@@ -8,7 +8,7 @@ export const ja: Dictionary = {
     configure: '構成',
     dataSources: 'データソース',
     transformations: '変換パイプライン',
-    admin: '管理',
+    configureCatalog: 'カタログ',
     costExplorer: 'コストエクスプローラー',
     budgets: '予算',
     settings: '設定',
@@ -190,7 +190,7 @@ export const ja: Dictionary = {
       updateOk:
         'ジョブ #{jobId} の設定を更新しました。次回実行時に SQL ウェアハウスで {fqn} が作成・更新されます。',
       saveTarget: '設定を保存',
-      catalogMissing: '先に「構成 → 管理」でメインカタログを設定してください。',
+      catalogMissing: '先に「構成 → カタログ」でメインカタログを設定してください。',
     },
     aws: {
       title: 'データエクスポート',

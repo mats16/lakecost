@@ -54,7 +54,7 @@ const CONFIGURE: NavGroup = {
   items: [
     { to: '/configure/data-sources', labelKey: 'nav.dataSources' },
     { to: '/configure/transformations', labelKey: 'nav.transformations' },
-    { to: '/configure/admin', labelKey: 'nav.admin' },
+    { to: '/configure/admin', labelKey: 'nav.configureCatalog' },
   ],
 };
 
