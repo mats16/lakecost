@@ -252,12 +252,12 @@ export const en = {
         subtitle: '',
       },
       gcp: {
-        description: 'Google Cloud billing export support is coming soon.',
-        subtitle: 'by Google Cloud',
+        description: 'Coming soon.',
+        subtitle: '',
       },
       snowflake: {
-        description: 'Snowflake credits support is coming soon.',
-        subtitle: 'by Snowflake',
+        description: 'Coming soon.',
+        subtitle: '',
       },
       custom: {
         description: 'Bring your own cost feed via Auto Loader or Lakeflow Connect',

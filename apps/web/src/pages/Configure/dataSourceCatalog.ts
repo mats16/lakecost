@@ -7,7 +7,12 @@ import {
 
 export { DATA_SOURCE_TEMPLATES, type DataSourceTemplate };
 
-export type TemplateLogo = { kind: 'databricks' } | { kind: 'abbr'; label: string };
+export type TemplateLogo =
+  | { kind: 'databricks' }
+  | { kind: 'aws' }
+  | { kind: 'google-cloud' }
+  | { kind: 'snowflake' }
+  | { kind: 'abbr'; label: string };
 
 export interface DataSourceTemplateMatchRule {
   providerName: string;
@@ -47,18 +52,18 @@ export const DATA_SOURCE_TEMPLATE_REGISTRY: Record<string, DataSourceTemplateReg
       { providerName: 'Amazon Web Services', defaultTableName: 'aws_billing' },
       { providerName: 'AWS', defaultTableName: 'aws_billing' },
     ],
-    logo: { kind: 'abbr', label: 'AWS' },
+    logo: { kind: 'aws' },
   },
   gcp: {
     matches: [
       { providerName: 'Google Cloud', defaultTableName: 'google_cloud_billing' },
       { providerName: 'GCP', defaultTableName: 'gcp_billing' },
     ],
-    logo: { kind: 'abbr', label: 'GCP' },
+    logo: { kind: 'google-cloud' },
   },
   snowflake: {
     matches: [{ providerName: 'Snowflake', defaultTableName: 'snowflake_credits' }],
-    logo: { kind: 'abbr', label: 'SF' },
+    logo: { kind: 'snowflake' },
   },
   custom: {
     logo: { kind: 'abbr', label: 'src' },

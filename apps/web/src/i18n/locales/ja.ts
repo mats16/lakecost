@@ -256,12 +256,12 @@ export const ja: Dictionary = {
         subtitle: '',
       },
       gcp: {
-        description: 'Google Cloud 課金エクスポートは近日公開予定です。',
-        subtitle: 'Google Cloud 提供',
+        description: '近日公開予定です。',
+        subtitle: '',
       },
       snowflake: {
-        description: 'Snowflake credits は近日公開予定です。',
-        subtitle: 'Snowflake 提供',
+        description: '近日公開予定です。',
+        subtitle: '',
       },
       custom: {
         description: 'Auto Loader や Lakeflow Connect を介して独自のコストデータを取り込み',
