@@ -206,6 +206,21 @@ a {
   font-weight: 500;
 }
 
+.nav-group-row:hover {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+}
+
+.nav-group-row:hover .group-head,
+.nav-group-row:hover .nav-chevron {
+  color: var(--sidebar-accent-foreground);
+}
+
+.nav-group-row:hover .group-head:hover,
+.nav-group-row:hover .nav-chevron:hover {
+  background: transparent;
+}
+
 .nav-group.active > .nav-group-row {
   background: color-mix(in oklab, var(--sidebar-primary) 18%, transparent);
 }
