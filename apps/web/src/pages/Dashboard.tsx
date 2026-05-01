@@ -63,6 +63,7 @@ import {
 import { useCurrencyUsd, useI18n } from '../i18n';
 
 type ProviderKey = 'databricks' | 'aws' | 'azure' | 'gcp' | 'snowflake' | 'other';
+type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
 interface ProviderMeta {
   key: ProviderKey;
@@ -146,10 +147,8 @@ const SKU_BUCKETS = [
   { label: 'Serverless', match: (s: string) => s.includes('SERVERLESS') },
 ];
 
-const periodOptions = [
-  { value: 'mtd', label: 'This Month' },
-  { value: 'last30', label: 'Last 30 Days' },
-] as const;
+const periodOptions = ['mtd', 'last30'] as const;
+type Period = (typeof periodOptions)[number];
 
 function overviewRange() {
   const now = new Date();
@@ -172,7 +171,7 @@ function last30Range() {
 export function Dashboard() {
   const { t, locale } = useI18n();
   const formatUsd = useCurrencyUsd();
-  const [period, setPeriod] = useState<(typeof periodOptions)[number]['value']>('mtd');
+  const [period, setPeriod] = useState<Period>('mtd');
   const wideRange = useMemo(overviewRange, []);
   const mtdRange = useMemo(monthToDateRange, []);
   const rollingRange = useMemo(last30Range, []);
@@ -202,8 +201,8 @@ export function Dashboard() {
     const daysInCurrentMonth = daysInMonth(now);
     const forecast = (mtdTotal / elapsedDays) * daysInCurrentMonth;
     const avgDaily = period === 'mtd' ? mtdTotal / elapsedDays : sumRecentDays(dailyRows, 30) / 30;
-    const anomalies = detectAnomalies(dailyRows, locale);
-    const recommendations = buildRecommendations(skuRows, activeProviders);
+    const anomalies = detectAnomalies(dailyRows, locale, t);
+    const recommendations = buildRecommendations(skuRows, activeProviders, t);
     const budgetTotal = budgets.data?.items.reduce((sum, b) => sum + b.amountUsd, 0) ?? 0;
     const budgetUtilization =
       budgetTotal > 0 ? Math.min(100, (forecast / budgetTotal) * 100) : null;
@@ -220,11 +219,11 @@ export function Dashboard() {
       budgetTotal,
       budgetUtilization,
     };
-  }, [activeProviders, budgets.data?.items, dailyRows, locale, period, skuRows]);
+  }, [activeProviders, budgets.data?.items, dailyRows, locale, period, skuRows, t]);
 
   const trendData = useMemo(
-    () => buildTrendData(dailyRows, activeProviders, overview.forecast, locale),
-    [activeProviders, dailyRows, locale, overview.forecast],
+    () => buildTrendData(dailyRows, activeProviders, overview.forecast, locale, t),
+    [activeProviders, dailyRows, locale, overview.forecast, t],
   );
   const providerBreakdown = useMemo(
     () => buildProviderBreakdown(activeProviders, dailyRows),
@@ -234,7 +233,7 @@ export function Dashboard() {
     () => buildTopServices(serviceRows, skuRows, activeProviders),
     [activeProviders, serviceRows, skuRows],
   );
-  const skuBuckets = useMemo(() => bucketSkus(skuRows), [skuRows]);
+  const skuBuckets = useMemo(() => bucketSkus(skuRows, t), [skuRows, t]);
   const lastUpdated = useMemo(
     () => formatLastUpdated(history.dataUpdatedAt, current.dataUpdatedAt, locale),
     [current.dataUpdatedAt, history.dataUpdatedAt, locale],
@@ -252,10 +251,7 @@ export function Dashboard() {
   return (
     <>
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <PageHeader
-          title={t('nav.overview')}
-          subtitle="FinOps health across connected cost sources"
-        />
+        <PageHeader title={t('nav.overview')} subtitle={t('dashboard.subtitle')} />
         <div className="flex flex-wrap items-center gap-2">
           <Select value={period} onValueChange={(value) => setPeriod(value as typeof period)}>
             <SelectTrigger className="w-[150px]">
@@ -263,14 +259,14 @@ export function Dashboard() {
             </SelectTrigger>
             <SelectContent>
               {periodOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
+                <SelectItem key={option} value={option}>
+                  {t(`dashboard.period.${option}`)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={() => window.location.reload()}>
-            <RefreshCcw /> Refresh
+            <RefreshCcw /> {t('dashboard.refresh')}
           </Button>
         </div>
       </div>
@@ -278,20 +274,14 @@ export function Dashboard() {
       {history.isSuccess && sources.length === 0 ? (
         <Alert className="mb-4">
           <Database />
-          <AlertDescription>
-            No enabled data sources yet. Overview sections stay available, but cost charts will
-            populate after a Databricks or cloud source is enabled in Configure.
-          </AlertDescription>
+          <AlertDescription>{t('dashboard.noEnabledSources')}</AlertDescription>
         </Alert>
       ) : null}
 
       {costError ? (
         <Alert variant="destructive" className="mb-4">
           <AlertCircle />
-          <AlertDescription>
-            Failed to load FOCUS daily rollup tables through the OBO token. Check SQL warehouse
-            configuration and SELECT permissions on each gold *_daily table.
-          </AlertDescription>
+          <AlertDescription>{t('dashboard.focusLoadFailed')}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -299,7 +289,7 @@ export function Dashboard() {
         <Alert className="mb-4">
           <AlertCircle />
           <AlertDescription>
-            Some data sources could not be queried:{' '}
+            {t('dashboard.someSourcesFailed')}{' '}
             {sourceErrors
               .slice(0, 3)
               .map((error) => `${error.name} (${error.tableName})`)
@@ -308,28 +298,33 @@ export function Dashboard() {
         </Alert>
       ) : null}
 
-      <SectionTitle title="Cost Summary" />
+      <SectionTitle title={t('dashboard.sections.costSummary')} />
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <KpiCard
           icon={DollarSign}
-          label="Total Cost (MTD)"
+          label={t('dashboard.kpi.totalCostMtd')}
           value={formatUsd(overview.mtdTotal)}
-          delta={comparisonText(overview.mtdTotal, overview.previousMonth, 'vs last month')}
+          delta={comparisonText(
+            overview.mtdTotal,
+            overview.previousMonth,
+            t('dashboard.vsLastMonth'),
+            t,
+          )}
           tone={deltaTone(overview.mtdTotal, overview.previousMonth)}
           loading={loading}
         />
         <KpiCard
           icon={TrendingUp}
-          label="Forecasted Month-End"
+          label={t('dashboard.kpi.forecastedMonthEnd')}
           value={formatUsd(overview.forecast)}
           delta={
             overview.budgetTotal > 0
-              ? `${formatUsd(overview.budgetTotal)} budget`
-              : 'No monthly budget configured'
+              ? t('dashboard.budgetAmount', { amount: formatUsd(overview.budgetTotal) })
+              : t('dashboard.noMonthlyBudget')
           }
           badge={
             overview.budgetTotal > 0 && overview.forecast > overview.budgetTotal
-              ? 'Over Budget'
+              ? t('dashboard.overBudget')
               : undefined
           }
           tone={
@@ -339,56 +334,61 @@ export function Dashboard() {
         />
         <KpiCard
           icon={CalendarDays}
-          label="Avg Daily Cost"
+          label={t('dashboard.kpi.avgDailyCost')}
           value={formatUsd(overview.avgDaily)}
           delta={comparisonText(
             overview.mtdTotal,
             overview.lastYearMonth,
-            'vs same month last year',
+            t('dashboard.vsSameMonthLastYear'),
+            t,
           )}
           tone={deltaTone(overview.mtdTotal, overview.lastYearMonth)}
           loading={loading}
         />
         <KpiCard
           icon={CheckCircle2}
-          label="Savings Realized (MTD)"
+          label={t('dashboard.kpi.savingsRealizedMtd')}
           value={formatUsd(0)}
-          delta="Commitment discount feed not connected"
+          delta={t('dashboard.commitmentFeedNotConnected')}
           tone="good"
           loading={history.isLoading}
         />
         <KpiCard
           icon={AlertCircle}
-          label="Anomalies (Last 7d)"
+          label={t('dashboard.kpi.anomaliesLast7d')}
           value={String(overview.anomalies.filter((a) => a.severity !== 'resolved').length)}
           delta={
             overview.anomalies.length > 0
-              ? `${overview.anomalies.length} detected from daily spend`
-              : 'No spike detected'
+              ? t('dashboard.anomaliesDetected', { count: overview.anomalies.length })
+              : t('dashboard.noSpikeDetected')
           }
-          badge={overview.anomalies.some((a) => a.severity === 'high') ? 'Alert' : undefined}
+          badge={
+            overview.anomalies.some((a) => a.severity === 'high') ? t('dashboard.alert') : undefined
+          }
           tone={overview.anomalies.length > 0 ? 'bad' : 'neutral'}
           loading={loading}
         />
         <KpiCard
           icon={Sparkles}
-          label="Open Recommendations"
+          label={t('dashboard.kpi.openRecommendations')}
           value={String(overview.recommendations.length)}
-          delta={`${formatUsd(overview.recommendationPotential)}/mo potential`}
+          delta={t('dashboard.monthlyPotential', {
+            amount: formatUsd(overview.recommendationPotential),
+          })}
           tone="good"
           loading={current.isLoading}
         />
       </div>
 
-      <SectionTitle title="Cost Trends & Breakdown" />
+      <SectionTitle title={t('dashboard.sections.costTrendsBreakdown')} />
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">
-              Monthly Cost by Provider (12 months + Forecast)
-            </CardTitle>
+            <CardTitle className="text-sm">{t('dashboard.monthlyCostByProvider')}</CardTitle>
             <CardDescription>
-              Connected providers: {activeProviders.map((p) => p.label).join(', ') || 'none'}
+              {t('dashboard.connectedProviders')}{' '}
+              {activeProviders.map((p) => providerDisplayLabel(p, t)).join(', ') ||
+                t('dashboard.none')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -396,8 +396,8 @@ export function Dashboard() {
               <Skeleton className="h-80 w-full" />
             ) : !hasAnyCostData ? (
               <EmptyState
-                title="No cost trend data"
-                description="Enable a data source and run its refresh job."
+                title={t('dashboard.empty.noCostTrendData')}
+                description={t('dashboard.empty.enableSourceAndRunRefresh')}
               />
             ) : (
               <div className="h-80">
@@ -429,16 +429,16 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Provider Breakdown (MTD)</CardTitle>
-            <CardDescription>Only providers with measured cost are included.</CardDescription>
+            <CardTitle className="text-sm">{t('dashboard.providerBreakdownMtd')}</CardTitle>
+            <CardDescription>{t('dashboard.providerBreakdownDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-80 w-full" />
             ) : providerBreakdown.length === 0 ? (
               <EmptyState
-                title="No measured provider spend"
-                description="Configured sources appear after cost facts are available."
+                title={t('dashboard.empty.noMeasuredProviderSpend')}
+                description={t('dashboard.empty.configuredSourcesAfterFacts')}
               />
             ) : (
               <div className="grid gap-4 lg:grid-cols-[1fr_160px] xl:grid-cols-1 2xl:grid-cols-[1fr_160px]">
@@ -463,7 +463,7 @@ export function Dashboard() {
                   </ResponsiveContainer>
                   <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
                     <span className="text-lg font-semibold">{formatUsd(overview.mtdTotal)}</span>
-                    <span className="text-muted-foreground text-xs">Total MTD</span>
+                    <span className="text-muted-foreground text-xs">{t('dashboard.totalMtd')}</span>
                   </div>
                 </div>
                 <div className="grid content-center gap-2">
@@ -477,7 +477,7 @@ export function Dashboard() {
                           className="h-2.5 w-2.5 rounded-sm"
                           style={{ background: provider.color }}
                         />
-                        {provider.label}
+                        {providerDisplayLabel(provider, t)}
                       </span>
                       <span className="font-medium">{provider.percent}%</span>
                     </div>
@@ -489,20 +489,20 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <SectionTitle title="Cost Allocation & Top Spenders" />
+      <SectionTitle title={t('dashboard.sections.costAllocationTopSpenders')} />
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Top Services by Spend</CardTitle>
-            <CardDescription>Aggregated from enabled FOCUS daily rollup tables.</CardDescription>
+            <CardTitle className="text-sm">{t('dashboard.topServicesBySpend')}</CardTitle>
+            <CardDescription>{t('dashboard.topServicesDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {current.isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : topServices.length === 0 ? (
               <EmptyState
-                title="No services yet"
-                description="Spend allocation appears after usage rows are loaded."
+                title={t('dashboard.empty.noServicesYet')}
+                description={t('dashboard.empty.servicesAfterUsage')}
               />
             ) : (
               <div className="grid gap-3">
@@ -523,29 +523,39 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Coverage & Utilization Rates</CardTitle>
-            <CardDescription>
-              Commitment and tagging metrics stay neutral until their feeds are connected.
-            </CardDescription>
+            <CardTitle className="text-sm">{t('dashboard.coverageUtilizationRates')}</CardTitle>
+            <CardDescription>{t('dashboard.coverageUtilizationDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Gauge label="RI/SP Coverage" value={null} color="#49A078" />
-              <Gauge label="Tag Coverage" value={tagCoverage} color="#3B82F6" />
-              <Gauge label="Budget Util." value={overview.budgetUtilization} color="#F2A72B" />
+              <Gauge label={t('dashboard.gauge.riSpCoverage')} value={null} color="#49A078" t={t} />
+              <Gauge
+                label={t('dashboard.gauge.tagCoverage')}
+                value={tagCoverage}
+                color="#3B82F6"
+                t={t}
+              />
+              <Gauge
+                label={t('dashboard.gauge.budgetUtil')}
+                value={overview.budgetUtilization}
+                color="#F2A72B"
+                t={t}
+              />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <SectionTitle title="Optimization & Governance" />
+      <SectionTitle title={t('dashboard.sections.optimizationGovernance')} />
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">
-              Top Recommendations
+              {t('dashboard.topRecommendations')}
               {overview.recommendationPotential > 0
-                ? ` - ${formatUsd(overview.recommendationPotential)}/mo potential savings`
+                ? t('dashboard.potentialSavingsSuffix', {
+                    amount: formatUsd(overview.recommendationPotential),
+                  })
                 : ''}
             </CardTitle>
           </CardHeader>
@@ -554,8 +564,8 @@ export function Dashboard() {
               <Skeleton className="h-56 w-full" />
             ) : overview.recommendations.length === 0 ? (
               <EmptyState
-                title="No recommendations yet"
-                description="Recommendations are generated from measured spend signals."
+                title={t('dashboard.empty.noRecommendationsYet')}
+                description={t('dashboard.empty.recommendationsFromSignals')}
               />
             ) : (
               <div className="divide-border divide-y">
@@ -572,10 +582,12 @@ export function Dashboard() {
                       variant="outline"
                       style={{ borderColor: rec.provider.color, color: rec.provider.color }}
                     >
-                      {rec.provider.label}
+                      {providerDisplayLabel(rec.provider, t)}
                     </Badge>
                     <span className="text-sm font-semibold text-(--success)">
-                      {rec.savingsUsd ? `${formatUsd(rec.savingsUsd)}/mo` : '--'}
+                      {rec.savingsUsd
+                        ? t('dashboard.perMonth', { amount: formatUsd(rec.savingsUsd) })
+                        : '--'}
                     </span>
                   </div>
                 ))}
@@ -586,31 +598,31 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Anomaly Alerts (Last 7 days)</CardTitle>
+            <CardTitle className="text-sm">{t('dashboard.anomalyAlertsLast7Days')}</CardTitle>
           </CardHeader>
           <CardContent>
             {history.isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : overview.anomalies.length === 0 ? (
               <EmptyState
-                title="No anomalies detected"
-                description="Daily cost did not exceed the rolling baseline."
+                title={t('dashboard.empty.noAnomaliesDetected')}
+                description={t('dashboard.empty.noAnomalies')}
               />
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Severity</TableHead>
-                    <TableHead>Signal</TableHead>
-                    <TableHead className="text-right">Impact</TableHead>
-                    <TableHead className="text-right">When</TableHead>
+                    <TableHead>{t('dashboard.table.severity')}</TableHead>
+                    <TableHead>{t('dashboard.table.signal')}</TableHead>
+                    <TableHead className="text-right">{t('dashboard.table.impact')}</TableHead>
+                    <TableHead className="text-right">{t('dashboard.table.when')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {overview.anomalies.map((anomaly) => (
                     <TableRow key={`${anomaly.label}-${anomaly.when}`}>
                       <TableCell>
-                        <SeverityBadge severity={anomaly.severity} />
+                        <SeverityBadge severity={anomaly.severity} t={t} />
                       </TableCell>
                       <TableCell>{anomaly.label}</TableCell>
                       <TableCell className="text-right text-(--danger)">
@@ -628,7 +640,7 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <SectionTitle title="Databricks Cost Detail (DBU by SKU)" />
+      <SectionTitle title={t('dashboard.sections.databricksCostDetail')} />
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
         {skuBuckets.map((bucket) => (
           <SkuCard
@@ -643,20 +655,20 @@ export function Dashboard() {
         ))}
       </div>
 
-      <SectionTitle title="Budget Tracking & Tagging Health" />
+      <SectionTitle title={t('dashboard.sections.budgetTrackingTaggingHealth')} />
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Team Budgets</CardTitle>
-            <CardDescription>Actual budget records from FinLake budgets.</CardDescription>
+            <CardTitle className="text-sm">{t('dashboard.teamBudgets')}</CardTitle>
+            <CardDescription>{t('dashboard.teamBudgetsDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {budgets.isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : !budgets.data || budgets.data.items.length === 0 ? (
               <EmptyState
-                title="No budgets configured"
-                description="Create budgets to track team-level burn rates."
+                title={t('dashboard.empty.noBudgetsConfigured')}
+                description={t('dashboard.empty.createBudgets')}
               />
             ) : (
               <div className="grid gap-3 lg:grid-cols-3">
@@ -697,15 +709,15 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Tagging Coverage</CardTitle>
-            <CardDescription>Provider coverage requires tag inventory feeds.</CardDescription>
+            <CardTitle className="text-sm">{t('dashboard.taggingCoverage')}</CardTitle>
+            <CardDescription>{t('dashboard.taggingCoverageDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
               {activeProviders.length === 0 ? (
                 <EmptyState
-                  title="No providers"
-                  description="Enable data sources to monitor coverage."
+                  title={t('dashboard.empty.noProviders')}
+                  description={t('dashboard.empty.enableSourcesForCoverage')}
                 />
               ) : (
                 activeProviders.map((provider) => {
@@ -717,12 +729,12 @@ export function Dashboard() {
                       <div className="mb-1 flex items-center justify-between text-sm">
                         <span className="inline-flex items-center gap-2">
                           <Tags className="h-3.5 w-3.5" />
-                          {provider.label}
+                          {providerDisplayLabel(provider, t)}
                         </span>
                         <span className="text-muted-foreground">
                           {providerCoverage
                             ? `${Math.round(providerCoverage.tagCoveragePct)}%`
-                            : 'Not measured'}
+                            : t('dashboard.notMeasured')}
                         </span>
                       </div>
                       <Progress value={providerCoverage?.tagCoveragePct ?? 0} />
@@ -737,17 +749,17 @@ export function Dashboard() {
 
       <footer className="text-muted-foreground border-border mt-6 flex flex-col gap-2 border-t pt-4 text-xs lg:flex-row lg:items-center lg:justify-between">
         <div>
-          Data sources:{' '}
+          {t('dashboard.footer.dataSources')}{' '}
           {sources.length > 0
             ? sources
-                .map((source) => `${source.name} (${providerForSource(source).label})`)
+                .map(
+                  (source) =>
+                    `${source.name} (${providerDisplayLabel(providerForSource(source), t)})`,
+                )
                 .join(' | ')
-            : 'none'}
+            : t('dashboard.none')}
         </div>
-        <div>
-          Last updated: {lastUpdated}. Cost source: enabled gold *_daily tables queried with the
-          user OBO token. TCO joins should account for shared cluster mappings.
-        </div>
+        <div>{t('dashboard.footer.lastUpdated', { time: lastUpdated })}</div>
       </footer>
     </>
   );
@@ -774,6 +786,7 @@ function KpiCard({
   tone?: 'good' | 'bad' | 'neutral';
   loading?: boolean;
 }) {
+  const { t } = useI18n();
   const toneClass =
     tone === 'good'
       ? 'text-(--success)'
@@ -800,7 +813,7 @@ function KpiCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <p className={`m-0 text-xs ${toneClass}`}>{loading ? 'Loading...' : delta}</p>
+        <p className={`m-0 text-xs ${toneClass}`}>{loading ? t('common.loading') : delta}</p>
       </CardContent>
     </Card>
   );
@@ -879,7 +892,17 @@ function HorizontalSpendBar({
   );
 }
 
-function Gauge({ label, value, color }: { label: string; value: number | null; color: string }) {
+function Gauge({
+  label,
+  value,
+  color,
+  t,
+}: {
+  label: string;
+  value: number | null;
+  color: string;
+  t: TFunction;
+}) {
   const normalized = value === null ? 0 : Math.max(0, Math.min(100, value));
   return (
     <div className="rounded-md border border-border p-4 text-center">
@@ -891,7 +914,7 @@ function Gauge({ label, value, color }: { label: string; value: number | null; c
       >
         <div className="bg-card flex h-full w-full items-center justify-center rounded-full">
           <span className="text-lg font-semibold">
-            {value === null ? 'N/A' : `${Math.round(normalized)}%`}
+            {value === null ? t('dashboard.notAvailable') : `${Math.round(normalized)}%`}
           </span>
         </div>
       </div>
@@ -900,10 +923,14 @@ function Gauge({ label, value, color }: { label: string; value: number | null; c
   );
 }
 
-function SeverityBadge({ severity }: { severity: Anomaly['severity'] }) {
-  if (severity === 'resolved') return <Badge variant="secondary">Resolved</Badge>;
-  if (severity === 'high') return <Badge variant="destructive">High</Badge>;
-  return <Badge variant="outline">Medium</Badge>;
+function SeverityBadge({ severity, t }: { severity: Anomaly['severity']; t: TFunction }) {
+  if (severity === 'resolved') {
+    return <Badge variant="secondary">{t('dashboard.severity.resolved')}</Badge>;
+  }
+  if (severity === 'high') {
+    return <Badge variant="destructive">{t('dashboard.severity.high')}</Badge>;
+  }
+  return <Badge variant="outline">{t('dashboard.severity.medium')}</Badge>;
 }
 
 function SkuCard({
@@ -968,6 +995,10 @@ function providerLabel(key: string): string {
   return PROVIDERS[key as ProviderKey]?.label ?? key;
 }
 
+function providerDisplayLabel(provider: ProviderMeta, t: TFunction): string {
+  return provider.key === 'other' ? t('dashboard.providers.other') : provider.label;
+}
+
 function providerForName(providerName: string, providers: ProviderMeta[]): ProviderMeta {
   const key = normalizeProvider(providerName);
   return providers.find((provider) => provider.key === key) ?? PROVIDERS[key];
@@ -1005,6 +1036,7 @@ function buildTrendData(
   providers: ProviderMeta[],
   forecast: number,
   locale: string,
+  t: TFunction,
 ) {
   const now = new Date();
   const totals = monthlyTotalsByProvider(rows);
@@ -1023,7 +1055,7 @@ function buildTrendData(
     return record;
   });
   const forecastRecord: Record<string, string | number | boolean> = {
-    label: 'Forecast',
+    label: t('dashboard.forecast'),
     forecast: true,
   };
   for (const provider of providers) {
@@ -1073,11 +1105,16 @@ function sumRecentDays(rows: FocusOverviewDailyRow[], days: number): number {
     .reduce((sum, row) => sum + row.costUsd, 0);
 }
 
-function comparisonText(current: number, previous: number, label: string): string {
-  if (previous <= 0) return `No baseline ${label}`;
+function comparisonText(current: number, previous: number, label: string, t: TFunction): string {
+  if (previous <= 0) return t('dashboard.noBaseline', { label });
   const delta = ((current - previous) / previous) * 100;
-  const direction = delta >= 0 ? 'up' : 'down';
-  return `${Math.abs(delta).toFixed(1)}% ${direction} ${label}`;
+  const direction =
+    delta >= 0 ? t('dashboard.deltaDirection.up') : t('dashboard.deltaDirection.down');
+  return t('dashboard.deltaComparison', {
+    pct: Math.abs(delta).toFixed(1),
+    direction,
+    label,
+  });
 }
 
 function deltaTone(current: number, previous: number): 'good' | 'bad' | 'neutral' {
@@ -1112,7 +1149,7 @@ function cleanSkuName(value: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function bucketSkus(rows: FocusOverviewSkuRow[]) {
+function bucketSkus(rows: FocusOverviewSkuRow[], t: TFunction) {
   const databricksRows = rows.filter((row) => normalizeProvider(row.providerName) === 'databricks');
   const total = databricksRows.reduce((sum, row) => sum + row.costUsd, 0);
   return SKU_BUCKETS.map((bucket) => {
@@ -1120,7 +1157,7 @@ function bucketSkus(rows: FocusOverviewSkuRow[]) {
       .filter((row) => bucket.match(row.skuName.toUpperCase()))
       .reduce((sum, row) => sum + row.costUsd, 0);
     return {
-      label: bucket.label,
+      label: t(`dashboard.skuBuckets.${bucket.label}`),
       costUsd,
       percent: total > 0 ? (costUsd / total) * 100 : 0,
     };
@@ -1130,16 +1167,17 @@ function bucketSkus(rows: FocusOverviewSkuRow[]) {
 function buildRecommendations(
   rows: FocusOverviewSkuRow[],
   providers: ProviderMeta[],
+  t: TFunction,
 ): Recommendation[] {
   const recs: Recommendation[] = [];
   const total = rows.reduce((sum, row) => sum + row.costUsd, 0);
   const top = rows[0];
   if (top && top.costUsd > 0) {
     recs.push({
-      title: `Review ${cleanSkuName(top.skuName)} spend`,
+      title: t('dashboard.recommendations.reviewSpend', { name: cleanSkuName(top.skuName) }),
       provider: providerForName(top.providerName, providers),
       savingsUsd: top.costUsd * 0.12,
-      reason: 'Largest measured Databricks SKU in the selected period',
+      reason: t('dashboard.recommendations.largestMeasuredSku'),
     });
   }
   const jobs = rows
@@ -1147,10 +1185,10 @@ function buildRecommendations(
     .reduce((sum, row) => sum + row.costUsd, 0);
   if (jobs > 0) {
     recs.push({
-      title: 'Right-size Databricks jobs clusters',
+      title: t('dashboard.recommendations.rightSizeJobs'),
       provider: PROVIDERS.databricks,
       savingsUsd: jobs * 0.1,
-      reason: 'Jobs spend is eligible for schedule and cluster policy review',
+      reason: t('dashboard.recommendations.jobsEligible'),
     });
   }
   const sql = rows
@@ -1158,32 +1196,34 @@ function buildRecommendations(
     .reduce((sum, row) => sum + row.costUsd, 0);
   if (sql > 0) {
     recs.push({
-      title: 'Tune SQL warehouse sizing',
+      title: t('dashboard.recommendations.tuneSqlWarehouse'),
       provider: PROVIDERS.databricks,
       savingsUsd: sql * 0.08,
-      reason: 'Warehouse cost can often be reduced with auto-stop and scaling policy changes',
+      reason: t('dashboard.recommendations.warehousePolicy'),
     });
   }
   if (total > 0) {
     recs.push({
-      title: 'Tag unallocated Databricks workloads',
+      title: t('dashboard.recommendations.tagUnallocated'),
       provider: PROVIDERS.databricks,
       savingsUsd: null,
-      reason: 'Improves chargeback and budget routing',
+      reason: t('dashboard.recommendations.improvesChargeback'),
     });
   }
   for (const provider of providers.filter((p) => p.key !== 'databricks')) {
     recs.push({
-      title: `Complete ${provider.label} cost fact ingestion`,
+      title: t('dashboard.recommendations.completeIngestion', {
+        provider: providerDisplayLabel(provider, t),
+      }),
       provider,
       savingsUsd: null,
-      reason: 'Source is enabled, but measured provider cost is not available in Overview yet',
+      reason: t('dashboard.recommendations.sourceEnabledNoCost'),
     });
   }
   return recs.slice(0, 5);
 }
 
-function detectAnomalies(rows: FocusOverviewDailyRow[], locale: string): Anomaly[] {
+function detectAnomalies(rows: FocusOverviewDailyRow[], locale: string, t: TFunction): Anomaly[] {
   const byDay = new Map<string, number>();
   for (const row of rows) byDay.set(row.usageDate, (byDay.get(row.usageDate) ?? 0) + row.costUsd);
   const entries = Array.from(byDay.entries()).sort(([a], [b]) => a.localeCompare(b));
@@ -1199,7 +1239,7 @@ function detectAnomalies(rows: FocusOverviewDailyRow[], locale: string): Anomaly
   return recentRows
     .filter(([, cost]) => cost > baseline * 1.35 && cost - baseline > 10)
     .map(([date, cost]) => ({
-      label: 'Daily spend spike',
+      label: t('dashboard.dailySpendSpike'),
       impactUsd: cost - baseline,
       severity: cost > baseline * 1.75 ? 'high' : 'medium',
       when: new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
@@ -1211,7 +1251,7 @@ function detectAnomalies(rows: FocusOverviewDailyRow[], locale: string): Anomaly
 
 function miniTrend(trendData: Array<Record<string, string | number | boolean>>): number[] {
   const values = trendData
-    .filter((row) => row.label !== 'Forecast')
+    .filter((row) => row.forecast !== true)
     .map((row) => {
       let total = 0;
       for (const [key, val] of Object.entries(row)) {
@@ -1226,7 +1266,7 @@ function miniTrend(trendData: Array<Record<string, string | number | boolean>>):
 
 function formatLastUpdated(historyUpdatedAt: number, currentUpdatedAt: number, locale: string) {
   const timestamp = Math.max(historyUpdatedAt || 0, currentUpdatedAt || 0);
-  if (!timestamp) return 'never';
+  if (!timestamp) return locale === 'ja' ? '未更新' : 'never';
   return new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',

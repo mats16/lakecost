@@ -20,7 +20,8 @@ interface SourceForPipeline {
 
 export class TransformationPipelineAuthError extends WorkspaceServiceError {}
 
-const DAY_INDICES = [0, 1, 2, 3, 4] as const;
+const LOOKBACK_DAYS = 7;
+const DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
 
 const dayFields = Object.fromEntries(
   DAY_INDICES.flatMap((i) => [
@@ -68,7 +69,7 @@ export async function listTransformationPipelines(
   const sources = (await db.repos.dataSources.list()).map(toSourceForPipeline);
   const configured = sources.filter((source) => source.pipelineId);
   const generatedAt = new Date().toISOString();
-  const fallbackDays = lastFiveLocalDays();
+  const fallbackDays = lastLookbackLocalDays();
 
   if (configured.length === 0) {
     return { rows: sources.map((s) => localOnlyRow(s, fallbackDays)), generatedAt };
@@ -86,13 +87,17 @@ export async function listTransformationPipelines(
 
   const rows = await executor.run(
     buildPipelineSql(configured),
-    buildPipelineParams(configured),
+    buildPipelineParams(configured, env.DATABRICKS_WORKSPACE_ID),
     PipelineQueryRowSchema,
   );
-  const host = normalizeHost(env.DATABRICKS_HOST);
-  const rowsByDataSourceId = new Map(rows.map((row) => [row.dataSourceId, toResponseRow(row, host)]));
+  const consoleHost = normalizeHost(env.DATABRICKS_HOST);
+  const rowsByDataSourceId = new Map(
+    rows.map((row) => [row.dataSourceId, toResponseRow(row, consoleHost)]),
+  );
   return {
-    rows: sources.map((source) => rowsByDataSourceId.get(source.id) ?? localOnlyRow(source, fallbackDays)),
+    rows: sources.map(
+      (source) => rowsByDataSourceId.get(source.id) ?? localOnlyRow(source, fallbackDays),
+    ),
     generatedAt,
   };
 }
@@ -147,7 +152,10 @@ function localOnlyRow(source: SourceForPipeline, days: string[]): Transformation
   };
 }
 
-function toResponseRow(row: PipelineQueryRow, host: string | null): TransformationPipelineRow {
+function toResponseRow(
+  row: PipelineQueryRow,
+  consoleHost: string | null,
+): TransformationPipelineRow {
   return {
     dataSourceId: row.dataSourceId,
     dataSourceName: row.dataSourceName,
@@ -159,7 +167,7 @@ function toResponseRow(row: PipelineQueryRow, host: string | null): Transformati
     timezoneId: row.timezoneId,
     accountId: row.accountId,
     workspaceId: row.workspaceId,
-    pipelineUrl: pipelineUrl(row.pipelineId, host),
+    pipelineUrl: pipelineUrl(row.pipelineId, consoleHost),
     pipelineName: row.pipelineName,
     pipelineType: row.pipelineType,
     createdBy: row.createdBy,
@@ -237,6 +245,7 @@ function buildPipelineSql(sources: SourceForPipeline[]): string {
           ) AS rn
         FROM system.lakeflow.pipelines
         WHERE pipeline_id IN (${pipelineIds})
+          AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
       )
       WHERE rn = 1
     ),
@@ -269,7 +278,8 @@ function buildPipelineSql(sources: SourceForPipeline[]): string {
           ) AS rn
         FROM system.lakeflow.pipeline_update_timeline
         WHERE pipeline_id IN (${pipelineIds})
-          AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL 5 DAYS
+          AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
+          AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL ${LOOKBACK_DAYS} DAYS
       )
       WHERE rn = 1
     ),
@@ -284,7 +294,8 @@ function buildPipelineSql(sources: SourceForPipeline[]): string {
         ) AS rn
       FROM system.lakeflow.pipeline_update_timeline
       WHERE pipeline_id IN (${pipelineIds})
-        AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL 5 DAYS
+        AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
+        AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL ${LOOKBACK_DAYS} DAYS
     ),
     daily_counts AS (
       SELECT
@@ -293,7 +304,8 @@ function buildPipelineSql(sources: SourceForPipeline[]): string {
         COUNT(DISTINCT update_id) AS update_count
       FROM system.lakeflow.pipeline_update_timeline
       WHERE pipeline_id IN (${pipelineIds})
-        AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL 5 DAYS
+        AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
+        AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL ${LOOKBACK_DAYS} DAYS
       GROUP BY pipeline_id, to_date(period_start_time)
     ),
     daily_status AS (
@@ -334,21 +346,27 @@ function buildPipelineSql(sources: SourceForPipeline[]): string {
       u.period_start_time,
       u.period_end_time,
       u.duration_seconds,
-      CAST(date_sub(current_date(), 4) AS STRING) AS day0_date,
+      CAST(date_sub(current_date(), 6) AS STRING) AS day0_date,
       d0.result_state AS day0_result_state,
       d0.update_count AS day0_update_count,
-      CAST(date_sub(current_date(), 3) AS STRING) AS day1_date,
+      CAST(date_sub(current_date(), 5) AS STRING) AS day1_date,
       d1.result_state AS day1_result_state,
       d1.update_count AS day1_update_count,
-      CAST(date_sub(current_date(), 2) AS STRING) AS day2_date,
+      CAST(date_sub(current_date(), 4) AS STRING) AS day2_date,
       d2.result_state AS day2_result_state,
       d2.update_count AS day2_update_count,
-      CAST(date_sub(current_date(), 1) AS STRING) AS day3_date,
+      CAST(date_sub(current_date(), 3) AS STRING) AS day3_date,
       d3.result_state AS day3_result_state,
       d3.update_count AS day3_update_count,
-      CAST(current_date() AS STRING) AS day4_date,
+      CAST(date_sub(current_date(), 2) AS STRING) AS day4_date,
       d4.result_state AS day4_result_state,
-      d4.update_count AS day4_update_count
+      d4.update_count AS day4_update_count,
+      CAST(date_sub(current_date(), 1) AS STRING) AS day5_date,
+      d5.result_state AS day5_result_state,
+      d5.update_count AS day5_update_count,
+      CAST(current_date() AS STRING) AS day6_date,
+      d6.result_state AS day6_result_state,
+      d6.update_count AS day6_update_count
     FROM requested r
     LEFT JOIN latest_pipelines p
       ON r.pipeline_id = p.pipeline_id
@@ -356,42 +374,54 @@ function buildPipelineSql(sources: SourceForPipeline[]): string {
       ON r.pipeline_id = u.pipeline_id
     LEFT JOIN daily_status d0
       ON r.pipeline_id = d0.pipeline_id
-      AND d0.status_date = date_sub(current_date(), 4)
+      AND d0.status_date = date_sub(current_date(), 6)
     LEFT JOIN daily_status d1
       ON r.pipeline_id = d1.pipeline_id
-      AND d1.status_date = date_sub(current_date(), 3)
+      AND d1.status_date = date_sub(current_date(), 5)
     LEFT JOIN daily_status d2
       ON r.pipeline_id = d2.pipeline_id
-      AND d2.status_date = date_sub(current_date(), 2)
+      AND d2.status_date = date_sub(current_date(), 4)
     LEFT JOIN daily_status d3
       ON r.pipeline_id = d3.pipeline_id
-      AND d3.status_date = date_sub(current_date(), 1)
+      AND d3.status_date = date_sub(current_date(), 3)
     LEFT JOIN daily_status d4
       ON r.pipeline_id = d4.pipeline_id
-      AND d4.status_date = current_date()
+      AND d4.status_date = date_sub(current_date(), 2)
+    LEFT JOIN daily_status d5
+      ON r.pipeline_id = d5.pipeline_id
+      AND d5.status_date = date_sub(current_date(), 1)
+    LEFT JOIN daily_status d6
+      ON r.pipeline_id = d6.pipeline_id
+      AND d6.status_date = current_date()
     ORDER BY r.data_source_name
   `;
 }
 
-function buildPipelineParams(sources: SourceForPipeline[]): SqlParam[] {
-  return sources.flatMap((source, i) => [
-    { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
-    { name: `data_source_name_${i}`, value: source.name, type: 'STRING' as const },
-    { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
-    { name: `table_name_${i}`, value: source.tableName, type: 'STRING' as const },
-    { name: `job_id_${i}`, value: source.jobId, type: 'BIGINT' as const },
-    { name: `pipeline_id_${i}`, value: source.pipelineId, type: 'STRING' as const },
-    {
-      name: `cron_expression_${i}`,
-      value: stringConfig(source.config.cronExpression),
-      type: 'STRING' as const,
-    },
-    {
-      name: `timezone_id_${i}`,
-      value: stringConfig(source.config.timezoneId),
-      type: 'STRING' as const,
-    },
-  ]);
+function buildPipelineParams(
+  sources: SourceForPipeline[],
+  workspaceId: string | undefined,
+): SqlParam[] {
+  return [
+    { name: 'workspace_id', value: workspaceId ?? null, type: 'STRING' as const },
+    ...sources.flatMap((source, i) => [
+      { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
+      { name: `data_source_name_${i}`, value: source.name, type: 'STRING' as const },
+      { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
+      { name: `table_name_${i}`, value: source.tableName, type: 'STRING' as const },
+      { name: `job_id_${i}`, value: source.jobId, type: 'BIGINT' as const },
+      { name: `pipeline_id_${i}`, value: source.pipelineId, type: 'STRING' as const },
+      {
+        name: `cron_expression_${i}`,
+        value: stringConfig(source.config.cronExpression),
+        type: 'STRING' as const,
+      },
+      {
+        name: `timezone_id_${i}`,
+        value: stringConfig(source.config.timezoneId),
+        type: 'STRING' as const,
+      },
+    ]),
+  ];
 }
 
 function stringConfig(value: unknown): string | null {
@@ -400,19 +430,19 @@ function stringConfig(value: unknown): string | null {
 
 function normalizeHost(host: string | undefined): string | null {
   if (!host) return null;
-  if (host.startsWith('http://') || host.startsWith('https://')) return host.replace(/\/$/, '');
-  return `https://${host.replace(/\/$/, '')}`;
+  if (host.startsWith('http://') || host.startsWith('https://')) return host.replace(/\/+$/, '');
+  return `https://${host.replace(/\/+$/, '')}`;
 }
 
-function pipelineUrl(pipelineId: string | null, host: string | null): string | null {
-  if (!pipelineId || !host) return null;
-  return `${host}/pipelines/${encodeURIComponent(pipelineId)}`;
+function pipelineUrl(pipelineId: string | null, consoleHost: string | null): string | null {
+  if (!pipelineId || !consoleHost) return null;
+  return `${consoleHost}/pipelines/${encodeURIComponent(pipelineId)}`;
 }
 
-function lastFiveLocalDays(): string[] {
+function lastLookbackLocalDays(): string[] {
   const days: string[] = [];
   const today = new Date();
-  for (let offset = 4; offset >= 0; offset -= 1) {
+  for (let offset = LOOKBACK_DAYS - 1; offset >= 0; offset -= 1) {
     const date = new Date(today);
     date.setDate(today.getDate() - offset);
     days.push(date.toISOString().slice(0, 10));

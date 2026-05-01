@@ -12,8 +12,8 @@ export function App() {
   return (
     <AppShell>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/" element={<Navigate to="/overview" replace />} />
+        <Route path="/overview" element={<Dashboard />} />
         <Route path="/explorer" element={<CostExplorer />} />
         <Route path="/budgets" element={<Budgets />} />
 
@@ -26,7 +26,7 @@ export function App() {
 
         <Route path="/settings" element={<Navigate to="/configure/catalog" replace />} />
         <Route path="/setup" element={<Navigate to="/configure/data-sources" replace />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </AppShell>
   );
