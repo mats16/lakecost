@@ -619,14 +619,6 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.catalog')}</span>
-            <Input value={form.remoteCatalog} disabled placeholder="main" />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
-            <Input value={form.silverSchema} disabled />
-          </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
             <Input value={form.tableName} onChange={(e) => form.setTableName(e.target.value)} />
@@ -793,14 +785,6 @@ function FocusViewSection({ row }: { row: DataSource }) {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.catalog')}</span>
-            <Input value={remoteCatalog} disabled placeholder="main" />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
-            <Input value={silverSchema} disabled />
-          </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
             <Input value={tableName} onChange={(e) => setTableName(e.target.value)} />

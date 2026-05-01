@@ -534,7 +534,6 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
 
     // Transformation section state
     remoteCatalog,
-    silverSchema,
     tableName,
     setTableName,
     cron,
