@@ -6,6 +6,7 @@ import {
   type TransformationPipelinesResponse,
 } from '@lakecost/shared';
 import { buildUserExecutor, type SqlParam } from './statementExecution.js';
+import { normalizeHost } from './normalizeHost.js';
 import { WorkspaceServiceError } from './workspaceClientErrors.js';
 
 interface SourceForPipeline {
@@ -426,12 +427,6 @@ function buildPipelineParams(
 
 function stringConfig(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function normalizeHost(host: string | undefined): string | null {
-  if (!host) return null;
-  if (host.startsWith('http://') || host.startsWith('https://')) return host.replace(/\/+$/, '');
-  return `https://${host.replace(/\/+$/, '')}`;
 }
 
 function pipelineUrl(pipelineId: string | null, consoleHost: string | null): string | null {

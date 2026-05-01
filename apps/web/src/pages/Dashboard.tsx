@@ -60,10 +60,9 @@ import {
   useBudgets,
   useFocusOverview,
 } from '../api/hooks';
-import { useCurrencyUsd, useI18n } from '../i18n';
+import { useCurrencyUsd, useI18n, type TFunction } from '../i18n';
 
 type ProviderKey = 'databricks' | 'aws' | 'azure' | 'gcp' | 'snowflake' | 'other';
-type TFunction = (key: string, params?: Record<string, string | number>) => string;
 
 interface ProviderMeta {
   key: ProviderKey;
@@ -528,18 +527,12 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Gauge label={t('dashboard.gauge.riSpCoverage')} value={null} color="#49A078" t={t} />
-              <Gauge
-                label={t('dashboard.gauge.tagCoverage')}
-                value={tagCoverage}
-                color="#3B82F6"
-                t={t}
-              />
+              <Gauge label={t('dashboard.gauge.riSpCoverage')} value={null} color="#49A078" />
+              <Gauge label={t('dashboard.gauge.tagCoverage')} value={tagCoverage} color="#3B82F6" />
               <Gauge
                 label={t('dashboard.gauge.budgetUtil')}
                 value={overview.budgetUtilization}
                 color="#F2A72B"
-                t={t}
               />
             </div>
           </CardContent>
@@ -622,7 +615,7 @@ export function Dashboard() {
                   {overview.anomalies.map((anomaly) => (
                     <TableRow key={`${anomaly.label}-${anomaly.when}`}>
                       <TableCell>
-                        <SeverityBadge severity={anomaly.severity} t={t} />
+                        <SeverityBadge severity={anomaly.severity} />
                       </TableCell>
                       <TableCell>{anomaly.label}</TableCell>
                       <TableCell className="text-right text-(--danger)">
@@ -892,17 +885,8 @@ function HorizontalSpendBar({
   );
 }
 
-function Gauge({
-  label,
-  value,
-  color,
-  t,
-}: {
-  label: string;
-  value: number | null;
-  color: string;
-  t: TFunction;
-}) {
+function Gauge({ label, value, color }: { label: string; value: number | null; color: string }) {
+  const { t } = useI18n();
   const normalized = value === null ? 0 : Math.max(0, Math.min(100, value));
   return (
     <div className="rounded-md border border-border p-4 text-center">
@@ -923,7 +907,8 @@ function Gauge({
   );
 }
 
-function SeverityBadge({ severity, t }: { severity: Anomaly['severity']; t: TFunction }) {
+function SeverityBadge({ severity }: { severity: Anomaly['severity'] }) {
+  const { t } = useI18n();
   if (severity === 'resolved') {
     return <Badge variant="secondary">{t('dashboard.severity.resolved')}</Badge>;
   }
