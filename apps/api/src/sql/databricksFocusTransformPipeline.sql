@@ -333,37 +333,8 @@ CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_daily`
 COMMENT 'Databricks FOCUS daily billing rollup managed by FinLake'
 AS
 SELECT
-  CAST(ChargePeriodEnd AS DATE) AS ChargeDate,
-  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM') AS BillingMonth,
-  BillingAccountId AS billing_account_id,
-  BillingAccountName AS billing_account_name,
-  BillingCurrency AS billing_currency,
-  SubAccountId AS workspace_id,
-  SubAccountName AS workspace_name,
-  SubAccountType AS workspace_type,
-  ProviderName AS provider_name,
-  PublisherName AS publisher_name,
-  ServiceProviderName AS service_provider_name,
-  ServiceCategory AS service_category,
-  ServiceSubcategory AS service_subcategory,
-  ServiceName AS service_name,
-  ResourceId AS resource_id,
-  ResourceName AS resource_name,
-  ResourceType AS resource_type,
-  SkuId AS sku_id,
-  SkuMeter AS sku_meter,
-  ChargeDescription AS charge_description,
-  PricingUnit AS pricing_unit,
-  ConsumedUnit AS consumed_unit,
-  CAST(SUM(COALESCE(ConsumedQuantity, 0)) AS DECIMAL(30, 15)) AS consumed_quantity,
-  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS list_cost,
-  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS billed_cost,
-  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS contracted_cost,
-  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS effective_cost
-FROM `${table_name}`
-GROUP BY
-  CAST(ChargePeriodEnd AS DATE),
-  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM'),
+  CAST(ChargePeriodStart AS DATE) AS x_ChargeDate,
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE) AS x_BillingMonth,
   BillingAccountId,
   BillingAccountName,
   BillingCurrency,
@@ -383,43 +354,16 @@ GROUP BY
   SkuMeter,
   ChargeDescription,
   PricingUnit,
-  ConsumedUnit;
-
-CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_hourly`
-COMMENT 'Databricks FOCUS hourly billing rollup managed by FinLake'
-AS
-SELECT
-  CAST(DATE_TRUNC('HOUR', ChargePeriodStart) AS TIMESTAMP) AS ChargeHour,
-  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM') AS BillingMonth,
-  BillingAccountId AS billing_account_id,
-  BillingAccountName AS billing_account_name,
-  BillingCurrency AS billing_currency,
-  SubAccountId AS workspace_id,
-  SubAccountName AS workspace_name,
-  SubAccountType AS workspace_type,
-  ProviderName AS provider_name,
-  PublisherName AS publisher_name,
-  ServiceProviderName AS service_provider_name,
-  ServiceCategory AS service_category,
-  ServiceSubcategory AS service_subcategory,
-  ServiceName AS service_name,
-  ResourceId AS resource_id,
-  ResourceName AS resource_name,
-  ResourceType AS resource_type,
-  SkuId AS sku_id,
-  SkuMeter AS sku_meter,
-  ChargeDescription AS charge_description,
-  PricingUnit AS pricing_unit,
-  ConsumedUnit AS consumed_unit,
-  CAST(SUM(COALESCE(ConsumedQuantity, 0)) AS DECIMAL(30, 15)) AS consumed_quantity,
-  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS list_cost,
-  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS billed_cost,
-  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS contracted_cost,
-  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS effective_cost
+  ConsumedUnit,
+  CAST(SUM(COALESCE(ConsumedQuantity, 0)) AS DECIMAL(30, 15)) AS ConsumedQuantity,
+  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS ListCost,
+  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS BilledCost,
+  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS ContractedCost,
+  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS EffectiveCost
 FROM `${table_name}`
 GROUP BY
-  CAST(DATE_TRUNC('HOUR', ChargePeriodStart) AS TIMESTAMP),
-  DATE_FORMAT(BillingPeriodStart, 'yyyy-MM'),
+  CAST(ChargePeriodStart AS DATE),
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE),
   BillingAccountId,
   BillingAccountName,
   BillingCurrency,

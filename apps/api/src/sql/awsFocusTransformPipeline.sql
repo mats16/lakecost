@@ -125,3 +125,58 @@ FROM read_files(
   's3://${s3_bucket}/${s3_prefix}/${export_name}/data/**/*.parquet',
   format => 'parquet'
 );
+
+CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_daily`
+COMMENT 'AWS FOCUS daily billing rollup managed by FinLake'
+AS
+SELECT
+  CAST(ChargePeriodStart AS DATE) AS x_ChargeDate,
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE) AS x_BillingMonth,
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  PublisherName,
+  ProviderName AS ServiceProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  ResourceId,
+  ResourceName,
+  ResourceType,
+  SkuId,
+  SkuMeter,
+  ChargeDescription,
+  PricingUnit,
+  ConsumedUnit,
+  CAST(SUM(COALESCE(ConsumedQuantity, 0)) AS DECIMAL(30, 15)) AS ConsumedQuantity,
+  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS ListCost,
+  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS BilledCost,
+  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS ContractedCost,
+  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS EffectiveCost
+FROM `${table_name}`
+GROUP BY
+  CAST(ChargePeriodStart AS DATE),
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE),
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  PublisherName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  ResourceId,
+  ResourceName,
+  ResourceType,
+  SkuId,
+  SkuMeter,
+  ChargeDescription,
+  PricingUnit,
+  ConsumedUnit;
