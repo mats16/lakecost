@@ -111,7 +111,6 @@ export class SqliteClient implements DatabaseClient {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         template_id TEXT NOT NULL,
         name TEXT NOT NULL,
-        description TEXT,
         provider_name TEXT NOT NULL,
         billing_account_id TEXT,
         table_name TEXT NOT NULL,
@@ -403,7 +402,6 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
       .values({
         templateId: input.templateId,
         name: input.name,
-        description: input.description ?? null,
         providerName: input.providerName,
         billingAccountId: input.billingAccountId ?? null,
         tableName: input.tableName,
@@ -425,7 +423,6 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
       updatedAt: new Date().toISOString(),
     };
     if (patch.name !== undefined) set.name = patch.name;
-    if (patch.description !== undefined) set.description = patch.description;
     if (patch.providerName !== undefined) set.providerName = patch.providerName;
     if (patch.billingAccountId !== undefined) set.billingAccountId = patch.billingAccountId;
     if (patch.tableName !== undefined) set.tableName = patch.tableName;
@@ -455,7 +452,6 @@ function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
     id: row.id,
     templateId: row.templateId,
     name: row.name,
-    description: row.description,
     providerName: row.providerName,
     billingAccountId: row.billingAccountId,
     tableName: row.tableName,

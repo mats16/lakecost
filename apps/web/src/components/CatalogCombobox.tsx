@@ -69,7 +69,7 @@ export function CatalogCombobox({
           disabled={disabled}
           type="button"
           className={cn(
-            'max-w-md justify-between truncate font-normal',
+            'w-full justify-between truncate font-normal',
             !value && 'text-muted-foreground',
           )}
         >
@@ -83,7 +83,12 @@ export function CatalogCombobox({
       </PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command shouldFilter={true}>
-          <CommandInput value={query} onValueChange={setQuery} placeholder={searchPlaceholder} />
+          <CommandInput
+            className="catalog-combobox-search"
+            value={query}
+            onValueChange={setQuery}
+            placeholder={searchPlaceholder}
+          />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>

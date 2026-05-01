@@ -1,28 +1,16 @@
 import { useMemo, useState } from 'react';
-import {
-  CATALOG_SETTING_KEY,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
-  tableLeafName,
-  type DataSource,
-} from '@lakecost/shared';
+import { tableLeafName, type DataSource } from '@lakecost/shared';
 import { Input, Separator } from '@databricks/appkit-ui/react';
-import {
-  useAppSettings,
-  useCreateDataSource,
-  useDataSources,
-  useDataSourceTemplates,
-} from '../../api/hooks';
+import { useCreateDataSource, useDataSources, useDataSourceTemplates } from '../../api/hooks';
 import { DataSourceTile, type TileBadge } from './DataSourceTile';
 import { DataSourceDrawer } from './DataSourceDrawer';
 import {
   DATA_SOURCE_TEMPLATES,
   canCreateTemplate,
-  displayDescriptionForRow,
   displayNameForRow,
   findTemplateForRow,
   getTemplateInputConfig,
   getTemplateRegistryEntry,
-  type DataSourceTemplateInputConfig,
   type DataSourceTemplate,
 } from './dataSourceCatalog';
 import { useI18n } from '../../i18n';
@@ -42,11 +30,6 @@ const FALLBACK_TEMPLATE: DataSourceTemplate = {
 
 function templateForRow(row: DataSource): DataSourceTemplate {
   return findTemplateForRow(row) ?? FALLBACK_TEMPLATE;
-}
-
-function initialTableName(input: DataSourceTemplateInputConfig, catalog: string): string {
-  if (input.providerName !== 'Databricks' || !catalog) return input.defaultTableName;
-  return `${catalog}.${FOCUS_VIEW_SCHEMA_DEFAULT}.${input.defaultTableName}`;
 }
 
 function rowMatchesTemplate(row: DataSource, template: DataSourceTemplate): boolean {
@@ -75,7 +58,6 @@ export function DataSources() {
   const [draftAwsSource, setDraftAwsSource] = useState<AwsFocusDraft | null>(null);
   const dataSources = useDataSources();
   const templates = useDataSourceTemplates();
-  const settings = useAppSettings();
   const createDs = useCreateDataSource();
 
   const rows = dataSources.data?.items ?? [];
@@ -129,7 +111,7 @@ export function DataSources() {
     }
     const tableName = canAddMultiple(tpl)
       ? nextTableName(input.defaultTableName, rows)
-      : initialTableName(input, settings.data?.settings[CATALOG_SETTING_KEY]?.trim() ?? '');
+      : input.defaultTableName;
     if (tpl.id === 'aws') {
       setOpenId(null);
       setDraftAwsSource({
@@ -137,7 +119,6 @@ export function DataSources() {
         name: tpl.name,
         providerName: input.providerName,
         tableName,
-        description: tpl.description,
       });
       return;
     }
@@ -146,7 +127,6 @@ export function DataSources() {
       name: tpl.name,
       providerName: input.providerName,
       tableName,
-      description: tpl.description,
       enabled: false,
     });
     setDraftAwsSource(null);
@@ -180,7 +160,6 @@ export function DataSources() {
                 source={tpl}
                 logo={registryEntry?.logo}
                 displayName={displayNameForRow(row, tpl)}
-                displayDescription={displayDescriptionForRow(row, tpl)}
                 badges={badgesFor(row)}
                 onClick={() => setOpenId(row.id)}
               />

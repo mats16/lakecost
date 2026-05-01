@@ -94,8 +94,8 @@ export const en = {
   settings: {
     title: 'Settings',
     subtitle: 'Application configuration',
-    mainCatalogHeading: 'Main catalog',
-    mainCatalogDesc: 'The Unity Catalog catalog name used as the main catalog.',
+    mainCatalogHeading: 'Catalog & Schemas',
+    mainCatalogDesc: 'Configure the catalog and schemas used by FinLake.',
     mainCatalogPlaceholder: 'main',
     catalogTypeLabel: 'Catalog type',
     catalogNameLabel: 'Catalog name',
@@ -119,6 +119,14 @@ export const en = {
     provisionSchemaFailed: 'Could not create schema "{schema}" — see warnings below.',
     provisionGrantFailed: 'GRANT for {scope} failed: {message}',
     provisionScopeCatalog: 'catalog',
+    medallion: {
+      schemaLabel: 'Schema names',
+      goldLabel: 'Gold',
+      silverLabel: 'Silver',
+      bronzeLabel: 'Bronze',
+      invalid:
+        'Schema names must start with a letter or underscore and contain only letters, numbers, and underscores.',
+    },
   },
   configure: {
     title: 'Configure',
@@ -151,6 +159,12 @@ export const en = {
     drawer: {
       notImplemented:
         "This provider is not yet implemented. We're tracking it on the FinLake roadmap.",
+    },
+    name: {
+      title: 'Display name',
+      label: 'Name',
+      edit: 'Edit name',
+      save: 'Save name',
     },
     systemTables: {
       title: 'Transformation',

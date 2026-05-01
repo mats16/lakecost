@@ -98,8 +98,8 @@ export const ja: Dictionary = {
   settings: {
     title: '設定',
     subtitle: 'アプリケーション設定',
-    mainCatalogHeading: 'メインカタログ',
-    mainCatalogDesc: 'メインで利用する Unity Catalog のカタログ名です。',
+    mainCatalogHeading: 'カタログとスキーマ',
+    mainCatalogDesc: 'FinLake で利用するカタログとスキーマの設定です。',
     mainCatalogPlaceholder: 'main',
     catalogTypeLabel: 'カタログのタイプ',
     catalogNameLabel: 'カタログの名前',
@@ -124,6 +124,14 @@ export const ja: Dictionary = {
       'スキーマ「{schema}」を作成できませんでした。下の警告を確認してください。',
     provisionGrantFailed: '{scope} への GRANT に失敗しました: {message}',
     provisionScopeCatalog: 'catalog',
+    medallion: {
+      schemaLabel: 'スキーマ名',
+      goldLabel: 'Gold',
+      silverLabel: 'Silver',
+      bronzeLabel: 'Bronze',
+      invalid:
+        'スキーマ名は英字またはアンダースコアで始め、英数字とアンダースコアのみを利用してください。',
+    },
   },
   configure: {
     title: '構成',
@@ -156,6 +164,12 @@ export const ja: Dictionary = {
     drawer: {
       notImplemented:
         'このプロバイダーはまだ実装されていません。FinLake のロードマップで進捗を追跡しています。',
+    },
+    name: {
+      title: '表示名',
+      label: '名前',
+      edit: '名前を編集',
+      save: '名前を保存',
     },
     systemTables: {
       title: '変換',

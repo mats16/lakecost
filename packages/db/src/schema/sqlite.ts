@@ -61,7 +61,6 @@ export const dataSources = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     templateId: text('template_id').notNull(),
     name: text('name').notNull(),
-    description: text('description'),
     providerName: text('provider_name').notNull(),
     billingAccountId: text('billing_account_id'),
     tableName: text('table_name').notNull(),

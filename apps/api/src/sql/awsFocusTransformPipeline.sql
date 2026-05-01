@@ -126,7 +126,7 @@ FROM read_files(
   format => 'parquet'
 );
 
-CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_daily`
+CREATE OR REFRESH MATERIALIZED VIEW `${gold_schema_name}`.`${table_name}_daily`
 COMMENT 'AWS FOCUS daily billing rollup managed by FinLake'
 AS
 SELECT

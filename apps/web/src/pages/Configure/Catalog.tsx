@@ -24,7 +24,9 @@ import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import {
   CATALOG_SETTING_KEY,
   IDENT_RE,
+  MEDALLION_SCHEMA_DEFAULTS,
   MEDALLION_SCHEMAS,
+  MEDALLION_SCHEMA_SETTING_KEYS,
   quoteIdent,
   quotePrincipal,
   schemaGrantPrivileges,
@@ -37,6 +39,26 @@ import { messageOf } from './utils';
 
 type CatalogMode = 'existing' | 'create';
 type Severity = 'success' | 'warning' | 'error';
+type MedallionSchemaSettingKey =
+  (typeof MEDALLION_SCHEMA_SETTING_KEYS)[keyof typeof MEDALLION_SCHEMA_SETTING_KEYS];
+
+const MEDALLION_SCHEMA_FIELDS = [
+  {
+    key: MEDALLION_SCHEMA_SETTING_KEYS.bronze,
+    defaultValue: MEDALLION_SCHEMA_DEFAULTS.bronze,
+    labelKey: 'settings.medallion.bronzeLabel',
+  },
+  {
+    key: MEDALLION_SCHEMA_SETTING_KEYS.silver,
+    defaultValue: MEDALLION_SCHEMA_DEFAULTS.silver,
+    labelKey: 'settings.medallion.silverLabel',
+  },
+  {
+    key: MEDALLION_SCHEMA_SETTING_KEYS.gold,
+    defaultValue: MEDALLION_SCHEMA_DEFAULTS.gold,
+    labelKey: 'settings.medallion.goldLabel',
+  },
+] as const;
 
 const SEVERITY_VARIANT: Record<Severity, 'default' | 'destructive'> = {
   success: 'default',
@@ -56,22 +78,31 @@ const SEVERITY_TITLE_KEY: Record<Severity, string> = {
   error: 'settings.provisionFailed',
 };
 
-export function Admin() {
+export function Catalog() {
   const { t } = useI18n();
   const settings = useAppSettings();
   const catalogs = useCatalogs();
   const updateSettings = useUpdateAppSettings();
 
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
+  const remoteMedallionSchemas = useMemo(
+    () => medallionSchemaValues(settings.data?.settings),
+    [settings.data?.settings],
+  );
   const [mode, setMode] = useState<CatalogMode>('create');
   const [selectedCatalog, setSelectedCatalog] = useState(remoteCatalog);
   const [newCatalogName, setNewCatalogName] = useState('');
+  const [medallionSchemas, setMedallionSchemas] = useState(remoteMedallionSchemas);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   useEffect(() => {
     setSelectedCatalog(remoteCatalog);
     if (remoteCatalog) setMode('existing');
   }, [remoteCatalog]);
+
+  useEffect(() => {
+    setMedallionSchemas(remoteMedallionSchemas);
+  }, [remoteMedallionSchemas]);
 
   const hasConfiguredCatalog = remoteCatalog.length > 0;
   const catalogName = hasConfiguredCatalog
@@ -80,14 +111,27 @@ export function Admin() {
       ? selectedCatalog.trim()
       : newCatalogName.trim();
   const isCreate = !hasConfiguredCatalog && mode === 'create';
-  const dirty = !hasConfiguredCatalog && catalogName !== remoteCatalog;
+  const catalogDirty = !hasConfiguredCatalog && catalogName !== remoteCatalog;
   const validName =
     catalogName.length > 0 &&
     (hasConfiguredCatalog || mode === 'existing' || IDENT_RE.test(catalogName));
   const saving = updateSettings.isPending;
+  const medallionPayload = useMemo(
+    () => trimMedallionSchemaValues(medallionSchemas),
+    [medallionSchemas],
+  );
+  const medallionDirty = MEDALLION_SCHEMA_FIELDS.some(({ key, defaultValue }) => {
+    const stored = settings.data?.settings[key]?.trim();
+    const effective = stored || defaultValue;
+    return medallionPayload[key] !== effective;
+  });
+  const medallionValid = MEDALLION_SCHEMA_FIELDS.every(({ key }) =>
+    IDENT_RE.test(medallionPayload[key]),
+  );
+  const dirty = catalogDirty || medallionDirty;
   const submitDisabled = hasConfiguredCatalog
-    ? saving || !validName
-    : !dirty || saving || !validName;
+    ? saving || !validName || !medallionValid
+    : !dirty || saving || !validName || !medallionValid;
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -95,7 +139,7 @@ export function Admin() {
     updateSettings.reset();
     updateSettings.mutate(
       {
-        settings: { [CATALOG_SETTING_KEY]: catalogName },
+        settings: { [CATALOG_SETTING_KEY]: catalogName, ...medallionPayload },
         provision: { createIfMissing: isCreate },
       },
       {
@@ -109,8 +153,8 @@ export function Admin() {
 
   const provision = updateSettings.data?.provision ?? null;
   const provisionMessages = useMemo(
-    () => (provision ? buildProvisionMessages(provision, t) : null),
-    [provision, t],
+    () => (provision ? buildProvisionMessages(provision, t, medallionPayload) : null),
+    [medallionPayload, provision, t],
   );
 
   return (
@@ -123,10 +167,10 @@ export function Admin() {
         <CardContent>
           <FieldGroup>
             {!hasConfiguredCatalog ? (
-              <Field>
+              <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
                 <FieldLabel>{t('settings.catalogTypeLabel')}</FieldLabel>
                 <Select value={mode} onValueChange={(v: string) => setMode(v as CatalogMode)}>
-                  <SelectTrigger className="max-w-md">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -134,42 +178,70 @@ export function Admin() {
                     <SelectItem value="existing">{t('settings.catalogModeExisting')}</SelectItem>
                   </SelectContent>
                 </Select>
-              </Field>
+              </div>
             ) : null}
 
-            <Field>
+            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
               <FieldLabel>{t('settings.catalogNameLabel')}</FieldLabel>
-              {hasConfiguredCatalog ? (
-                <Input className="max-w-md" value={remoteCatalog} disabled readOnly />
-              ) : mode === 'existing' ? (
-                <CatalogCombobox
-                  value={selectedCatalog}
-                  onChange={(sel) => setSelectedCatalog(sel.name)}
-                  options={catalogs.data?.catalogs ?? []}
-                  loading={catalogs.isLoading}
-                  disabled={settings.isLoading || saving}
-                  placeholder={t('settings.catalogSelectPlaceholder')}
-                  searchPlaceholder={t('settings.catalogSearchPlaceholder')}
-                  emptyText={t('settings.catalogEmpty')}
-                  allowCreate={false}
-                />
-              ) : (
-                <Input
-                  id="new-catalog-name"
-                  className="max-w-md"
-                  value={newCatalogName}
-                  onChange={(e) => setNewCatalogName(e.target.value)}
-                  placeholder={t('settings.catalogCreatePlaceholder')}
-                  disabled={settings.isLoading || saving}
-                />
-              )}
-            </Field>
+              <div>
+                {hasConfiguredCatalog ? (
+                  <Input value={remoteCatalog} disabled readOnly />
+                ) : mode === 'existing' ? (
+                  <CatalogCombobox
+                    value={selectedCatalog}
+                    onChange={(sel) => setSelectedCatalog(sel.name)}
+                    options={catalogs.data?.catalogs ?? []}
+                    loading={catalogs.isLoading}
+                    disabled={settings.isLoading || saving}
+                    placeholder={t('settings.catalogSelectPlaceholder')}
+                    searchPlaceholder={t('settings.catalogSearchPlaceholder')}
+                    emptyText={t('settings.catalogEmpty')}
+                    allowCreate={false}
+                  />
+                ) : (
+                  <Input
+                    id="new-catalog-name"
+                    value={newCatalogName}
+                    onChange={(e) => setNewCatalogName(e.target.value)}
+                    placeholder={t('settings.catalogCreatePlaceholder')}
+                    disabled={settings.isLoading || saving}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
+              <FieldLabel className="md:pt-2">{t('settings.medallion.schemaLabel')}</FieldLabel>
+              <div className="grid gap-3 md:grid-cols-3">
+                {MEDALLION_SCHEMA_FIELDS.map(({ key, defaultValue, labelKey }) => (
+                  <Field key={key}>
+                    <FieldLabel>{t(labelKey)}</FieldLabel>
+                    <Input
+                      value={medallionSchemas[key]}
+                      onChange={(e) =>
+                        setMedallionSchemas((cur) => ({ ...cur, [key]: e.target.value }))
+                      }
+                      placeholder={defaultValue}
+                      disabled={settings.isLoading || saving || hasConfiguredCatalog}
+                      readOnly={hasConfiguredCatalog}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
 
             {!hasConfiguredCatalog && catalogsError ? (
               <Alert variant="destructive">
                 <AlertCircle />
                 <AlertTitle>{t('settings.catalogLoadFailed')}</AlertTitle>
                 <AlertDescription>{catalogsError}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {!medallionValid ? (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertDescription>{t('settings.medallion.invalid')}</AlertDescription>
               </Alert>
             ) : null}
 
@@ -184,7 +256,11 @@ export function Admin() {
                     <Spinner /> {t('common.saving')}
                   </>
                 ) : hasConfiguredCatalog ? (
-                  t('settings.fixPermission')
+                  medallionDirty ? (
+                    t('settings.save')
+                  ) : (
+                    t('settings.fixPermission')
+                  )
                 ) : isCreate ? (
                   t('settings.saveAndCreate')
                 ) : (
@@ -231,6 +307,29 @@ export function Admin() {
   );
 }
 
+function medallionSchemaValues(
+  settings?: Record<string, string>,
+): Record<MedallionSchemaSettingKey, string> {
+  return {
+    [MEDALLION_SCHEMA_SETTING_KEYS.gold]:
+      settings?.[MEDALLION_SCHEMA_SETTING_KEYS.gold]?.trim() || MEDALLION_SCHEMA_DEFAULTS.gold,
+    [MEDALLION_SCHEMA_SETTING_KEYS.silver]:
+      settings?.[MEDALLION_SCHEMA_SETTING_KEYS.silver]?.trim() || MEDALLION_SCHEMA_DEFAULTS.silver,
+    [MEDALLION_SCHEMA_SETTING_KEYS.bronze]:
+      settings?.[MEDALLION_SCHEMA_SETTING_KEYS.bronze]?.trim() || MEDALLION_SCHEMA_DEFAULTS.bronze,
+  };
+}
+
+function trimMedallionSchemaValues(
+  values: Record<MedallionSchemaSettingKey, string>,
+): Record<MedallionSchemaSettingKey, string> {
+  return {
+    [MEDALLION_SCHEMA_SETTING_KEYS.gold]: values[MEDALLION_SCHEMA_SETTING_KEYS.gold].trim(),
+    [MEDALLION_SCHEMA_SETTING_KEYS.silver]: values[MEDALLION_SCHEMA_SETTING_KEYS.silver].trim(),
+    [MEDALLION_SCHEMA_SETTING_KEYS.bronze]: values[MEDALLION_SCHEMA_SETTING_KEYS.bronze].trim(),
+  };
+}
+
 interface ProvisionMessages {
   severity: Severity;
   lines: string[];
@@ -240,6 +339,7 @@ interface ProvisionMessages {
 function buildProvisionMessages(
   p: ProvisionResult,
   t: (key: string, params?: Record<string, string | number>) => string,
+  schemaNames: Record<MedallionSchemaSettingKey, string>,
 ): ProvisionMessages {
   const lines: string[] = [];
   if (p.catalogCreated) {
@@ -284,19 +384,27 @@ function buildProvisionMessages(
 
   const remediation =
     grantFailures.length > 0 && p.servicePrincipalId
-      ? renderRemediationSql(p.catalog, p.servicePrincipalId)
+      ? renderRemediationSql(p.catalog, p.servicePrincipalId, schemaNames)
       : null;
 
   return { severity, lines, remediation };
 }
 
-function renderRemediationSql(catalog: string, sp: string): string {
+function renderRemediationSql(
+  catalog: string,
+  sp: string,
+  schemaNames: Record<MedallionSchemaSettingKey, string>,
+): string {
   const cat = quoteIdent(catalog);
   const principal = quotePrincipal(sp);
   const lines: string[] = [];
   lines.push(`GRANT USE CATALOG ON CATALOG ${cat} TO ${principal};`);
   for (const s of MEDALLION_SCHEMAS) {
-    lines.push(`GRANT ${schemaGrantPrivileges(s)} ON SCHEMA ${cat}.\`${s}\` TO ${principal};`);
+    lines.push(
+      `GRANT ${schemaGrantPrivileges(s)} ON SCHEMA ${cat}.${quoteIdent(
+        schemaNames[MEDALLION_SCHEMA_SETTING_KEYS[s]],
+      )} TO ${principal};`,
+    );
   }
   return lines.join('\n');
 }

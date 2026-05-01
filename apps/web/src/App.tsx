@@ -5,7 +5,7 @@ import { CostExplorer } from './pages/CostExplorer';
 import { Budgets } from './pages/Budgets';
 import { ConfigureLayout } from './pages/Configure/ConfigureLayout';
 import { DataSources } from './pages/Configure/DataSources';
-import { Admin } from './pages/Configure/Admin';
+import { Catalog } from './pages/Configure/Catalog';
 import { Stub } from './pages/Configure/Stub';
 
 export function App() {
@@ -29,10 +29,10 @@ export function App() {
               />
             }
           />
-          <Route path="admin" element={<Admin />} />
+          <Route path="catalog" element={<Catalog />} />
         </Route>
 
-        <Route path="/settings" element={<Navigate to="/configure/admin" replace />} />
+        <Route path="/settings" element={<Navigate to="/configure/catalog" replace />} />
         <Route path="/setup" element={<Navigate to="/configure/data-sources" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

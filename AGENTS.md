@@ -60,8 +60,8 @@ The DB layer is the most-edited area and the easiest to break. Three things to k
 
 3. **SQLite path resolution** (`packages/db/src/paths.ts`):
    - explicit `SQLITE_PATH` wins
-   - `/home/app/data/lakecost.db` if the directory `/home/app` exists (Databricks Apps mounts it; only writable path on the runtime)
-   - else `<cwd>/data/lakecost.db` (local dev)
+   - `/home/app/data/finlake.db` if the directory `/home/app` exists (Databricks Apps mounts it; only writable path on the runtime)
+   - else `<cwd>/data/finlake.db` (local dev)
 
    The signal is filesystem presence, not env vars — `DATABRICKS_APP_NAME` and friends are commonly set in local `.env.local` files to identify the deploy target, so they cannot be used to detect "are we running on Databricks Apps".
 

@@ -1,8 +1,33 @@
 import { z } from 'zod';
-import { IDENT_RE } from '../sql/focusView.sql.js';
+import { IDENT_RE, type MedallionSchema } from '../sql/focusView.sql.js';
 
 /** `app_settings` key holding the default Unity Catalog name. */
 export const CATALOG_SETTING_KEY = 'catalog_name';
+
+/** `app_settings` keys holding Unity Catalog schema names by medallion layer. */
+export const MEDALLION_SCHEMA_SETTING_KEYS = {
+  gold: 'gold_schema_name',
+  silver: 'silver_schema_name',
+  bronze: 'bronze_schema_name',
+} as const;
+
+export const MEDALLION_SCHEMA_DEFAULTS = {
+  bronze: 'bronze',
+  silver: 'silver',
+  gold: 'gold',
+} as const satisfies Record<MedallionSchema, string>;
+
+export function medallionSchemaNamesFromSettings(
+  settings: Record<string, string | undefined>,
+): Record<MedallionSchema, string> {
+  return {
+    bronze:
+      settings[MEDALLION_SCHEMA_SETTING_KEYS.bronze]?.trim() || MEDALLION_SCHEMA_DEFAULTS.bronze,
+    silver:
+      settings[MEDALLION_SCHEMA_SETTING_KEYS.silver]?.trim() || MEDALLION_SCHEMA_DEFAULTS.silver,
+    gold: settings[MEDALLION_SCHEMA_SETTING_KEYS.gold]?.trim() || MEDALLION_SCHEMA_DEFAULTS.gold,
+  };
+}
 
 export const DataSourceIdentifierSchema = z
   .string()
@@ -23,10 +48,9 @@ export const DataSourceSchema = z.object({
   id: z.number().int().positive(),
   templateId: z.string().min(1).max(128),
   name: z.string().min(1).max(256),
-  description: z.string().max(2048).nullable(),
   providerName: z.string().min(1).max(64),
   billingAccountId: z.string().max(128).nullable(),
-  tableName: DataSourceTableNameSchema,
+  tableName: DataSourceIdentifierSchema,
   jobId: z.number().int().positive().nullable(),
   pipelineId: z.string().min(1).max(128).nullable(),
   focusVersion: z.string().min(1).max(32).nullable(),
@@ -39,10 +63,9 @@ export type DataSource = z.infer<typeof DataSourceSchema>;
 export const DataSourceCreateBodySchema = z.object({
   templateId: z.string().min(1).max(128),
   name: z.string().min(1).max(256),
-  description: z.string().max(2048).nullable().optional(),
   providerName: z.string().min(1).max(64),
   billingAccountId: z.string().max(128).nullable().optional(),
-  tableName: DataSourceTableNameSchema,
+  tableName: DataSourceIdentifierSchema,
   enabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });
@@ -50,10 +73,9 @@ export type DataSourceCreateBody = z.infer<typeof DataSourceCreateBodySchema>;
 
 export const DataSourceUpdateBodySchema = z.object({
   name: z.string().min(1).max(256).optional(),
-  description: z.string().max(2048).nullable().optional(),
   providerName: z.string().min(1).max(64).optional(),
   billingAccountId: z.string().max(128).nullable().optional(),
-  tableName: DataSourceTableNameSchema.optional(),
+  tableName: DataSourceIdentifierSchema.optional(),
   enabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
 });

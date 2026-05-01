@@ -15,7 +15,7 @@ import {
   CATALOG_SETTING_KEY,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
+  medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   s3BucketFromUrl,
   s3ExportPath,
@@ -39,7 +39,7 @@ const EXPORT_NAME_PREVIEW_PLACEHOLDER = '{export_name}';
 
 export type AwsFocusDraft = Pick<
   DataSourceCreateBody,
-  'templateId' | 'name' | 'description' | 'providerName' | 'tableName'
+  'templateId' | 'name' | 'providerName' | 'tableName'
 >;
 
 function configString(config: Record<string, unknown>, key: string): string {
@@ -175,12 +175,13 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
 
   // --- Remote (server) values ---
   const remoteConfig = row?.config ?? {};
-  const remoteAwsAccountId = configString(remoteConfig, 'awsAccountId');
+  const remoteAwsAccountId = row?.billingAccountId ?? configString(remoteConfig, 'awsAccountId');
   const remoteExternalLocationName = configString(remoteConfig, 'externalLocationName');
   const remoteExternalLocationUrl = configString(remoteConfig, 'externalLocationUrl');
   const remoteExportName = configString(remoteConfig, 'exportName');
   const remoteS3Prefix = configString(remoteConfig, 's3Prefix');
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
+  const silverSchema = medallionSchemaNamesFromSettings(settings.data?.settings ?? {}).silver;
   const remoteCron = configString(remoteConfig, 'cronExpression') || FOCUS_REFRESH_CRON_DEFAULT;
   const remoteTz = configString(remoteConfig, 'timezoneId') || FOCUS_REFRESH_TIMEZONE_DEFAULT;
 
@@ -305,8 +306,8 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   const pipelineId = result?.pipelineId ?? row?.pipelineId ?? null;
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const fqn = remoteCatalog
-    ? unquotedFqn(remoteCatalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName)
-    : `${FOCUS_VIEW_SCHEMA_DEFAULT}.${tableName}`;
+    ? unquotedFqn(remoteCatalog, silverSchema, tableName)
+    : `${silverSchema}.${tableName}`;
   const hadScheduleBeforeSetup = row?.jobId !== null && row?.jobId !== undefined;
   const setupDisabled =
     !row ||
@@ -367,11 +368,12 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     if (row) {
       await updateDs.mutateAsync({
         id: row.id,
-        body: { config },
+        body: { billingAccountId: awsAccountId, config },
       });
     } else if (options.draft) {
       const created = await createDs.mutateAsync({
         ...options.draft,
+        billingAccountId: awsAccountId,
         enabled: false,
         config,
       });
@@ -388,7 +390,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     });
     await updateDs.mutateAsync({
       id: row.id,
-      body: { config },
+      body: { billingAccountId: awsAccountId, config },
     });
   };
 
@@ -532,6 +534,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
 
     // Transformation section state
     remoteCatalog,
+    silverSchema,
     tableName,
     setTableName,
     cron,

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { DatabaseClient } from '@lakecost/db';
-import { CATALOG_SETTING_KEY, type Env } from '@lakecost/shared';
+import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
+import { CATALOG_SETTING_KEY, medallionSchemaNamesFromSettings, type Env } from '@lakecost/shared';
 import { CatalogServiceError, provisionCatalog } from '../services/catalogs.js';
 import { logger } from '../config/logger.js';
 
@@ -38,9 +38,7 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
 
   router.get('/', async (_req, res, next) => {
     try {
-      const rows = await db.repos.appSettings.list();
-      const settings: Record<string, string> = {};
-      for (const row of rows) settings[row.key] = row.value;
+      const settings = settingsToRecord(await db.repos.appSettings.list());
       res.json({ settings });
     } catch (err) {
       next(err);
@@ -67,9 +65,7 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
       for (const [key, value] of Object.entries(parsed.data.settings)) {
         await db.repos.appSettings.upsert(key, value);
       }
-      const rows = await db.repos.appSettings.list();
-      const settings: Record<string, string> = {};
-      for (const row of rows) settings[row.key] = row.value;
+      const settings = settingsToRecord(await db.repos.appSettings.list());
 
       const hasCatalog = newCatalog !== undefined && newCatalog.length > 0;
       const shouldProvision = hasCatalog && parsed.data.provision !== undefined;
@@ -82,6 +78,7 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
       try {
         const provision = await provisionCatalog(env, req.user?.accessToken, newCatalog, {
           createIfMissing: parsed.data.provision?.createIfMissing,
+          schemaNames: medallionSchemaNamesFromSettings(settings),
         });
         res.json({ settings, provision });
       } catch (err) {

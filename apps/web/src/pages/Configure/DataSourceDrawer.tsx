@@ -20,7 +20,7 @@ import {
   Spinner,
   cn,
 } from '@databricks/appkit-ui/react';
-import { ExternalLink, Info, X } from 'lucide-react';
+import { Check, ExternalLink, Info, Pencil, X } from 'lucide-react';
 import {
   useAppSettings,
   useDataSource,
@@ -28,13 +28,14 @@ import {
   useMe,
   useRunDataSourceJob,
   useSetupDataSource,
+  useUpdateDataSource,
 } from '../../api/hooks';
 import {
   ACCOUNT_PRICES_DEFAULT,
   CATALOG_SETTING_KEY,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
+  medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   s3BucketFromUrl,
   tableLeafName,
@@ -86,15 +87,18 @@ export function DataSourceDrawer({ dataSourceId, draftAwsSource, onClose, onCrea
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader>
-          <SheetTitle>
-            {row
-              ? template
-                ? displayNameForRow(row, template)
-                : row.name
-              : draftAwsSource
-                ? (template?.name ?? draftAwsSource.name)
-                : t('common.loading')}
-          </SheetTitle>
+          <DataSourceDrawerTitle
+            row={row}
+            title={
+              row
+                ? template
+                  ? displayNameForRow(row, template)
+                  : row.name
+                : draftAwsSource
+                  ? (template?.name ?? draftAwsSource.name)
+                  : t('common.loading')
+            }
+          />
         </SheetHeader>
         <div className="flex flex-col gap-4 overflow-auto px-4 pb-6">
           {descriptionKey ? (
@@ -146,6 +150,96 @@ function Configurator({ row, onClose }: { row: DataSource; onClose: () => void }
         </Button>
       </div>
     </>
+  );
+}
+
+function DataSourceDrawerTitle({ row, title }: { row?: DataSource; title: string }) {
+  const { t } = useI18n();
+  const updateDs = useUpdateDataSource();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(title);
+  const trimmedName = name.trim();
+  const dirty = trimmedName !== title;
+
+  useEffect(() => {
+    if (!editing) setName(title);
+  }, [editing, title]);
+
+  const onSave = async () => {
+    if (!row || !trimmedName || !dirty) return;
+    await updateDs.mutateAsync({ id: row.id, body: { name: trimmedName } });
+    setEditing(false);
+  };
+
+  const onCancel = () => {
+    setName(title);
+    setEditing(false);
+  };
+
+  if (editing && row) {
+    return (
+      <div className="grid gap-2">
+        <SheetTitle className="sr-only">{title}</SheetTitle>
+        <form
+          className="flex min-w-0 items-center gap-2 pr-8"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSave();
+          }}
+        >
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={updateDs.isPending}
+            autoFocus
+            aria-label={t('dataSources.name.label')}
+            className="h-14 min-w-0 text-4xl font-semibold"
+          />
+          <Button
+            type="submit"
+            disabled={updateDs.isPending || !trimmedName || !dirty}
+            aria-label={t('dataSources.name.save')}
+            className="size-10 shrink-0 p-0"
+          >
+            {updateDs.isPending ? <Spinner /> : <Check className="size-4" aria-hidden="true" />}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={updateDs.isPending}
+            onClick={onCancel}
+            aria-label={t('common.cancel')}
+            className="size-10 shrink-0 p-0"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </Button>
+        </form>
+        {updateDs.error ? (
+          <Alert variant="destructive">
+            <Info />
+            <AlertDescription>{(updateDs.error as Error).message}</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <SheetTitle>
+      <span className="inline-flex min-w-0 items-center gap-2 pr-8 align-middle">
+        <span className="truncate">{title}</span>
+        {row ? (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 inline-grid size-9 shrink-0 place-items-center rounded-md transition-colors"
+            aria-label={t('dataSources.name.edit')}
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </span>
+    </SheetTitle>
   );
 }
 
@@ -531,7 +625,7 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
           </label>
           <label className="grid gap-1 text-xs">
             <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
-            <Input value={FOCUS_VIEW_SCHEMA_DEFAULT} disabled />
+            <Input value={form.silverSchema} disabled />
           </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
@@ -648,6 +742,7 @@ function FocusViewSection({ row }: { row: DataSource }) {
   const runJob = useRunDataSourceJob();
 
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
+  const silverSchema = medallionSchemaNamesFromSettings(settings.data?.settings ?? {}).silver;
   const remoteAccountPrices =
     (row.config.accountPricesTable as string | undefined) ?? ACCOUNT_PRICES_DEFAULT;
   const remoteCron =
@@ -671,8 +766,8 @@ function FocusViewSection({ row }: { row: DataSource }) {
   useEffect(() => setTimezone(remoteTz), [remoteTz]);
 
   const fqn = remoteCatalog
-    ? unquotedFqn(remoteCatalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName)
-    : `${FOCUS_VIEW_SCHEMA_DEFAULT}.${tableName}`;
+    ? unquotedFqn(remoteCatalog, silverSchema, tableName)
+    : `${silverSchema}.${tableName}`;
 
   const onSetup = async () => {
     const r = await setupDs.mutateAsync({
@@ -704,7 +799,7 @@ function FocusViewSection({ row }: { row: DataSource }) {
           </label>
           <label className="grid gap-1 text-xs">
             <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
-            <Input value={FOCUS_VIEW_SCHEMA_DEFAULT} disabled />
+            <Input value={silverSchema} disabled />
           </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>

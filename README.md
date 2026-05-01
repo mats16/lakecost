@@ -26,8 +26,8 @@ npm run dev
 # Express API:    http://localhost:8080/api/health
 ```
 
-The default `DB_BACKEND=sqlite` writes to `./data/lakecost.db` locally and
-`/home/app/data/lakecost.db` on Databricks Apps.
+The default `DB_BACKEND=sqlite` writes to `./data/finlake.db` locally and
+`/home/app/data/finlake.db` on Databricks Apps.
 
 ## Deploying to Databricks Apps
 

@@ -54,7 +54,6 @@ export interface DataSourceValue {
   id: number;
   templateId: string;
   name: string;
-  description: string | null;
   providerName: string;
   billingAccountId: string | null;
   tableName: string;
@@ -98,6 +97,10 @@ export interface AppSettingsRepo {
   list(): Promise<AppSettingValue[]>;
   upsert(key: string, value: string): Promise<AppSettingValue>;
   delete(key: string): Promise<void>;
+}
+
+export function settingsToRecord(rows: AppSettingValue[]): Record<string, string> {
+  return Object.fromEntries(rows.map((row) => [row.key, row.value]));
 }
 
 export interface Repositories {

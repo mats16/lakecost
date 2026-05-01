@@ -1,9 +1,11 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
-import type { DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
 import {
+  CATALOG_SETTING_KEY,
   DataSourceTableNameSchema,
   UsageRangeSchema,
+  medallionSchemaNamesFromSettings,
   quoteIdent,
   type DataSource,
   type Env,
@@ -74,6 +76,9 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
 
       const range = parseRange(req.query);
       const sources = (await db.repos.dataSources.list()).filter((source) => source.enabled);
+      const appSettings = settingsToRecord(await db.repos.appSettings.list());
+      const catalog = (appSettings[CATALOG_SETTING_KEY] ?? '').trim();
+      const goldSchema = medallionSchemaNamesFromSettings(appSettings).gold;
       const daily: FocusDailyRow[] = [];
       const services: FocusServiceRow[] = [];
       const skus: FocusSkuRow[] = [];
@@ -87,12 +92,13 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
 
       await Promise.all(
         sources.map(async (source) => {
+          const resolved = focusDailyTableName(source.tableName, catalog, goldSchema);
           try {
             const [d, svc, sk, cov] = await Promise.all([
-              queryDaily(executor, source, range),
-              queryServices(executor, source, range),
-              querySkus(executor, source, range),
-              queryCoverage(executor, source, range),
+              queryDaily(executor, source, range, resolved.sql),
+              queryServices(executor, source, range, resolved.sql),
+              querySkus(executor, source, range, resolved.sql),
+              queryCoverage(executor, source, range, resolved.sql),
             ]);
             daily.push(...d);
             services.push(...svc);
@@ -102,7 +108,7 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
             errors.push({
               dataSourceId: source.id,
               name: source.name,
-              tableName: focusDailyTableName(source.tableName).display,
+              tableName: resolved.display,
               message: (err as Error).message,
             });
           }
@@ -110,7 +116,7 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
       );
 
       res.json({
-        sources: sources.map(sourceSummary),
+        sources: sources.map((source) => sourceSummary(source, catalog, goldSchema)),
         daily,
         services,
         skus,
@@ -140,17 +146,23 @@ function quoteTableName(value: string): string {
     .join('.');
 }
 
-function focusDailyTableName(value: string): { display: string; sql: string } {
+function focusDailyTableName(
+  value: string,
+  catalog?: string,
+  goldSchema = 'gold',
+): { display: string; sql: string } {
   const parsed = DataSourceTableNameSchema.parse(value);
   const parts = parsed.split('.');
   const table = parts[parts.length - 1]!;
   const dailyTable = table.endsWith('_daily') ? table : `${table}_daily`;
   const dailyParts =
     parts.length === 3
-      ? [parts[0]!, 'gold', dailyTable]
+      ? [parts[0]!, goldSchema, dailyTable]
       : parts.length === 2
-        ? ['gold', dailyTable]
-        : [dailyTable];
+        ? [goldSchema, dailyTable]
+        : catalog
+          ? [catalog, goldSchema, dailyTable]
+          : [dailyTable];
   const display = dailyParts.join('.');
   return { display, sql: quoteTableName(display) };
 }
@@ -168,8 +180,8 @@ async function queryDaily(
   executor: StatementExecutor,
   source: DataSource,
   range: UsageRange,
+  table: string,
 ): Promise<FocusDailyRow[]> {
-  const table = focusDailyTableName(source.tableName).sql;
   return executor.run(
     /* sql */ `
 SELECT
@@ -192,8 +204,8 @@ async function queryServices(
   executor: StatementExecutor,
   source: DataSource,
   range: UsageRange,
+  table: string,
 ): Promise<FocusServiceRow[]> {
-  const table = focusDailyTableName(source.tableName).sql;
   return executor.run(
     /* sql */ `
 SELECT
@@ -217,8 +229,8 @@ async function querySkus(
   executor: StatementExecutor,
   source: DataSource,
   range: UsageRange,
+  table: string,
 ): Promise<FocusSkuRow[]> {
-  const table = focusDailyTableName(source.tableName).sql;
   return executor.run(
     /* sql */ `
 SELECT
@@ -242,8 +254,8 @@ async function queryCoverage(
   executor: StatementExecutor,
   source: DataSource,
   range: UsageRange,
+  table: string,
 ): Promise<FocusCoverageRow[]> {
-  const table = focusDailyTableName(source.tableName).sql;
   return executor.run(
     /* sql */ `
 SELECT
@@ -263,13 +275,13 @@ GROUP BY 1, 2
   );
 }
 
-function sourceSummary(source: DataSource) {
+function sourceSummary(source: DataSource, catalog?: string, goldSchema?: string) {
   return {
     id: source.id,
     templateId: source.templateId,
     name: source.name,
     providerName: source.providerName,
-    tableName: focusDailyTableName(source.tableName).display,
+    tableName: focusDailyTableName(source.tableName, catalog, goldSchema).display,
     focusVersion: source.focusVersion,
     updatedAt: source.updatedAt,
   };

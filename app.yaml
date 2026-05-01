@@ -16,7 +16,7 @@ env:
   - name: DB_BACKEND
     value: sqlite
   - name: SQLITE_PATH
-    value: /home/app/data/lakecost.db
+    value: /home/app/data/finlake.db
   # Bind a SQL warehouse resource named "warehouse" in resources/app.yml
   - name: SQL_WAREHOUSE_ID
     valueFrom: warehouse

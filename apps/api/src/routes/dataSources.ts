@@ -63,7 +63,6 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
       const created = await db.repos.dataSources.create({
         templateId: parsed.data.templateId,
         name: parsed.data.name,
-        description: parsed.data.description ?? null,
         providerName: parsed.data.providerName,
         billingAccountId: parsed.data.billingAccountId ?? null,
         tableName: parsed.data.tableName,

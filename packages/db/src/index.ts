@@ -7,6 +7,7 @@ import { resolveSqlitePath } from './paths.js';
 
 export type { DatabaseClient } from './DatabaseClient.js';
 export type { Repositories } from './repositories/index.js';
+export { settingsToRecord } from './repositories/index.js';
 
 export async function createDatabaseClient(env: Env): Promise<DatabaseClient> {
   switch (env.DB_BACKEND) {

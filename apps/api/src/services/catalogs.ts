@@ -5,6 +5,7 @@ import {
   schemaGrantPrivileges,
   type CatalogSummary,
   type Env,
+  type MedallionSchema,
   type ProvisionResult,
   type SchemaEnsureStatus,
 } from '@lakecost/shared';
@@ -75,6 +76,7 @@ export class CatalogServiceError extends WorkspaceServiceError {}
 
 interface ProvisionOptions {
   createIfMissing?: boolean;
+  schemaNames?: Partial<Record<MedallionSchema, string>>;
 }
 
 /**
@@ -96,7 +98,10 @@ export async function provisionCatalog(
 ): Promise<ProvisionResult> {
   // Fail fast on bad identifiers so we never interpolate them into SQL.
   const catalogIdent = quoteIdent(catalog);
-  const schemaIdents = MEDALLION_SCHEMAS.map((s) => ({ name: s, ident: quoteIdent(s) }));
+  const schemaIdents = MEDALLION_SCHEMAS.map((s) => {
+    const schema = opts.schemaNames?.[s]?.trim() || s;
+    return { layer: s, schema, ident: quoteIdent(schema) };
+  });
 
   const executor = buildUserExecutor(env, userToken);
   if (!executor) {
@@ -127,16 +132,16 @@ export async function provisionCatalog(
   // Promise.all preserves input order in its output array, so warnings are
   // collected deterministically regardless of which SQL statement resolves first.
   const schemaResults = await Promise.all(
-    schemaIdents.map(async ({ name, ident }) => {
+    schemaIdents.map(async ({ layer, ident }) => {
       const { status, warning } = await ensureSchema(
         executor,
         `CREATE SCHEMA IF NOT EXISTS ${catalogIdent}.${ident}`,
       );
-      return { name, status, warning };
+      return { layer, status, warning };
     }),
   );
   const schemasEnsured = Object.fromEntries(
-    schemaResults.map(({ name, status }) => [name, status]),
+    schemaResults.map(({ layer, status }) => [layer, status]),
   ) as Record<(typeof MEDALLION_SCHEMAS)[number], SchemaEnsureStatus>;
   for (const r of schemaResults) {
     if (r.warning) warnings.push(r.warning);
@@ -153,9 +158,9 @@ export async function provisionCatalog(
     const spIdent = quotePrincipal(sp);
     const grantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
       { key: 'catalog', sql: `GRANT USE CATALOG ON CATALOG ${catalogIdent} TO ${spIdent}` },
-      ...schemaIdents.map(({ name, ident }) => ({
-        key: name,
-        sql: `GRANT ${schemaGrantPrivileges(name)} ON SCHEMA ${catalogIdent}.${ident} TO ${spIdent}`,
+      ...schemaIdents.map(({ layer, ident }) => ({
+        key: layer,
+        sql: `GRANT ${schemaGrantPrivileges(layer)} ON SCHEMA ${catalogIdent}.${ident} TO ${spIdent}`,
       })),
     ];
     const grantResults = await Promise.all(grantStmts.map((g) => grant(executor, g.sql)));
