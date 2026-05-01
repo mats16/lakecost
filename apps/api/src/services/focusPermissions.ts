@@ -1,9 +1,9 @@
-import type { DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
 import {
   CATALOG_SETTING_KEY,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
   focusSourceTables,
   focusViewFqn,
+  medallionSchemaNamesFromSettings,
   quoteIdent,
   quotePrincipal,
   tableLeafName,
@@ -133,11 +133,13 @@ export async function preflightFocusDataSource(
   dataSourceId: number,
   body: DataSourcePreflightBody,
 ): Promise<DataSourcePreflightResult> {
-  const [source, catalogSetting] = await Promise.all([
+  const [source, settingsRows] = await Promise.all([
     getDatabricksSource(db, dataSourceId),
-    db.repos.appSettings.get(CATALOG_SETTING_KEY),
+    db.repos.appSettings.list(),
   ]);
-  const catalog = (catalogSetting?.value ?? '').trim();
+  const appSettings = settingsToRecord(settingsRows);
+  const catalog = (appSettings[CATALOG_SETTING_KEY] ?? '').trim();
+  const medallionSchemas = medallionSchemaNamesFromSettings(appSettings);
   const existing = readFocusConfig(source.config);
   const accountPricesTable = body.accountPricesTable ?? existing.accountPricesTable;
   const tables = resolveSourceTables(accountPricesTable);
@@ -165,7 +167,7 @@ export async function preflightFocusDataSource(
     steps.push({
       label: 'Target catalog',
       status: 'error',
-      message: 'Main catalog is not configured in Configure -> Admin.',
+      message: 'Main catalog is not configured in Configure -> Catalog.',
     });
   }
   if (steps.some((s) => s.status === 'error')) {
@@ -204,7 +206,7 @@ export async function preflightFocusDataSource(
     });
   }
 
-  for (const schema of [FOCUS_VIEW_SCHEMA_DEFAULT, 'gold']) {
+  for (const schema of [medallionSchemas.silver, medallionSchemas.gold]) {
     await pushStep(steps, `Target schema ${catalog}.${schema}`, async () => {
       await assertSchemaPrivileges(appExecutor, catalog, schema, sp);
       return 'required schema privileges are visible';
@@ -212,8 +214,13 @@ export async function preflightFocusDataSource(
   }
 
   try {
-    const pipelineSql = buildFocusPipelineSql({ catalog, table: tableName, accountPricesTable });
-    focusViewFqn({ catalog, schema: FOCUS_VIEW_SCHEMA_DEFAULT, table: tableName });
+    const pipelineSql = buildFocusPipelineSql({
+      catalog,
+      table: tableName,
+      goldSchema: medallionSchemas.gold,
+      accountPricesTable,
+    });
+    focusViewFqn({ catalog, schema: medallionSchemas.silver, table: tableName });
     const workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, dataSourceId);
     await pushStep(steps, 'Pipeline SQL upload', async () => {
       await uploadPipelineFile(appClient, workspacePath, pipelineSql);
@@ -226,8 +233,12 @@ export async function preflightFocusDataSource(
       pipelineSql,
       workspacePath,
       catalog,
-      schema: FOCUS_VIEW_SCHEMA_DEFAULT,
-      configuration: buildFocusPipelineConfiguration(tableName, accountPricesTable),
+      schema: medallionSchemas.silver,
+      configuration: buildFocusPipelineConfiguration(
+        tableName,
+        accountPricesTable,
+        medallionSchemas.gold,
+      ),
       cronExpression,
       timezoneId,
       servicePrincipalId: sp,

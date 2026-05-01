@@ -21,6 +21,17 @@ const IdSchema = z
   .transform(Number)
   .refine((id) => Number.isSafeInteger(id) && id > 0, 'invalid id');
 
+const AWS_SOURCE_LOCKED_CONFIG_KEYS = [
+  'awsAccountId',
+  'externalLocationName',
+  'externalLocationUrl',
+  'storageCredentialName',
+  's3Bucket',
+  'exportName',
+  's3Prefix',
+  's3Region',
+];
+
 export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
   const router = Router();
 
@@ -52,7 +63,6 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
       const created = await db.repos.dataSources.create({
         templateId: parsed.data.templateId,
         name: parsed.data.name,
-        description: parsed.data.description ?? null,
         providerName: parsed.data.providerName,
         billingAccountId: parsed.data.billingAccountId ?? null,
         tableName: parsed.data.tableName,
@@ -100,6 +110,19 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
       if (!existing) {
         res.status(404).json({ error: { message: 'Not found' } });
         return;
+      }
+      if (parsed.data.config && isRegisteredAwsSource(existing)) {
+        const changedKeys = AWS_SOURCE_LOCKED_CONFIG_KEYS.filter(
+          (key) => !sameJsonValue(existing.config[key], parsed.data.config?.[key]),
+        );
+        if (changedKeys.length > 0) {
+          res.status(409).json({
+            error: {
+              message: `Registered AWS source settings cannot be changed: ${changedKeys.join(', ')}`,
+            },
+          });
+          return;
+        }
       }
       const updated = await db.repos.dataSources.update(idParse.data, parsed.data);
       res.json(updated);
@@ -186,4 +209,19 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
   });
 
   return router;
+}
+
+function isRegisteredAwsSource(source: {
+  providerName: string;
+  config: Record<string, unknown>;
+}): boolean {
+  if (source.providerName !== 'AWS' && source.providerName !== 'Amazon Web Services') return false;
+  return ['awsAccountId', 'externalLocationName', 'exportName', 's3Prefix'].every((key) => {
+    const value = source.config[key];
+    return typeof value === 'string' && value.trim().length > 0;
+  });
+}
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

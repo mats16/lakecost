@@ -6,7 +6,7 @@ export const en = {
     configure: 'Configure',
     dataSources: 'Data sources',
     transformations: 'Transformations',
-    admin: 'Admin',
+    configureCatalog: 'Catalog',
     costExplorer: 'Cost Explorer',
     budgets: 'Budgets',
     settings: 'Settings',
@@ -94,8 +94,8 @@ export const en = {
   settings: {
     title: 'Settings',
     subtitle: 'Application configuration',
-    mainCatalogHeading: 'Main catalog',
-    mainCatalogDesc: 'The Unity Catalog catalog name used as the main catalog.',
+    mainCatalogHeading: 'Catalog & Schemas',
+    mainCatalogDesc: 'Configure the catalog and schemas used by FinLake.',
     mainCatalogPlaceholder: 'main',
     catalogTypeLabel: 'Catalog type',
     catalogNameLabel: 'Catalog name',
@@ -119,6 +119,14 @@ export const en = {
     provisionSchemaFailed: 'Could not create schema "{schema}" — see warnings below.',
     provisionGrantFailed: 'GRANT for {scope} failed: {message}',
     provisionScopeCatalog: 'catalog',
+    medallion: {
+      schemaLabel: 'Schema names',
+      goldLabel: 'Gold',
+      silverLabel: 'Silver',
+      bronzeLabel: 'Bronze',
+      invalid:
+        'Schema names must start with a letter or underscore and contain only letters, numbers, and underscores.',
+    },
   },
   configure: {
     title: 'Configure',
@@ -152,6 +160,12 @@ export const en = {
       notImplemented:
         "This provider is not yet implemented. We're tracking it on the FinLake roadmap.",
     },
+    name: {
+      title: 'Display name',
+      label: 'Name',
+      edit: 'Edit name',
+      save: 'Save name',
+    },
     systemTables: {
       title: 'Transformation',
       step1: 'Step 1 — System tables enabled',
@@ -159,9 +173,8 @@ export const en = {
       step2: 'Step 2 — App service principal grants',
       verifySelect: 'Verify SELECT permission',
       step3: 'Step 3 — FOCUS view',
-      focusViewDesc:
-        'Creates Spark Declarative Pipelines that build a materialized view mapping `system.billing.*` to the FOCUS format.',
-      catalog: 'Catalog (from Admin)',
+      focusViewDesc: 'Generates a FOCUS-formatted materialized view from system tables.',
+      catalog: 'Catalog',
       schema: 'Schema',
       tier: 'Tier (schema)',
       tableName: 'Table name',
@@ -186,26 +199,37 @@ export const en = {
       updateOk:
         'Job #{jobId} updated. The next run will create or refresh {fqn} on the SQL warehouse.',
       saveTarget: 'Save target',
-      catalogMissing: 'Set the main catalog in Configure → Admin first.',
+      catalogMissing: 'Set the main catalog in Configure → Catalog first.',
     },
-    awsCur: {
+    aws: {
       title: 'Data Export',
+      description: 'Ingests exported Parquet files in Delta format.',
       placeholder: 's3 url',
       verify: 'Verify CUR',
       awsAccountId: 'AWS account ID',
+      from: 'from',
+      storageCredentialSource: 'Storage Credential',
       awsAccountIdPlaceholder: 'Select from storage credentials',
       s3Url: 'S3 URL',
-      s3UrlPlaceholder: 'Select from linked external locations',
+      s3UrlPlaceholder: 'Select from linked S3 buckets',
       externalLocation: 'External location',
+      externalLocationSource: 'External Location',
       externalLocationUrl: 'URL',
       credential: 'Storage credential',
       exportName: 'Export name',
+      s3Bucket: 'S3 bucket',
+      s3PathPrefix: 'S3 path prefix',
       s3Prefix: 'Prefix',
       accessKeyId: 'Access key ID',
       secretAccessKey: 'Secret access key',
       sessionToken: 'Session token',
       sessionTokenPlaceholder: 'Optional for temporary credentials',
-      saveExternalLocation: 'Save source',
+      credentialsNotSaved:
+        'Credentials are not saved and are only used to create the AWS Data Export.',
+      saveExternalLocation: 'Save existing export',
+      openDataExports: 'Open AWS Data Exports',
+      registeredReadOnly:
+        'This AWS data source is registered. Bucket, prefix, and export name cannot be changed.',
       exportCreateSection: 'Create export',
       createExport: 'Create',
       exportCreated: 'Export configured: {exportArn}',
@@ -242,12 +266,12 @@ export const en = {
         subtitle: '',
       },
       gcp: {
-        description: 'Google Cloud billing export support is coming soon.',
-        subtitle: 'by Google Cloud',
+        description: 'Coming soon.',
+        subtitle: '',
       },
       snowflake: {
-        description: 'Snowflake credits support is coming soon.',
-        subtitle: 'by Snowflake',
+        description: 'Coming soon.',
+        subtitle: '',
       },
       custom: {
         description: 'Bring your own cost feed via Auto Loader or Lakeflow Connect',

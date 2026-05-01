@@ -1,6 +1,6 @@
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { createClient, type Client } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import type { LibSQLDatabase } from 'drizzle-orm/libsql';
 import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as s from './schema/sqlite.js';
@@ -25,14 +25,14 @@ import { ensureParentDir } from './paths.js';
 import { logger } from './logger.js';
 import type { Budget, CreateBudgetInput, SetupCheckResult } from '@lakecost/shared';
 
-type Db = BetterSQLite3Database<typeof s>;
+type Db = LibSQLDatabase<typeof s>;
 
 export class SqliteClient implements DatabaseClient {
   readonly backend = 'sqlite' as const;
   readonly repos: Repositories;
 
   private constructor(
-    private readonly raw: Database.Database,
+    private readonly raw: Client,
     private readonly db: Db,
   ) {
     this.repos = {
@@ -45,20 +45,20 @@ export class SqliteClient implements DatabaseClient {
     };
   }
 
-  static create(opts: { sqlitePath: string }): SqliteClient {
-    ensureParentDir(opts.sqlitePath);
-    const raw = new Database(opts.sqlitePath);
-    raw.pragma('journal_mode = WAL');
-    raw.pragma('foreign_keys = ON');
+  static async create(opts: { sqlitePath: string }): Promise<SqliteClient> {
+    if (opts.sqlitePath !== ':memory:') ensureParentDir(opts.sqlitePath);
+    const raw = createClient({ url: toLibsqlUrl(opts.sqlitePath) });
+    await raw.execute('PRAGMA journal_mode = WAL');
+    await raw.execute('PRAGMA foreign_keys = ON');
     const db = drizzle(raw, { schema: s });
     const client = new SqliteClient(raw, db);
-    client.bootstrapSchema();
+    await client.bootstrapSchema();
     return client;
   }
 
-  private bootstrapSchema(): void {
-    this.raw.exec(`
-      CREATE TABLE IF NOT EXISTS budgets (
+  private async bootstrapSchema(): Promise<void> {
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS budgets (
         id TEXT PRIMARY KEY,
         workspace_id TEXT,
         name TEXT NOT NULL,
@@ -70,48 +70,47 @@ export class SqliteClient implements DatabaseClient {
         notify_emails_json TEXT NOT NULL DEFAULT '[]',
         created_by TEXT NOT NULL,
         created_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS budget_alerts (
+      )`,
+      `CREATE TABLE IF NOT EXISTS budget_alerts (
         id TEXT PRIMARY KEY,
         budget_id TEXT NOT NULL,
         threshold_pct INTEGER NOT NULL,
         triggered_at TEXT NOT NULL,
         actual_usd REAL NOT NULL,
         notified_channels_json TEXT NOT NULL DEFAULT '[]'
-      );
-      CREATE TABLE IF NOT EXISTS user_preferences (
+      )`,
+      `CREATE TABLE IF NOT EXISTS user_preferences (
         user_id TEXT PRIMARY KEY,
         currency TEXT NOT NULL DEFAULT 'USD',
         default_workspace_id TEXT,
         theme TEXT NOT NULL DEFAULT 'system',
         prefs_json TEXT NOT NULL DEFAULT '{}',
         updated_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS cached_aggregations (
+      )`,
+      `CREATE TABLE IF NOT EXISTS cached_aggregations (
         cache_key TEXT PRIMARY KEY,
         query_hash TEXT NOT NULL,
         payload_json TEXT NOT NULL,
         computed_at TEXT NOT NULL,
         expires_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS tag_chargeback_rules (
+      )`,
+      `CREATE TABLE IF NOT EXISTS tag_chargeback_rules (
         id TEXT PRIMARY KEY,
         tag_key TEXT NOT NULL,
         tag_value_pattern TEXT NOT NULL,
         cost_center TEXT NOT NULL,
         owner_email TEXT,
         priority INTEGER NOT NULL DEFAULT 100
-      );
-      CREATE TABLE IF NOT EXISTS app_settings (
+      )`,
+      `CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS data_sources (
+      )`,
+      `CREATE TABLE IF NOT EXISTS data_sources (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         template_id TEXT NOT NULL,
         name TEXT NOT NULL,
-        description TEXT,
         provider_name TEXT NOT NULL,
         billing_account_id TEXT,
         table_name TEXT NOT NULL,
@@ -122,8 +121,8 @@ export class SqliteClient implements DatabaseClient {
         config_json TEXT NOT NULL DEFAULT '{}',
         updated_at TEXT NOT NULL,
         UNIQUE(provider_name, billing_account_id)
-      );
-      CREATE TABLE IF NOT EXISTS setup_state (
+      )`,
+      `CREATE TABLE IF NOT EXISTS setup_state (
         workspace_id TEXT PRIMARY KEY,
         system_tables_ok INTEGER NOT NULL DEFAULT 0,
         permissions_ok INTEGER NOT NULL DEFAULT 0,
@@ -131,13 +130,17 @@ export class SqliteClient implements DatabaseClient {
         azure_export_configured INTEGER NOT NULL DEFAULT 0,
         last_checked_at TEXT NOT NULL,
         details_json TEXT NOT NULL DEFAULT '{}'
-      );
-    `);
+      )`,
+    ];
+    await this.raw.batch(
+      statements.map((sql) => ({ sql, args: [] })),
+      'write',
+    );
     logger.debug('SQLite schema bootstrap complete');
   }
 
   async healthCheck(): Promise<{ ok: true; backend: 'sqlite' }> {
-    this.db.run(sql`select 1`);
+    await this.db.run(sql`select 1`);
     return { ok: true, backend: 'sqlite' };
   }
 
@@ -149,6 +152,10 @@ export class SqliteClient implements DatabaseClient {
   async close(): Promise<void> {
     this.raw.close();
   }
+}
+
+function toLibsqlUrl(sqlitePath: string): string {
+  return sqlitePath === ':memory:' ? ':memory:' : `file:${sqlitePath}`;
 }
 
 class SqliteBudgetsRepo implements BudgetsRepo {
@@ -291,8 +298,10 @@ class SqliteCachedAggregationsRepo implements CachedAggregationsRepo {
   }
 
   async prune(now: string): Promise<number> {
-    const result = this.db.run(sql`delete from cached_aggregations where expires_at < ${now}`);
-    return Number(result.changes ?? 0);
+    const result = await this.db.run(
+      sql`delete from cached_aggregations where expires_at < ${now}`,
+    );
+    return result.rowsAffected;
   }
 }
 
@@ -393,7 +402,6 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
       .values({
         templateId: input.templateId,
         name: input.name,
-        description: input.description ?? null,
         providerName: input.providerName,
         billingAccountId: input.billingAccountId ?? null,
         tableName: input.tableName,
@@ -415,7 +423,6 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
       updatedAt: new Date().toISOString(),
     };
     if (patch.name !== undefined) set.name = patch.name;
-    if (patch.description !== undefined) set.description = patch.description;
     if (patch.providerName !== undefined) set.providerName = patch.providerName;
     if (patch.billingAccountId !== undefined) set.billingAccountId = patch.billingAccountId;
     if (patch.tableName !== undefined) set.tableName = patch.tableName;
@@ -445,7 +452,6 @@ function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
     id: row.id,
     templateId: row.templateId,
     name: row.name,
-    description: row.description,
     providerName: row.providerName,
     billingAccountId: row.billingAccountId,
     tableName: row.tableName,

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BCMDataExportsClient, CreateExportCommand } from '@aws-sdk/client-bcm-data-exports';
+import { GetBucketPolicyCommand, PutBucketPolicyCommand, S3Client } from '@aws-sdk/client-s3';
 import {
   useAppSettings,
   useExternalLocations,
+  useCreateDataSource,
   useMe,
   useRunDataSourceJob,
   useSetupDataSource,
@@ -13,13 +15,14 @@ import {
   CATALOG_SETTING_KEY,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
+  medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   s3BucketFromUrl,
   s3ExportPath,
   tableLeafName,
   unquotedFqn,
   type DataSource,
+  type DataSourceCreateBody,
   type DataSourceSetupResult,
   type ExternalLocationSummary,
   type StorageCredentialSummary,
@@ -29,15 +32,141 @@ import { messageOf } from './utils';
 const AWS_FOCUS_12_QUERY_STATEMENT =
   'SELECT AvailabilityZone, BilledCost, BillingAccountId, BillingAccountName, BillingAccountType, BillingCurrency, BillingPeriodEnd, BillingPeriodStart, CapacityReservationId, CapacityReservationStatus, ChargeCategory, ChargeClass, ChargeDescription, ChargeFrequency, ChargePeriodEnd, ChargePeriodStart, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountQuantity, CommitmentDiscountStatus, CommitmentDiscountType, CommitmentDiscountUnit, ConsumedQuantity, ConsumedUnit, ContractedCost, ContractedUnitPrice, EffectiveCost, InvoiceId, InvoiceIssuerName, ListCost, ListUnitPrice, PricingCategory, PricingCurrency, PricingCurrencyContractedUnitPrice, PricingCurrencyEffectiveCost, PricingCurrencyListUnitPrice, PricingQuantity, PricingUnit, ProviderName, PublisherName, RegionId, RegionName, ResourceId, ResourceName, ResourceType, ServiceCategory, ServiceName, ServiceSubcategory, SkuId, SkuMeter, SkuPriceDetails, SkuPriceId, SubAccountId, SubAccountName, SubAccountType, Tags, x_Discounts, x_Operation, x_ServiceCode FROM FOCUS_1_2_AWS';
 const AWS_BCM_REGION = 'us-east-1';
+const AWS_EXPORT_NAME_DEFAULT = 'finlake-focus-1-2';
+const AWS_EXPORT_BUCKET_POLICY_SID = 'EnableAWSDataExportsToWriteToS3AndCheckPolicy';
+const S3_PREFIX_PREVIEW_PLACEHOLDER = '{prefix}';
+const EXPORT_NAME_PREVIEW_PLACEHOLDER = '{export_name}';
+
+export type AwsFocusDraft = Pick<
+  DataSourceCreateBody,
+  'templateId' | 'name' | 'providerName' | 'tableName'
+>;
 
 function configString(config: Record<string, unknown>, key: string): string {
   const value = config[key];
   return typeof value === 'string' ? value : '';
 }
 
-export function useAwsFocusForm(row: DataSource) {
+function s3PrefixFromUrl(url: string): string {
+  const match = /^s3:\/\/[^/]+\/?(.*)$/i.exec(url.trim());
+  return normalizeS3Prefix(match?.[1] ?? '');
+}
+
+function joinS3Prefixes(basePrefix: string, suffixPrefix: string): string {
+  return [normalizeS3Prefix(basePrefix), normalizeS3Prefix(suffixPrefix)].filter(Boolean).join('/');
+}
+
+function stripBasePrefix(prefix: string, basePrefix: string): string {
+  const normalizedPrefix = normalizeS3Prefix(prefix);
+  const normalizedBase = normalizeS3Prefix(basePrefix);
+  if (!normalizedBase) return normalizedPrefix;
+  if (normalizedPrefix === normalizedBase) return '';
+  const baseWithSlash = `${normalizedBase}/`;
+  return normalizedPrefix.startsWith(baseWithSlash)
+    ? normalizedPrefix.slice(baseWithSlash.length)
+    : normalizedPrefix;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isMissingBucketPolicyError(err: unknown): boolean {
+  if (!isRecord(err)) return false;
+  return (
+    err.name === 'NoSuchBucketPolicy' ||
+    err.Code === 'NoSuchBucketPolicy' ||
+    (isRecord(err.$metadata) && err.$metadata.httpStatusCode === 404)
+  );
+}
+
+function awsDataExportBucketPolicyStatement(bucket: string, accountId: string) {
+  return {
+    Sid: AWS_EXPORT_BUCKET_POLICY_SID,
+    Effect: 'Allow',
+    Principal: {
+      Service: ['billingreports.amazonaws.com', 'bcm-data-exports.amazonaws.com'],
+    },
+    Action: ['s3:PutObject', 's3:GetBucketPolicy'],
+    Resource: [`arn:aws:s3:::${bucket}`, `arn:aws:s3:::${bucket}/*`],
+    Condition: {
+      StringLike: {
+        'aws:SourceArn': [
+          `arn:aws:cur:${AWS_BCM_REGION}:${accountId}:definition/*`,
+          `arn:aws:bcm-data-exports:${AWS_BCM_REGION}:${accountId}:export/*`,
+        ],
+        'aws:SourceAccount': accountId,
+      },
+    },
+  };
+}
+
+function mergeAwsDataExportBucketPolicy(
+  policyText: string | undefined,
+  bucket: string,
+  accountId: string,
+): string {
+  const nextStatement = awsDataExportBucketPolicyStatement(bucket, accountId);
+  const existingPolicy = policyText ? JSON.parse(policyText) : {};
+  if (!isRecord(existingPolicy)) throw new Error('S3 bucket policy must be a JSON object.');
+
+  const rawStatements = existingPolicy.Statement;
+  const statements = Array.isArray(rawStatements)
+    ? rawStatements
+    : rawStatements
+      ? [rawStatements]
+      : [];
+
+  return JSON.stringify(
+    {
+      ...existingPolicy,
+      Version: typeof existingPolicy.Version === 'string' ? existingPolicy.Version : '2012-10-17',
+      Statement: [
+        ...statements.filter(
+          (statement) => !(isRecord(statement) && statement.Sid === AWS_EXPORT_BUCKET_POLICY_SID),
+        ),
+        nextStatement,
+      ],
+    },
+    null,
+    2,
+  );
+}
+
+async function upsertAwsDataExportBucketPolicy({
+  client,
+  bucket,
+  accountId,
+}: {
+  client: S3Client;
+  bucket: string;
+  accountId: string;
+}) {
+  let currentPolicy: string | undefined;
+  try {
+    const res = await client.send(new GetBucketPolicyCommand({ Bucket: bucket }));
+    currentPolicy = res.Policy;
+  } catch (err) {
+    if (!isMissingBucketPolicyError(err)) throw err;
+  }
+
+  await client.send(
+    new PutBucketPolicyCommand({
+      Bucket: bucket,
+      Policy: mergeAwsDataExportBucketPolicy(currentPolicy, bucket, accountId),
+    }),
+  );
+}
+
+interface UseAwsFocusFormOptions {
+  draft?: AwsFocusDraft;
+  onCreated?: (row: DataSource) => void;
+}
+
+export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusFormOptions = {}) {
   const storageCredentials = useStorageCredentials();
   const locations = useExternalLocations();
+  const createDs = useCreateDataSource();
   const updateDs = useUpdateDataSource();
   const me = useMe();
   const settings = useAppSettings();
@@ -45,13 +174,16 @@ export function useAwsFocusForm(row: DataSource) {
   const runJob = useRunDataSourceJob();
 
   // --- Remote (server) values ---
-  const remoteAwsAccountId = configString(row.config, 'awsAccountId');
-  const remoteExternalLocationName = configString(row.config, 'externalLocationName');
-  const remoteExportName = configString(row.config, 'exportName');
-  const remoteS3Prefix = configString(row.config, 's3Prefix');
+  const remoteConfig = row?.config ?? {};
+  const remoteAwsAccountId = row?.billingAccountId ?? configString(remoteConfig, 'awsAccountId');
+  const remoteExternalLocationName = configString(remoteConfig, 'externalLocationName');
+  const remoteExternalLocationUrl = configString(remoteConfig, 'externalLocationUrl');
+  const remoteExportName = configString(remoteConfig, 'exportName');
+  const remoteS3Prefix = configString(remoteConfig, 's3Prefix');
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
-  const remoteCron = configString(row.config, 'cronExpression') || FOCUS_REFRESH_CRON_DEFAULT;
-  const remoteTz = configString(row.config, 'timezoneId') || FOCUS_REFRESH_TIMEZONE_DEFAULT;
+  const silverSchema = medallionSchemaNamesFromSettings(settings.data?.settings ?? {}).silver;
+  const remoteCron = configString(remoteConfig, 'cronExpression') || FOCUS_REFRESH_CRON_DEFAULT;
+  const remoteTz = configString(remoteConfig, 'timezoneId') || FOCUS_REFRESH_TIMEZONE_DEFAULT;
 
   // --- Local form state ---
   const [awsAccountId, setAwsAccountId] = useState(remoteAwsAccountId);
@@ -59,16 +191,18 @@ export function useAwsFocusForm(row: DataSource) {
   const [accessKeyId, setAccessKeyId] = useState('');
   const [secretAccessKey, setSecretAccessKey] = useState('');
   const [sessionToken, setSessionToken] = useState('');
-  const [exportName, setExportName] = useState(remoteExportName || 'finlake-focus-1-2');
-  const [s3Prefix, setS3Prefix] = useState(normalizeS3Prefix(remoteS3Prefix || 'export'));
-  const [tableName, setTableName] = useState(tableLeafName(row.tableName));
+  const [exportName, setExportName] = useState(remoteExportName);
+  const [s3Prefix, setS3Prefix] = useState(normalizeS3Prefix(remoteS3Prefix));
+  const [tableName, setTableName] = useState(
+    tableLeafName(row?.tableName ?? options.draft?.tableName ?? 'aws_billing'),
+  );
   const [cron, setCron] = useState(remoteCron);
   const [timezone, setTimezone] = useState(remoteTz);
   const [result, setResult] = useState<DataSourceSetupResult | null>(null);
-  const [exportArn, setExportArn] = useState(configString(row.config, 'exportArn'));
+  const [exportArn, setExportArn] = useState(configString(remoteConfig, 'exportArn'));
   const [exportError, setExportError] = useState<string | null>(null);
   const [creatingExport, setCreatingExport] = useState(false);
-  const [exportPanelOpen, setExportPanelOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
   // --- Sync local state when server data changes ---
@@ -77,9 +211,11 @@ export function useAwsFocusForm(row: DataSource) {
     () => setExternalLocationName(remoteExternalLocationName),
     [remoteExternalLocationName],
   );
-  useEffect(() => setExportName(remoteExportName || 'finlake-focus-1-2'), [remoteExportName]);
-  useEffect(() => setS3Prefix(normalizeS3Prefix(remoteS3Prefix || 'export')), [remoteS3Prefix]);
-  useEffect(() => setTableName(tableLeafName(row.tableName)), [row.tableName]);
+  useEffect(() => setExportName(remoteExportName), [remoteExportName]);
+  useEffect(
+    () => setTableName(tableLeafName(row?.tableName ?? options.draft?.tableName ?? 'aws_billing')),
+    [options.draft?.tableName, row?.tableName],
+  );
   useEffect(() => setCron(remoteCron), [remoteCron]);
   useEffect(() => setTimezone(remoteTz), [remoteTz]);
 
@@ -117,41 +253,85 @@ export function useAwsFocusForm(row: DataSource) {
   const selectedLocation: ExternalLocationSummary | null =
     allLocations.find((loc) => loc.name === externalLocationName) ??
     (externalLocationName ? ({ name: externalLocationName } as ExternalLocationSummary) : null);
-  const selectedS3Url = selectedLocation?.url ?? null;
+  const locationOptions = useMemo(() => {
+    if (!selectedLocation || linkedLocations.some((loc) => loc.name === selectedLocation.name)) {
+      return linkedLocations;
+    }
+    return [selectedLocation, ...linkedLocations];
+  }, [linkedLocations, selectedLocation]);
+  const selectedS3Url = selectedLocation?.url ?? (remoteExternalLocationUrl || null);
   const selectedS3Bucket = selectedS3Url ? s3BucketFromUrl(selectedS3Url) : null;
+  const selectedS3BasePrefix = selectedS3Url ? s3PrefixFromUrl(selectedS3Url) : '';
   const normalizedS3Prefix = normalizeS3Prefix(s3Prefix);
-  const exportDestinationPreview =
-    selectedS3Bucket && exportName && normalizedS3Prefix
-      ? s3ExportPath(selectedS3Bucket, normalizedS3Prefix, exportName)
-      : null;
+  const effectiveS3Prefix = joinS3Prefixes(selectedS3BasePrefix, normalizedS3Prefix);
+
+  useEffect(
+    () => setS3Prefix(stripBasePrefix(remoteS3Prefix, selectedS3BasePrefix)),
+    [remoteS3Prefix, selectedS3BasePrefix],
+  );
+
+  const exportDestinationPreview = selectedS3Bucket
+    ? s3ExportPath(
+        selectedS3Bucket,
+        effectiveS3Prefix || S3_PREFIX_PREVIEW_PLACEHOLDER,
+        exportName || EXPORT_NAME_PREVIEW_PLACEHOLDER,
+      )
+    : null;
 
   // --- Flags ---
   const dirty =
+    !row ||
     awsAccountId !== remoteAwsAccountId ||
     externalLocationName !== remoteExternalLocationName ||
     exportName !== remoteExportName ||
-    s3Prefix !== remoteS3Prefix;
+    effectiveS3Prefix !== remoteS3Prefix;
   const loadingInputs = storageCredentials.isLoading || locations.isLoading;
-  const saveDisabled = updateDs.isPending || !awsAccountId || !externalLocationName || !dirty;
-  const jobId = result?.jobId ?? row.jobId;
-  const pipelineId = result?.pipelineId ?? row.pipelineId;
+  const registered =
+    Boolean(row) &&
+    Boolean(remoteAwsAccountId) &&
+    Boolean(remoteExternalLocationName) &&
+    Boolean(remoteExportName) &&
+    Boolean(remoteS3Prefix);
+  const savePending = createDs.isPending || updateDs.isPending;
+  const saveDisabled =
+    registered ||
+    savePending ||
+    !awsAccountId ||
+    !externalLocationName ||
+    !exportName ||
+    !effectiveS3Prefix ||
+    !selectedS3Bucket ||
+    !dirty;
+  const jobId = result?.jobId ?? row?.jobId ?? null;
+  const pipelineId = result?.pipelineId ?? row?.pipelineId ?? null;
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const fqn = remoteCatalog
-    ? unquotedFqn(remoteCatalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName)
-    : `${FOCUS_VIEW_SCHEMA_DEFAULT}.${tableName}`;
-  const hadScheduleBeforeSetup = row.jobId !== null;
+    ? unquotedFqn(remoteCatalog, silverSchema, tableName)
+    : `${silverSchema}.${tableName}`;
+  const hadScheduleBeforeSetup = row?.jobId !== null && row?.jobId !== undefined;
   const setupDisabled =
-    setupDs.isPending || !remoteCatalog || !selectedS3Url || !tableName || !cron || !timezone;
+    !row ||
+    setupDs.isPending ||
+    !remoteCatalog ||
+    !selectedS3Url ||
+    !tableName ||
+    !cron ||
+    !timezone;
   const createExportDisabled =
     creatingExport ||
-    updateDs.isPending ||
+    savePending ||
+    registered ||
+    !awsAccountId ||
     !selectedS3Bucket ||
     !accessKeyId ||
     !secretAccessKey ||
     !exportName ||
-    !normalizedS3Prefix;
+    !effectiveS3Prefix;
   const errorMessage =
-    messageOf(storageCredentials.error) ?? messageOf(locations.error) ?? messageOf(updateDs.error);
+    messageOf(storageCredentials.error) ??
+    messageOf(locations.error) ??
+    messageOf(createDs.error) ??
+    messageOf(updateDs.error);
 
   // --- Actions ---
   const onAccountChange = (value: string) => {
@@ -167,41 +347,76 @@ export function useAwsFocusForm(row: DataSource) {
     setExternalLocationName(value);
   };
 
-  const onSave = async () => {
+  const buildConfig = (overrides?: Record<string, unknown>) => {
     const selected = allLocations.find((loc) => loc.name === externalLocationName);
-    const storageCredentialName = selected?.credentialName ?? null;
-    const s3Bucket = selected?.url ? s3BucketFromUrl(selected.url) : null;
-    await updateDs.mutateAsync({
-      id: row.id,
-      body: {
-        config: {
-          ...row.config,
-          awsAccountId,
-          externalLocationName,
-          externalLocationUrl: selected?.url ?? null,
-          storageCredentialName,
-          s3Bucket,
-          exportName,
-          s3Prefix: normalizedS3Prefix,
-          s3Region: AWS_BCM_REGION,
-        },
-      },
-    });
+    return {
+      ...remoteConfig,
+      awsAccountId,
+      externalLocationName,
+      externalLocationUrl: selected?.url ?? selectedS3Url,
+      storageCredentialName: selected?.credentialName ?? null,
+      s3Bucket: selectedS3Bucket,
+      exportName,
+      s3Prefix: effectiveS3Prefix,
+      s3Region: AWS_BCM_REGION,
+      ...overrides,
+    };
+  };
+
+  const onSave = async () => {
+    const config = buildConfig(exportArn ? { exportArn } : {});
+    if (row) {
+      await updateDs.mutateAsync({
+        id: row.id,
+        body: { billingAccountId: awsAccountId, config },
+      });
+    } else if (options.draft) {
+      const created = await createDs.mutateAsync({
+        ...options.draft,
+        billingAccountId: awsAccountId,
+        enabled: false,
+        config,
+      });
+      options.onCreated?.(created);
+    }
     setSavedAt(Date.now());
   };
 
+  const saveExportArn = async (nextExportArn: string) => {
+    if (!row) return;
+    const config = buildConfig({
+      exportArn: nextExportArn,
+      exportCreatedAt: new Date().toISOString(),
+    });
+    await updateDs.mutateAsync({
+      id: row.id,
+      body: { billingAccountId: awsAccountId, config },
+    });
+  };
+
   const onCreateExport = async () => {
-    if (!selectedS3Bucket) return;
+    if (!selectedS3Bucket || !awsAccountId) return;
     setCreatingExport(true);
     setExportError(null);
     try {
+      const credentials = {
+        accessKeyId,
+        secretAccessKey,
+        sessionToken: sessionToken.trim() || undefined,
+      };
+      const s3Client = new S3Client({
+        region: AWS_BCM_REGION,
+        credentials,
+      });
+      await upsertAwsDataExportBucketPolicy({
+        client: s3Client,
+        bucket: selectedS3Bucket,
+        accountId: awsAccountId,
+      });
+
       const client = new BCMDataExportsClient({
         region: AWS_BCM_REGION,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-          sessionToken: sessionToken.trim() || undefined,
-        },
+        credentials,
       });
       const res = await client.send(
         new CreateExportCommand({
@@ -219,7 +434,7 @@ export function useAwsFocusForm(row: DataSource) {
             DestinationConfigurations: {
               S3Destination: {
                 S3Bucket: selectedS3Bucket,
-                S3Prefix: normalizedS3Prefix,
+                S3Prefix: effectiveS3Prefix,
                 S3Region: AWS_BCM_REGION,
                 S3OutputConfigurations: {
                   Format: 'PARQUET',
@@ -238,24 +453,7 @@ export function useAwsFocusForm(row: DataSource) {
       );
       const nextExportArn = res.ExportArn ?? '';
       setExportArn(nextExportArn);
-      await updateDs.mutateAsync({
-        id: row.id,
-        body: {
-          config: {
-            ...row.config,
-            awsAccountId,
-            externalLocationName,
-            externalLocationUrl: selectedS3Url,
-            storageCredentialName: selectedLocation?.credentialName ?? null,
-            s3Bucket: selectedS3Bucket,
-            exportName,
-            s3Prefix: normalizedS3Prefix,
-            s3Region: AWS_BCM_REGION,
-            exportArn: nextExportArn,
-            exportCreatedAt: new Date().toISOString(),
-          },
-        },
-      });
+      await saveExportArn(nextExportArn);
     } catch (err) {
       setExportError(messageOf(err) ?? String(err));
     } finally {
@@ -264,6 +462,7 @@ export function useAwsFocusForm(row: DataSource) {
   };
 
   const onSetup = async () => {
+    if (!row) return;
     const r = await setupDs.mutateAsync({
       id: row.id,
       body: {
@@ -276,7 +475,13 @@ export function useAwsFocusForm(row: DataSource) {
   };
 
   const onRunJob = async () => {
+    if (!row) return;
     await runJob.mutateAsync(row.id);
+  };
+
+  const openExportModal = (open: boolean) => {
+    if (open && !exportName.trim()) setExportName(AWS_EXPORT_NAME_DEFAULT);
+    setExportModalOpen(open);
   };
 
   return {
@@ -287,20 +492,25 @@ export function useAwsFocusForm(row: DataSource) {
     setS3Prefix,
     exportName,
     setExportName,
-    normalizedS3Prefix,
+    effectiveS3Prefix,
 
     // Source form derived
     accountOptions,
     linkedLocations,
+    locationOptions,
     selectedS3Url,
+    selectedS3Bucket,
+    selectedS3BasePrefix,
     exportDestinationPreview,
+    registered,
+    persisted: Boolean(row),
     dirty,
     loadingInputs,
     saveDisabled,
     errorMessage,
     savedAt,
     storageCredentialsLoading: storageCredentials.isLoading,
-    updatePending: updateDs.isPending,
+    savePending,
 
     // Source form actions
     onAccountChange,
@@ -314,8 +524,8 @@ export function useAwsFocusForm(row: DataSource) {
     setSecretAccessKey,
     sessionToken,
     setSessionToken,
-    exportPanelOpen,
-    setExportPanelOpen,
+    exportModalOpen,
+    openExportModal,
     exportArn,
     exportError,
     creatingExport,

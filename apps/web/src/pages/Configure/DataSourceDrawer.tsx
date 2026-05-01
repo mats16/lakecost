@@ -18,8 +18,9 @@ import {
   SheetHeader,
   SheetTitle,
   Spinner,
+  cn,
 } from '@databricks/appkit-ui/react';
-import { ChevronDown, ExternalLink, Info } from 'lucide-react';
+import { Check, ExternalLink, Info, Pencil, X } from 'lucide-react';
 import {
   useAppSettings,
   useDataSource,
@@ -27,14 +28,16 @@ import {
   useMe,
   useRunDataSourceJob,
   useSetupDataSource,
+  useUpdateDataSource,
 } from '../../api/hooks';
 import {
   ACCOUNT_PRICES_DEFAULT,
   CATALOG_SETTING_KEY,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
+  medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
+  s3BucketFromUrl,
   tableLeafName,
   unquotedFqn,
   type DataSource,
@@ -42,23 +45,39 @@ import {
   type ExternalLocationSummary,
 } from '@lakecost/shared';
 import { useI18n } from '../../i18n';
-import { displayNameForRow, findTemplateForRow } from './dataSourceCatalog';
-import { useAwsFocusForm } from './useAwsFocusForm';
+import { displayNameForRow, findTemplateById, findTemplateForRow } from './dataSourceCatalog';
+import { type AwsFocusDraft, useAwsFocusForm } from './useAwsFocusForm';
+
+const AWS_BCM_DATA_EXPORTS_URL =
+  'https://us-east-1.console.aws.amazon.com/costmanagement/home#/bcm-data-exports';
 
 interface Props {
   dataSourceId: number | null;
+  draftAwsSource?: AwsFocusDraft | null;
   onClose: () => void;
+  onCreated?: (row: DataSource) => void;
 }
 
 function catalogTableUrl(workspaceUrl: string, fqn: string): string {
   return `${workspaceUrl}/explore/data/${fqn.split('.').map(encodeURIComponent).join('/')}`;
 }
 
-export function DataSourceDrawer({ dataSourceId, onClose }: Props) {
+export function DataSourceDrawer({ dataSourceId, draftAwsSource, onClose, onCreated }: Props) {
   const { t } = useI18n();
   const ds = useDataSource(dataSourceId ?? undefined);
-  const isOpen = dataSourceId !== null;
+  const isOpen = dataSourceId !== null || Boolean(draftAwsSource);
   const row = ds.data;
+  const template = row
+    ? findTemplateForRow(row)
+    : draftAwsSource
+      ? findTemplateById(draftAwsSource.templateId)
+      : undefined;
+  const descriptionKey =
+    template?.id === 'databricks_focus13'
+      ? 'dataSources.systemTables.focusViewDesc'
+      : template?.id === 'aws'
+        ? 'dataSources.aws.description'
+        : null;
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => (open ? null : onClose())}>
@@ -68,22 +87,27 @@ export function DataSourceDrawer({ dataSourceId, onClose }: Props) {
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader>
-          <SheetTitle>
-            {row
-              ? (() => {
-                  const tpl = findTemplateForRow(row);
-                  return tpl ? displayNameForRow(row, tpl) : row.name;
-                })()
-              : t('common.loading')}
-          </SheetTitle>
+          <DataSourceDrawerTitle
+            row={row}
+            title={
+              row
+                ? template
+                  ? displayNameForRow(row, template)
+                  : row.name
+                : draftAwsSource
+                  ? (template?.name ?? draftAwsSource.name)
+                  : t('common.loading')
+            }
+          />
         </SheetHeader>
         <div className="flex flex-col gap-4 overflow-auto px-4 pb-6">
-          {row?.providerName === 'Databricks' ? (
-            <p className="text-muted-foreground text-sm">
-              {t('dataSources.systemTables.focusViewDesc')}
-            </p>
+          {descriptionKey ? (
+            <p className="text-muted-foreground text-sm">{t(descriptionKey)}</p>
           ) : null}
           {row ? <Configurator row={row} onClose={onClose} /> : null}
+          {!row && draftAwsSource ? (
+            <AwsFocusSection row={null} draft={draftAwsSource} onCreated={onCreated} />
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>
@@ -129,34 +153,151 @@ function Configurator({ row, onClose }: { row: DataSource; onClose: () => void }
   );
 }
 
-function AwsFocusSection({ row }: { row: DataSource }) {
-  const form = useAwsFocusForm(row);
+function DataSourceDrawerTitle({ row, title }: { row?: DataSource; title: string }) {
+  const { t } = useI18n();
+  const updateDs = useUpdateDataSource();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(title);
+  const trimmedName = name.trim();
+  const dirty = trimmedName !== title;
+
+  useEffect(() => {
+    if (!editing) setName(title);
+  }, [editing, title]);
+
+  const onSave = async () => {
+    if (!row || !trimmedName || !dirty) return;
+    await updateDs.mutateAsync({ id: row.id, body: { name: trimmedName } });
+    setEditing(false);
+  };
+
+  const onCancel = () => {
+    setName(title);
+    setEditing(false);
+  };
+
+  if (editing && row) {
+    return (
+      <div className="grid gap-2">
+        <SheetTitle className="sr-only">{title}</SheetTitle>
+        <form
+          className="flex min-w-0 items-center gap-2 pr-8"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSave();
+          }}
+        >
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={updateDs.isPending}
+            autoFocus
+            aria-label={t('dataSources.name.label')}
+            className="h-14 min-w-0 text-4xl font-semibold"
+          />
+          <Button
+            type="submit"
+            disabled={updateDs.isPending || !trimmedName || !dirty}
+            aria-label={t('dataSources.name.save')}
+            className="size-10 shrink-0 p-0"
+          >
+            {updateDs.isPending ? <Spinner /> : <Check className="size-4" aria-hidden="true" />}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={updateDs.isPending}
+            onClick={onCancel}
+            aria-label={t('common.cancel')}
+            className="size-10 shrink-0 p-0"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </Button>
+        </form>
+        {updateDs.error ? (
+          <Alert variant="destructive">
+            <Info />
+            <AlertDescription>{(updateDs.error as Error).message}</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <SheetTitle>
+      <span className="inline-flex min-w-0 items-center gap-2 pr-8 align-middle">
+        <span className="truncate">{title}</span>
+        {row ? (
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 inline-grid size-9 shrink-0 place-items-center rounded-md transition-colors"
+            aria-label={t('dataSources.name.edit')}
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="size-4" aria-hidden="true" />
+          </button>
+        ) : null}
+      </span>
+    </SheetTitle>
+  );
+}
+
+function AwsFocusSection({
+  row,
+  draft,
+  onCreated,
+}: {
+  row: DataSource | null;
+  draft?: AwsFocusDraft;
+  onCreated?: (row: DataSource) => void;
+}) {
+  const form = useAwsFocusForm(row, { draft, onCreated });
   return (
     <>
       <AwsSourceForm form={form} />
-      {form.selectedS3Url ? <AwsTransformationSection form={form} /> : null}
+      {form.persisted && form.selectedS3Url ? <AwsTransformationSection form={form} /> : null}
     </>
   );
 }
 
 function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
+  const credentialsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/credentials` : null;
+  const externalLocationsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/locations` : null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">{t('dataSources.awsCur.title')}</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm">{t('dataSources.aws.title')}</CardTitle>
+          <a
+            href={AWS_BCM_DATA_EXPORTS_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={t('dataSources.aws.openDataExports')}
+            className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded-sm transition-colors"
+          >
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3">
           <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.awsAccountId')}</span>
+            <span className="text-muted-foreground">
+              {t('dataSources.aws.awsAccountId')} ({t('dataSources.aws.from')}{' '}
+              <SourceLabelLink href={credentialsUrl}>
+                {t('dataSources.aws.storageCredentialSource')}
+              </SourceLabelLink>
+              )
+            </span>
             <Select
               value={form.awsAccountId}
               onValueChange={form.onAccountChange}
-              disabled={form.storageCredentialsLoading || form.updatePending}
+              disabled={form.registered || form.storageCredentialsLoading || form.savePending}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.awsCur.awsAccountIdPlaceholder')} />
+                <SelectValue placeholder={t('dataSources.aws.awsAccountIdPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {form.accountOptions.map((accountId) => (
@@ -169,19 +310,27 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
           </label>
 
           <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.s3Url')}</span>
+            <span className="text-muted-foreground">
+              {t('dataSources.aws.s3Bucket')} ({t('dataSources.aws.from')}{' '}
+              <SourceLabelLink href={externalLocationsUrl}>
+                {t('dataSources.aws.externalLocationSource')}
+              </SourceLabelLink>
+              )
+            </span>
             <Select
               value={form.externalLocationName}
               onValueChange={form.onLocationChange}
-              disabled={!form.awsAccountId || form.loadingInputs || form.updatePending}
+              disabled={
+                form.registered || !form.awsAccountId || form.loadingInputs || form.savePending
+              }
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.awsCur.s3UrlPlaceholder')} />
+                <SelectValue placeholder={t('dataSources.aws.s3UrlPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                {form.linkedLocations.map((loc) => (
+                {form.locationOptions.map((loc) => (
                   <SelectItem key={loc.name} value={loc.name}>
-                    {s3UrlLabel(loc)}
+                    {s3BucketLabel(loc)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -192,64 +341,66 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
             <>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="grid gap-1 text-xs">
-                  <span className="text-muted-foreground">{t('dataSources.awsCur.s3Prefix')}</span>
-                  <Input
-                    value={form.s3Prefix}
-                    onChange={(e) => form.setS3Prefix(e.target.value)}
-                    onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
+                  <span className="text-muted-foreground">{t('dataSources.aws.s3PathPrefix')}</span>
+                  <S3PrefixInput
+                    form={form}
+                    disabled={form.registered || form.savePending}
                     placeholder="export"
                   />
                 </label>
                 <label className="grid gap-1 text-xs">
-                  <span className="text-muted-foreground">
-                    {t('dataSources.awsCur.exportName')}
-                  </span>
+                  <span className="text-muted-foreground">{t('dataSources.aws.exportName')}</span>
                   <Input
                     value={form.exportName}
                     onChange={(e) => form.setExportName(e.target.value)}
+                    disabled={form.registered || form.savePending}
                   />
                 </label>
               </div>
 
               {form.exportDestinationPreview ? (
                 <div className="text-muted-foreground break-all text-xs">
-                  {t('dataSources.awsCur.exportDestination')}:{' '}
+                  {t('dataSources.aws.exportDestination')}:{' '}
                   <span className="text-foreground font-mono">{form.exportDestinationPreview}</span>
                 </div>
               ) : null}
             </>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              disabled={form.saveDisabled}
-              onClick={form.onSave}
-              className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-            >
-              {form.updatePending ? <Spinner /> : null}
-              {t('dataSources.awsCur.saveExternalLocation')}
-            </Button>
-            {form.savedAt && !form.dirty && !form.updatePending ? (
-              <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
-            ) : null}
-          </div>
+          {!form.registered ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                type="button"
+                disabled={form.saveDisabled}
+                onClick={form.onSave}
+                className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
+              >
+                {form.savePending ? <Spinner /> : null}
+                {t('dataSources.aws.saveExternalLocation')}
+              </Button>
+              {form.savedAt && !form.dirty && !form.savePending ? (
+                <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
+              ) : null}
+              {form.selectedS3Url ? <AwsExportPanel form={form} /> : null}
+            </div>
+          ) : null}
 
-          {form.selectedS3Url ? <AwsExportPanel form={form} /> : null}
-
-          {!form.storageCredentialsLoading && form.accountOptions.length === 0 ? (
+          {!form.registered &&
+          !form.storageCredentialsLoading &&
+          form.accountOptions.length === 0 ? (
             <Alert>
               <Info />
-              <AlertDescription>{t('dataSources.awsCur.noStorageCredentials')}</AlertDescription>
+              <AlertDescription>{t('dataSources.aws.noStorageCredentials')}</AlertDescription>
             </Alert>
           ) : null}
 
-          {form.awsAccountId && !form.loadingInputs && form.linkedLocations.length === 0 ? (
+          {!form.registered &&
+          form.awsAccountId &&
+          !form.loadingInputs &&
+          form.linkedLocations.length === 0 ? (
             <Alert>
               <Info />
-              <AlertDescription>
-                {t('dataSources.awsCur.noLinkedExternalLocations')}
-              </AlertDescription>
+              <AlertDescription>{t('dataSources.aws.noLinkedExternalLocations')}</AlertDescription>
             </Alert>
           ) : null}
 
@@ -265,85 +416,196 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   );
 }
 
+function SourceLabelLink({ href, children }: { href: string | null; children: React.ReactNode }) {
+  const className = 'border-current border-b pb-px';
+
+  if (!href) return <span className={className}>{children}</span>;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={`hover:text-foreground ${className}`}
+    >
+      {children}
+    </a>
+  );
+}
+
 function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
   return (
-    <div className="border-border bg-background/35 rounded-md border">
-      <button
-        type="button"
-        className="text-foreground hover:bg-muted/30 flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors"
-        aria-expanded={form.exportPanelOpen}
-        aria-controls="aws-export-panel"
-        onClick={() => form.setExportPanelOpen((open) => !open)}
+    <>
+      <Button type="button" variant="secondary" onClick={() => form.openExportModal(true)}>
+        {t('dataSources.aws.exportCreateSection')}
+      </Button>
+      <AwsExportModal form={form} />
+    </>
+  );
+}
+
+function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+  const { t } = useI18n();
+  const { exportModalOpen, openExportModal } = form;
+
+  useEffect(() => {
+    if (!exportModalOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') openExportModal(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [exportModalOpen, openExportModal]);
+
+  if (!exportModalOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4"
+      role="presentation"
+      onMouseDown={() => openExportModal(false)}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="aws-export-modal-title"
+        className="bg-background border-border grid w-full max-w-lg gap-4 rounded-lg border p-5 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
       >
-        <span>{t('dataSources.awsCur.exportCreateSection')}</span>
-        <ChevronDown
-          className={`text-muted-foreground size-4 shrink-0 transition-transform ${
-            form.exportPanelOpen ? 'rotate-180' : ''
-          }`}
-          aria-hidden="true"
-        />
-      </button>
-      {form.exportPanelOpen ? (
-        <div id="aws-export-panel" className="grid gap-3 border-t px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 id="aws-export-modal-title" className="text-base font-semibold">
+            {t('dataSources.aws.exportCreateSection')}
+          </h3>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors"
+            aria-label={t('common.close')}
+            onClick={() => openExportModal(false)}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="grid gap-2">
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.aws.exportName')}</span>
+            <Input
+              value={form.exportName}
+              onChange={(e) => form.setExportName(e.target.value)}
+              disabled={form.creatingExport}
+            />
+          </label>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="grid gap-1 text-xs">
-              <span className="text-muted-foreground">{t('dataSources.awsCur.accessKeyId')}</span>
-              <Input
-                value={form.accessKeyId}
-                onChange={(e) => form.setAccessKeyId(e.target.value)}
-                autoComplete="off"
-              />
+              <span className="text-muted-foreground">{t('dataSources.aws.s3Bucket')}</span>
+              <Input value={form.selectedS3Bucket ?? ''} disabled />
             </label>
             <label className="grid gap-1 text-xs">
-              <span className="text-muted-foreground">
-                {t('dataSources.awsCur.secretAccessKey')}
-              </span>
-              <Input
-                type="password"
-                value={form.secretAccessKey}
-                onChange={(e) => form.setSecretAccessKey(e.target.value)}
-                autoComplete="new-password"
-              />
-            </label>
-            <label className="grid gap-1 text-xs sm:col-span-2">
-              <span className="text-muted-foreground">{t('dataSources.awsCur.sessionToken')}</span>
-              <Input
-                type="password"
-                value={form.sessionToken}
-                onChange={(e) => form.setSessionToken(e.target.value)}
-                autoComplete="off"
-                placeholder={t('dataSources.awsCur.sessionTokenPlaceholder')}
-              />
+              <span className="text-muted-foreground">{t('dataSources.aws.s3PathPrefix')}</span>
+              <S3PrefixInput form={form} disabled={form.creatingExport} placeholder="export" />
             </label>
           </div>
-          <div>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={form.createExportDisabled}
-              onClick={form.onCreateExport}
-            >
-              {form.creatingExport ? <Spinner /> : null}
-              {t('dataSources.awsCur.createExport')}
-            </Button>
-          </div>
-          {form.exportArn ? (
-            <Alert>
-              <Info />
-              <AlertDescription>
-                {t('dataSources.awsCur.exportCreated', { exportArn: form.exportArn })}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {form.exportError ? (
-            <Alert variant="destructive">
-              <Info />
-              <AlertDescription>{form.exportError}</AlertDescription>
-            </Alert>
-          ) : null}
         </div>
-      ) : null}
+        <div className="border-border border-t" />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.aws.accessKeyId')}</span>
+            <Input
+              value={form.accessKeyId}
+              onChange={(e) => form.setAccessKeyId(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.aws.secretAccessKey')}</span>
+            <Input
+              type="password"
+              value={form.secretAccessKey}
+              onChange={(e) => form.setSecretAccessKey(e.target.value)}
+              autoComplete="new-password"
+            />
+          </label>
+          <label className="grid gap-1 text-xs sm:col-span-2">
+            <span className="text-muted-foreground">{t('dataSources.aws.sessionToken')}</span>
+            <Input
+              type="password"
+              value={form.sessionToken}
+              onChange={(e) => form.setSessionToken(e.target.value)}
+              autoComplete="off"
+              placeholder={t('dataSources.aws.sessionTokenPlaceholder')}
+            />
+          </label>
+        </div>
+        <p className="text-muted-foreground text-xs">{t('dataSources.aws.credentialsNotSaved')}</p>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={form.createExportDisabled}
+            onClick={form.onCreateExport}
+          >
+            {form.creatingExport ? <Spinner /> : null}
+            {t('dataSources.aws.createExport')}
+          </Button>
+        </div>
+        {form.exportArn ? (
+          <Alert>
+            <Info />
+            <AlertDescription>
+              {t('dataSources.aws.exportCreated', { exportArn: form.exportArn })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {form.exportError ? (
+          <Alert variant="destructive">
+            <Info />
+            <AlertDescription>{form.exportError}</AlertDescription>
+          </Alert>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function S3PrefixInput({
+  form,
+  disabled,
+  placeholder,
+}: {
+  form: ReturnType<typeof useAwsFocusForm>;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  if (!form.selectedS3BasePrefix) {
+    return (
+      <Input
+        value={form.s3Prefix}
+        onChange={(e) => form.setS3Prefix(e.target.value)}
+        onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
+        placeholder={placeholder}
+        disabled={disabled}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'border-input bg-background flex h-9 min-w-0 items-center overflow-hidden rounded-md border text-sm',
+        disabled && 'opacity-50',
+      )}
+    >
+      <span className="bg-muted/40 text-muted-foreground border-border max-w-[55%] shrink-0 overflow-hidden border-r px-3 py-2 font-mono text-xs text-ellipsis whitespace-nowrap">
+        {form.selectedS3BasePrefix}/
+      </span>
+      <input
+        value={form.s3Prefix}
+        onChange={(e) => form.setS3Prefix(e.target.value)}
+        onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-xs outline-none disabled:cursor-not-allowed"
+      />
     </div>
   );
 }
@@ -357,14 +619,6 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.catalog')}</span>
-            <Input value={form.remoteCatalog} disabled placeholder="main" />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
-            <Input value={FOCUS_VIEW_SCHEMA_DEFAULT} disabled />
-          </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
             <Input value={form.tableName} onChange={(e) => form.setTableName(e.target.value)} />
@@ -468,8 +722,8 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
   );
 }
 
-function s3UrlLabel(location: ExternalLocationSummary): string {
-  return location.url ?? location.name;
+function s3BucketLabel(location: ExternalLocationSummary): string {
+  return location.url ? (s3BucketFromUrl(location.url) ?? location.url) : location.name;
 }
 
 function FocusViewSection({ row }: { row: DataSource }) {
@@ -480,6 +734,7 @@ function FocusViewSection({ row }: { row: DataSource }) {
   const runJob = useRunDataSourceJob();
 
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
+  const silverSchema = medallionSchemaNamesFromSettings(settings.data?.settings ?? {}).silver;
   const remoteAccountPrices =
     (row.config.accountPricesTable as string | undefined) ?? ACCOUNT_PRICES_DEFAULT;
   const remoteCron =
@@ -503,8 +758,8 @@ function FocusViewSection({ row }: { row: DataSource }) {
   useEffect(() => setTimezone(remoteTz), [remoteTz]);
 
   const fqn = remoteCatalog
-    ? unquotedFqn(remoteCatalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName)
-    : `${FOCUS_VIEW_SCHEMA_DEFAULT}.${tableName}`;
+    ? unquotedFqn(remoteCatalog, silverSchema, tableName)
+    : `${silverSchema}.${tableName}`;
 
   const onSetup = async () => {
     const r = await setupDs.mutateAsync({
@@ -530,14 +785,6 @@ function FocusViewSection({ row }: { row: DataSource }) {
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.catalog')}</span>
-            <Input value={remoteCatalog} disabled placeholder="main" />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.schema')}</span>
-            <Input value={FOCUS_VIEW_SCHEMA_DEFAULT} disabled />
-          </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
             <Input value={tableName} onChange={(e) => setTableName(e.target.value)} />

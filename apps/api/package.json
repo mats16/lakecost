@@ -13,7 +13,6 @@
     "test": "echo \"no tests yet\""
   },
   "dependencies": {
-    "@databricks/appkit": "^0.25.0",
     "@databricks/sdk-experimental": "^0.16.0",
     "@lakecost/db": "*",
     "@lakecost/shared": "*",

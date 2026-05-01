@@ -329,7 +329,7 @@ SELECT
   u.custom_tags AS Tags
 FROM usage_with_pricing u;
 
-CREATE OR REFRESH MATERIALIZED VIEW gold.`${table_name}_daily`
+CREATE OR REFRESH MATERIALIZED VIEW `${gold_schema_name}`.`${table_name}_daily`
 COMMENT 'Databricks FOCUS daily billing rollup managed by FinLake'
 AS
 SELECT

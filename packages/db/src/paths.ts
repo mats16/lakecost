@@ -10,10 +10,10 @@ export function resolveSqlitePath(env: Env): string {
   // We can't use env vars like DATABRICKS_APP_NAME as the signal because
   // they're commonly set in local .env files to identify the deploy target.
   if (fs.existsSync('/home/app')) {
-    return '/home/app/data/lakecost.db';
+    return '/home/app/data/finlake.db';
   }
 
-  return path.resolve(process.cwd(), 'data/lakecost.db');
+  return path.resolve(process.cwd(), 'data/finlake.db');
 }
 
 export function ensureParentDir(filePath: string): void {

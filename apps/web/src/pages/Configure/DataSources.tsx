@@ -1,31 +1,20 @@
 import { useMemo, useState } from 'react';
-import {
-  CATALOG_SETTING_KEY,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
-  tableLeafName,
-  type DataSource,
-} from '@lakecost/shared';
+import { tableLeafName, type DataSource } from '@lakecost/shared';
 import { Input, Separator } from '@databricks/appkit-ui/react';
-import {
-  useAppSettings,
-  useCreateDataSource,
-  useDataSources,
-  useDataSourceTemplates,
-} from '../../api/hooks';
+import { useCreateDataSource, useDataSources, useDataSourceTemplates } from '../../api/hooks';
 import { DataSourceTile, type TileBadge } from './DataSourceTile';
 import { DataSourceDrawer } from './DataSourceDrawer';
 import {
   DATA_SOURCE_TEMPLATES,
   canCreateTemplate,
-  displayDescriptionForRow,
   displayNameForRow,
   findTemplateForRow,
   getTemplateInputConfig,
   getTemplateRegistryEntry,
-  type DataSourceTemplateInputConfig,
   type DataSourceTemplate,
 } from './dataSourceCatalog';
 import { useI18n } from '../../i18n';
+import type { AwsFocusDraft } from './useAwsFocusForm';
 
 const FALLBACK_TEMPLATE: DataSourceTemplate = {
   id: 'custom',
@@ -41,11 +30,6 @@ const FALLBACK_TEMPLATE: DataSourceTemplate = {
 
 function templateForRow(row: DataSource): DataSourceTemplate {
   return findTemplateForRow(row) ?? FALLBACK_TEMPLATE;
-}
-
-function initialTableName(input: DataSourceTemplateInputConfig, catalog: string): string {
-  if (input.providerName !== 'Databricks' || !catalog) return input.defaultTableName;
-  return `${catalog}.${FOCUS_VIEW_SCHEMA_DEFAULT}.${input.defaultTableName}`;
 }
 
 function rowMatchesTemplate(row: DataSource, template: DataSourceTemplate): boolean {
@@ -71,9 +55,9 @@ export function DataSources() {
   const { t } = useI18n();
   const [filter, setFilter] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
+  const [draftAwsSource, setDraftAwsSource] = useState<AwsFocusDraft | null>(null);
   const dataSources = useDataSources();
   const templates = useDataSourceTemplates();
-  const settings = useAppSettings();
   const createDs = useCreateDataSource();
 
   const rows = dataSources.data?.items ?? [];
@@ -127,15 +111,25 @@ export function DataSources() {
     }
     const tableName = canAddMultiple(tpl)
       ? nextTableName(input.defaultTableName, rows)
-      : initialTableName(input, settings.data?.settings[CATALOG_SETTING_KEY]?.trim() ?? '');
+      : input.defaultTableName;
+    if (tpl.id === 'aws') {
+      setOpenId(null);
+      setDraftAwsSource({
+        templateId: tpl.id,
+        name: tpl.name,
+        providerName: input.providerName,
+        tableName,
+      });
+      return;
+    }
     const created = await createDs.mutateAsync({
       templateId: tpl.id,
       name: tpl.name,
       providerName: input.providerName,
       tableName,
-      description: tpl.description,
       enabled: false,
     });
+    setDraftAwsSource(null);
     setOpenId(created.id);
   };
 
@@ -166,7 +160,6 @@ export function DataSources() {
                 source={tpl}
                 logo={registryEntry?.logo}
                 displayName={displayNameForRow(row, tpl)}
-                displayDescription={displayDescriptionForRow(row, tpl)}
                 badges={badgesFor(row)}
                 onClick={() => setOpenId(row.id)}
               />
@@ -205,7 +198,18 @@ export function DataSources() {
         })}
       </div>
 
-      <DataSourceDrawer dataSourceId={openId} onClose={() => setOpenId(null)} />
+      <DataSourceDrawer
+        dataSourceId={openId}
+        draftAwsSource={draftAwsSource}
+        onClose={() => {
+          setOpenId(null);
+          setDraftAwsSource(null);
+        }}
+        onCreated={(row) => {
+          setDraftAwsSource(null);
+          setOpenId(row.id);
+        }}
+      />
     </>
   );
 }

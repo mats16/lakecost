@@ -5,6 +5,6 @@ export default defineConfig({
   schema: './src/schema/sqlite.ts',
   out: './migrations/sqlite',
   dbCredentials: {
-    url: process.env.SQLITE_PATH ?? './data/lakecost.db',
+    url: process.env.SQLITE_PATH ?? './data/finlake.db',
   },
 });

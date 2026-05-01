@@ -5,15 +5,20 @@ export const AWS_FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const AWS_FOCUS_S3_BUCKET_PARAMETER = 's3_bucket';
 export const AWS_FOCUS_S3_PREFIX_PARAMETER = 's3_prefix';
 export const AWS_FOCUS_EXPORT_NAME_PARAMETER = 'export_name';
+export const AWS_FOCUS_GOLD_SCHEMA_PARAMETER = 'gold_schema_name';
 
 export function buildAwsFocusPipelineConfiguration(
   tableName: string,
   s3Bucket: string,
   s3Prefix: string,
   exportName: string,
+  goldSchema: string,
 ): Record<string, string> {
   if (!IDENT_RE.test(tableName)) {
     throw new Error(`Invalid table identifier "${tableName}"`);
+  }
+  if (!IDENT_RE.test(goldSchema)) {
+    throw new Error(`Invalid gold schema identifier "${goldSchema}"`);
   }
   if (!s3Bucket || s3Bucket.includes('/')) {
     throw new Error(`Invalid S3 bucket "${s3Bucket}"`);
@@ -29,6 +34,7 @@ export function buildAwsFocusPipelineConfiguration(
     [AWS_FOCUS_S3_BUCKET_PARAMETER]: s3Bucket,
     [AWS_FOCUS_S3_PREFIX_PARAMETER]: s3Prefix,
     [AWS_FOCUS_EXPORT_NAME_PARAMETER]: exportName,
+    [AWS_FOCUS_GOLD_SCHEMA_PARAMETER]: goldSchema,
   };
 }
 

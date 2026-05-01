@@ -26,12 +26,20 @@
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
+    "@esbuild-kit/esm-loader": "file:packages/npm-shims/esbuild-kit-esm-loader",
     "@types/node": "^22.10.0",
+    "better-sqlite3": "file:packages/npm-shims/better-sqlite3",
     "eslint": "^9.18.0",
     "jsdom": "^29.0.2",
+    "node-domexception": "file:packages/npm-shims/node-domexception",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.59.0"
+  },
+  "overrides": {
+    "@esbuild-kit/esm-loader": "$@esbuild-kit/esm-loader",
+    "better-sqlite3": "$better-sqlite3",
+    "node-domexception": "$node-domexception"
   }
 }

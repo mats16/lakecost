@@ -3,20 +3,24 @@ import { ACCOUNT_PRICES_DEFAULT, IDENT_RE, validateAccountPricesTable } from '@l
 
 export const FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const FOCUS_ACCOUNT_PRICES_PARAMETER = 'account_prices';
+export const FOCUS_GOLD_SCHEMA_PARAMETER = 'gold_schema_name';
 
 export function buildFocusPipelineConfiguration(
   tableName: string,
   accountPricesTable: string,
+  goldSchema: string,
 ): Record<string, string> {
   return {
     [FOCUS_TABLE_NAME_PARAMETER]: tableName,
     [FOCUS_ACCOUNT_PRICES_PARAMETER]: accountPricesTable,
+    [FOCUS_GOLD_SCHEMA_PARAMETER]: goldSchema,
   };
 }
 
 export function buildFocusPipelineSql(opts: {
   catalog: string;
   table: string;
+  goldSchema: string;
   accountPricesTable?: string;
 }): string {
   if (!IDENT_RE.test(opts.catalog)) {
@@ -24,6 +28,9 @@ export function buildFocusPipelineSql(opts: {
   }
   if (!IDENT_RE.test(opts.table)) {
     throw new Error(`Invalid table identifier "${opts.table}"`);
+  }
+  if (!IDENT_RE.test(opts.goldSchema)) {
+    throw new Error(`Invalid gold schema identifier "${opts.goldSchema}"`);
   }
   const rawAccountPrices =
     opts.accountPricesTable && opts.accountPricesTable.trim().length > 0

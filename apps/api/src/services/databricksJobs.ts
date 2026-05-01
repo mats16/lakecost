@@ -30,6 +30,8 @@ export interface UpsertPipelineScheduleResult {
   createdJob: boolean;
 }
 
+const FINLAKE_MANAGED_TAGS = { ManagedBy: 'finlake' } as const;
+
 async function ensureWorkspaceDir(wc: WorkspaceClient, dir: string): Promise<void> {
   try {
     await wc.workspace.mkdirs({ path: dir });
@@ -80,7 +82,7 @@ async function upsertPipeline(
     ...(params.servicePrincipalId
       ? { run_as: { service_principal_name: params.servicePrincipalId } }
       : {}),
-    tags: { managed_by: 'lakecost' },
+    tags: FINLAKE_MANAGED_TAGS,
   };
 
   if (existingPipelineId) {
@@ -118,7 +120,7 @@ export async function dryRunPipelineCreate(
     ...(params.servicePrincipalId
       ? { run_as: { service_principal_name: params.servicePrincipalId } }
       : {}),
-    tags: { managed_by: 'lakecost' },
+    tags: FINLAKE_MANAGED_TAGS,
     dry_run: true,
   });
 }
@@ -139,7 +141,7 @@ export async function upsertPipelineSchedule(
   const jobSettings = {
     name: params.jobName,
     max_concurrent_runs: 1,
-    tags: { managed_by: 'lakecost' },
+    tags: FINLAKE_MANAGED_TAGS,
     schedule: {
       quartz_cron_expression: params.cronExpression,
       timezone_id: params.timezoneId,

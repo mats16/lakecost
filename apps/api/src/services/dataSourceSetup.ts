@@ -1,4 +1,4 @@
-import type { DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
 import {
   ACCOUNT_PRICES_DEFAULT,
   AWS_FOCUS_VERSION,
@@ -6,13 +6,12 @@ import {
   DATABRICKS_FOCUS_VERSION,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
-  FOCUS_VIEW_SCHEMA_DEFAULT,
   focusViewFqn,
+  medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   s3BucketFromUrl,
   s3ExportPath,
   tableLeafName,
-  unquotedFqn,
   validateAccountPricesTable,
   type DataSourceSetupBody,
   type DataSourceSetupResult,
@@ -151,9 +150,9 @@ export async function setupFocusDataSource(
   if (!env.DATABRICKS_APP_NAME) {
     throw new DataSourceSetupError('DATABRICKS_APP_NAME must be configured.', 400);
   }
-  const [source, catalogSetting] = await Promise.all([
+  const [source, settingsRows] = await Promise.all([
     db.repos.dataSources.get(dataSourceId),
-    db.repos.appSettings.get(CATALOG_SETTING_KEY),
+    db.repos.appSettings.list(),
   ]);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
   if (source.providerName !== 'Databricks' && !isAwsProvider(source.providerName)) {
@@ -163,17 +162,19 @@ export async function setupFocusDataSource(
     );
   }
 
-  const catalog = (catalogSetting?.value ?? '').trim();
+  const appSettings = settingsToRecord(settingsRows);
+  const catalog = (appSettings[CATALOG_SETTING_KEY] ?? '').trim();
+  const medallionSchemas = medallionSchemaNamesFromSettings(appSettings);
   if (!catalog) {
     throw new DataSourceSetupError(
-      'Main catalog not configured. Set catalog_name in Configure → Admin first.',
+      'Main catalog not configured. Set catalog_name in Configure → Catalog first.',
       400,
     );
   }
 
   const tableName = body.tableName ?? tableLeafName(source.tableName);
 
-  const target = { catalog, schema: FOCUS_VIEW_SCHEMA_DEFAULT, table: tableName };
+  const target = { catalog, schema: medallionSchemas.silver, table: tableName };
   let pipelineSql: string;
   let fqn: string;
   let configuration: Record<string, string> | undefined;
@@ -189,8 +190,17 @@ export async function setupFocusDataSource(
       const existing = readFocusConfig(source.config);
       const accountPricesRaw = body.accountPricesTable ?? existing.accountPricesTable;
       const accountPricesTable = validateAccountPricesTable(accountPricesRaw);
-      pipelineSql = buildFocusPipelineSql({ catalog, table: tableName, accountPricesTable });
-      configuration = buildFocusPipelineConfiguration(tableName, accountPricesTable);
+      pipelineSql = buildFocusPipelineSql({
+        catalog,
+        table: tableName,
+        goldSchema: medallionSchemas.gold,
+        accountPricesTable,
+      });
+      configuration = buildFocusPipelineConfiguration(
+        tableName,
+        accountPricesTable,
+        medallionSchemas.gold,
+      );
       cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
       timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
       workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, dataSourceId);
@@ -201,6 +211,8 @@ export async function setupFocusDataSource(
         accountPricesTable,
         cronExpression,
         timezoneId,
+        targetSchema: medallionSchemas.silver,
+        goldSchema: medallionSchemas.gold,
       };
     } else {
       const existing = readAwsFocusConfig(source.config);
@@ -210,6 +222,7 @@ export async function setupFocusDataSource(
         awsSource.s3Bucket,
         awsSource.s3Prefix,
         awsSource.exportName,
+        medallionSchemas.gold,
       );
       pipelineSql = buildAwsFocusPipelineSql();
       cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
@@ -226,6 +239,8 @@ export async function setupFocusDataSource(
         cronExpression,
         timezoneId,
         sourcePath: s3ExportDataPath(awsSource),
+        targetSchema: medallionSchemas.silver,
+        goldSchema: medallionSchemas.gold,
       };
     }
   } catch (err) {
@@ -242,7 +257,7 @@ export async function setupFocusDataSource(
     pipelineSql,
     workspacePath,
     catalog,
-    schema: FOCUS_VIEW_SCHEMA_DEFAULT,
+    schema: medallionSchemas.silver,
     configuration,
     cronExpression,
     timezoneId,
@@ -266,7 +281,7 @@ export async function setupFocusDataSource(
   }
 
   const updated = await db.repos.dataSources.update(dataSourceId, {
-    tableName: unquotedFqn(catalog, FOCUS_VIEW_SCHEMA_DEFAULT, tableName),
+    tableName,
     jobId: result.jobId,
     pipelineId: result.pipelineId,
     focusVersion,

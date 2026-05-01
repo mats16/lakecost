@@ -5,7 +5,7 @@ import { useI18n } from '../../i18n';
 const TABS = [
   { to: '/configure/data-sources', labelKey: 'nav.dataSources' },
   { to: '/configure/transformations', labelKey: 'nav.transformations' },
-  { to: '/configure/admin', labelKey: 'nav.admin' },
+  { to: '/configure/catalog', labelKey: 'nav.configureCatalog' },
 ];
 
 export function ConfigureLayout({ children }: { children?: ReactNode }) {

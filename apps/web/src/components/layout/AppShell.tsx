@@ -1,9 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -23,7 +22,6 @@ import {
   LayoutDashboard,
   LineChart,
   Notebook,
-  Settings as SettingsIcon,
   Shapes,
   Wallet,
   type LucideIcon,
@@ -54,7 +52,7 @@ const CONFIGURE: NavGroup = {
   items: [
     { to: '/configure/data-sources', labelKey: 'nav.dataSources' },
     { to: '/configure/transformations', labelKey: 'nav.transformations' },
-    { to: '/configure/admin', labelKey: 'nav.admin' },
+    { to: '/configure/catalog', labelKey: 'nav.configureCatalog' },
   ],
 };
 
@@ -133,7 +131,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
 
-          <div className={`nav-group ${configureOpen ? 'open' : ''}`}>
+          <div
+            className={`nav-group ${configureOpen ? 'open' : ''} ${onConfigureRoute ? 'active' : ''}`}
+          >
             <div className="nav-group-row">
               <NavLink
                 to={CONFIGURE.items[0]?.to ?? '/configure/data-sources'}
@@ -201,7 +201,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function AccountMenu() {
   const { t, locale, setLocale } = useI18n();
-  const navigate = useNavigate();
   const me = useMe();
 
   const email = me.data?.email ?? null;
@@ -219,8 +218,8 @@ function AccountMenu() {
           </span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-72">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
+      <DropdownMenuContent side="top" align="start" className="account-menu-content w-64">
+        <DropdownMenuLabel className="flex flex-col gap-0.5 px-3 py-2">
           <span className="truncate text-sm font-semibold" title={displayName}>
             {displayName}
           </span>
@@ -228,18 +227,6 @@ function AccountMenu() {
             <span className="text-muted-foreground text-xs">{userName}</span>
           ) : null}
         </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        <DropdownMenuLabel className="text-muted-foreground text-[10px] tracking-wider uppercase">
-          {t('account.sectionApp')}
-        </DropdownMenuLabel>
-        <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={() => navigate('/configure/admin')}>
-            <SettingsIcon />
-            <span>{t('account.settings')}</span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-
         <DropdownMenuSeparator />
 
         <DropdownMenuSub>
