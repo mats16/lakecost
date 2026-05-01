@@ -133,7 +133,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
 
-          <div className={`nav-group ${configureOpen ? 'open' : ''}`}>
+          <div
+            className={`nav-group ${configureOpen ? 'open' : ''} ${onConfigureRoute ? 'active' : ''}`}
+          >
             <div className="nav-group-row">
               <NavLink
                 to={CONFIGURE.items[0]?.to ?? '/configure/data-sources'}

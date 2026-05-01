@@ -191,6 +191,10 @@ a {
   display: flex;
   align-items: stretch;
   gap: 2px;
+  border-radius: 8px;
+  transition:
+    background 120ms,
+    color 120ms;
 }
 
 .nav-group-row .group-head {
@@ -200,6 +204,18 @@ a {
 
 .nav-group .group-head {
   font-weight: 500;
+}
+
+.nav-group.active > .nav-group-row {
+  background: color-mix(in oklab, var(--sidebar-primary) 18%, transparent);
+}
+
+.nav-group.active .group-head.active {
+  background: transparent;
+}
+
+.nav-group.active .nav-chevron {
+  color: var(--sidebar-foreground);
 }
 
 .nav-chevron {
