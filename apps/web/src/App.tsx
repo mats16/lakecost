@@ -6,7 +6,7 @@ import { Budgets } from './pages/Budgets';
 import { ConfigureLayout } from './pages/Configure/ConfigureLayout';
 import { DataSources } from './pages/Configure/DataSources';
 import { Catalog } from './pages/Configure/Catalog';
-import { Stub } from './pages/Configure/Stub';
+import { Transformations } from './pages/Configure/Transformations';
 
 export function App() {
   return (
@@ -20,15 +20,7 @@ export function App() {
         <Route path="/configure" element={<ConfigureLayout />}>
           <Route index element={<Navigate to="data-sources" replace />} />
           <Route path="data-sources" element={<DataSources />} />
-          <Route
-            path="transformations"
-            element={
-              <Stub
-                titleKey="configure.transformations.title"
-                descKey="configure.transformations.desc"
-              />
-            }
-          />
+          <Route path="transformations" element={<Transformations />} />
           <Route path="catalog" element={<Catalog />} />
         </Route>
 

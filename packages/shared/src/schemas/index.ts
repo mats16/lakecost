@@ -4,6 +4,7 @@ export * from './budget.js';
 export * from './setup.js';
 export * from './health.js';
 export * from './dataSource.js';
+export * from './transformation.js';
 export * from './catalog.js';
 export * from './externalLocation.js';
 export * from './storageCredential.js';

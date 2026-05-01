@@ -191,6 +191,7 @@ function coerce(v: string | number | null | undefined, typeName: string | undefi
   if (
     typeName === 'INT' ||
     typeName === 'BIGINT' ||
+    typeName === 'LONG' ||
     typeName === 'DOUBLE' ||
     typeName === 'FLOAT'
   ) {
