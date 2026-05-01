@@ -96,7 +96,7 @@ export function DataSourceTile({
       tabIndex={interactive ? 0 : -1}
       aria-disabled={!interactive}
       className={[
-        'flex flex-col gap-4 p-4 text-left transition-colors',
+        'flex h-full flex-col gap-4 p-4 text-left transition-colors',
         interactive
           ? 'hover:border-primary focus-visible:border-primary cursor-pointer'
           : 'cursor-default',
@@ -114,7 +114,7 @@ export function DataSourceTile({
         ) : null}
       </div>
 
-      <CardContent className="flex min-h-14 items-center justify-center px-0">
+      <CardContent className="mt-auto flex min-h-14 items-end justify-center px-0">
         <VendorLogo source={source} logo={logo} />
         {rightAccessory ? <div className="ml-auto">{rightAccessory}</div> : null}
       </CardContent>
