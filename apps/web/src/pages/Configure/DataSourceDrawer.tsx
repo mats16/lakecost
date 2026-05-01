@@ -18,6 +18,7 @@ import {
   SheetHeader,
   SheetTitle,
   Spinner,
+  cn,
 } from '@databricks/appkit-ui/react';
 import { ExternalLink, Info, X } from 'lucide-react';
 import {
@@ -35,6 +36,7 @@ import {
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
   FOCUS_VIEW_SCHEMA_DEFAULT,
   normalizeS3Prefix,
+  s3BucketFromUrl,
   tableLeafName,
   unquotedFqn,
   type DataSource,
@@ -44,6 +46,9 @@ import {
 import { useI18n } from '../../i18n';
 import { displayNameForRow, findTemplateById, findTemplateForRow } from './dataSourceCatalog';
 import { type AwsFocusDraft, useAwsFocusForm } from './useAwsFocusForm';
+
+const AWS_BCM_DATA_EXPORTS_URL =
+  'https://us-east-1.console.aws.amazon.com/costmanagement/home#/bcm-data-exports';
 
 interface Props {
   dataSourceId: number | null;
@@ -70,7 +75,7 @@ export function DataSourceDrawer({ dataSourceId, draftAwsSource, onClose, onCrea
     template?.id === 'databricks_focus13'
       ? 'dataSources.systemTables.focusViewDesc'
       : template?.id === 'aws'
-        ? 'dataSources.awsCur.description'
+        ? 'dataSources.aws.description'
         : null;
 
   return (
@@ -164,22 +169,41 @@ function AwsFocusSection({
 
 function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
+  const credentialsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/credentials` : null;
+  const externalLocationsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/locations` : null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">{t('dataSources.awsCur.title')}</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm">{t('dataSources.aws.title')}</CardTitle>
+          <a
+            href={AWS_BCM_DATA_EXPORTS_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={t('dataSources.aws.openDataExports')}
+            className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded-sm transition-colors"
+          >
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3">
           <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.awsAccountId')}</span>
+            <span className="text-muted-foreground">
+              {t('dataSources.aws.awsAccountId')} ({t('dataSources.aws.from')}{' '}
+              <SourceLabelLink href={credentialsUrl}>
+                {t('dataSources.aws.storageCredentialSource')}
+              </SourceLabelLink>
+              )
+            </span>
             <Select
               value={form.awsAccountId}
               onValueChange={form.onAccountChange}
               disabled={form.registered || form.storageCredentialsLoading || form.savePending}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.awsCur.awsAccountIdPlaceholder')} />
+                <SelectValue placeholder={t('dataSources.aws.awsAccountIdPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {form.accountOptions.map((accountId) => (
@@ -192,7 +216,13 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
           </label>
 
           <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.s3Url')}</span>
+            <span className="text-muted-foreground">
+              {t('dataSources.aws.s3Bucket')} ({t('dataSources.aws.from')}{' '}
+              <SourceLabelLink href={externalLocationsUrl}>
+                {t('dataSources.aws.externalLocationSource')}
+              </SourceLabelLink>
+              )
+            </span>
             <Select
               value={form.externalLocationName}
               onValueChange={form.onLocationChange}
@@ -201,12 +231,12 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
               }
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.awsCur.s3UrlPlaceholder')} />
+                <SelectValue placeholder={t('dataSources.aws.s3UrlPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {form.locationOptions.map((loc) => (
                   <SelectItem key={loc.name} value={loc.name}>
-                    {s3UrlLabel(loc)}
+                    {s3BucketLabel(loc)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -217,18 +247,18 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
             <>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="grid gap-1 text-xs">
-                  <span className="text-muted-foreground">{t('dataSources.awsCur.s3Prefix')}</span>
-                  <Input
-                    value={form.s3Prefix}
-                    onChange={(e) => form.setS3Prefix(e.target.value)}
-                    onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
-                    placeholder="export"
+                  <span className="text-muted-foreground">
+                    {t('dataSources.aws.s3PathPrefix')}
+                  </span>
+                  <S3PrefixInput
+                    form={form}
                     disabled={form.registered || form.savePending}
+                    placeholder="export"
                   />
                 </label>
                 <label className="grid gap-1 text-xs">
                   <span className="text-muted-foreground">
-                    {t('dataSources.awsCur.exportName')}
+                    {t('dataSources.aws.exportName')}
                   </span>
                   <Input
                     value={form.exportName}
@@ -240,19 +270,14 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
 
               {form.exportDestinationPreview ? (
                 <div className="text-muted-foreground break-all text-xs">
-                  {t('dataSources.awsCur.exportDestination')}:{' '}
+                  {t('dataSources.aws.exportDestination')}:{' '}
                   <span className="text-foreground font-mono">{form.exportDestinationPreview}</span>
                 </div>
               ) : null}
             </>
           ) : null}
 
-          {form.registered ? (
-            <Alert>
-              <Info />
-              <AlertDescription>{t('dataSources.awsCur.registeredReadOnly')}</AlertDescription>
-            </Alert>
-          ) : (
+          {!form.registered ? (
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
@@ -261,22 +286,21 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
                 className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
               >
                 {form.savePending ? <Spinner /> : null}
-                {t('dataSources.awsCur.saveExternalLocation')}
+                {t('dataSources.aws.saveExternalLocation')}
               </Button>
               {form.savedAt && !form.dirty && !form.savePending ? (
                 <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
               ) : null}
+              {form.selectedS3Url ? <AwsExportPanel form={form} /> : null}
             </div>
-          )}
-
-          {form.selectedS3Url && !form.registered ? <AwsExportPanel form={form} /> : null}
+          ) : null}
 
           {!form.registered &&
           !form.storageCredentialsLoading &&
           form.accountOptions.length === 0 ? (
             <Alert>
               <Info />
-              <AlertDescription>{t('dataSources.awsCur.noStorageCredentials')}</AlertDescription>
+              <AlertDescription>{t('dataSources.aws.noStorageCredentials')}</AlertDescription>
             </Alert>
           ) : null}
 
@@ -287,7 +311,7 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
             <Alert>
               <Info />
               <AlertDescription>
-                {t('dataSources.awsCur.noLinkedExternalLocations')}
+                {t('dataSources.aws.noLinkedExternalLocations')}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -304,17 +328,30 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   );
 }
 
+function SourceLabelLink({ href, children }: { href: string | null; children: React.ReactNode }) {
+  const className = 'border-current border-b pb-px';
+
+  if (!href) return <span className={className}>{children}</span>;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className={`hover:text-foreground ${className}`}
+    >
+      {children}
+    </a>
+  );
+}
+
 function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
   return (
     <>
-      <button
-        type="button"
-        className="text-muted-foreground hover:text-foreground w-fit text-xs underline-offset-4 transition-colors hover:underline"
-        onClick={() => form.setExportModalOpen(true)}
-      >
-        {t('dataSources.awsCur.exportCreateSection')}
-      </button>
+      <Button type="button" variant="secondary" onClick={() => form.openExportModal(true)}>
+        {t('dataSources.aws.exportCreateSection')}
+      </Button>
       <AwsExportModal form={form} />
     </>
   );
@@ -322,16 +359,16 @@ function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
 
 function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
-  const { exportModalOpen, setExportModalOpen } = form;
+  const { exportModalOpen, openExportModal } = form;
 
   useEffect(() => {
     if (!exportModalOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setExportModalOpen(false);
+      if (event.key === 'Escape') openExportModal(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [exportModalOpen, setExportModalOpen]);
+  }, [exportModalOpen, openExportModal]);
 
   if (!exportModalOpen) return null;
 
@@ -339,7 +376,7 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4"
       role="presentation"
-      onMouseDown={() => setExportModalOpen(false)}
+      onMouseDown={() => openExportModal(false)}
     >
       <div
         role="dialog"
@@ -350,20 +387,41 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
       >
         <div className="flex items-center justify-between gap-3">
           <h3 id="aws-export-modal-title" className="text-base font-semibold">
-            {t('dataSources.awsCur.exportCreateSection')}
+            {t('dataSources.aws.exportCreateSection')}
           </h3>
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors"
             aria-label={t('common.close')}
-            onClick={() => setExportModalOpen(false)}
+            onClick={() => openExportModal(false)}
           >
             <X className="size-4" aria-hidden="true" />
           </button>
         </div>
+        <div className="grid gap-2">
+          <label className="grid gap-1 text-xs">
+            <span className="text-muted-foreground">{t('dataSources.aws.exportName')}</span>
+            <Input
+              value={form.exportName}
+              onChange={(e) => form.setExportName(e.target.value)}
+              disabled={form.creatingExport}
+            />
+          </label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">{t('dataSources.aws.s3Bucket')}</span>
+              <Input value={form.selectedS3Bucket ?? ''} disabled />
+            </label>
+            <label className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">{t('dataSources.aws.s3PathPrefix')}</span>
+              <S3PrefixInput form={form} disabled={form.creatingExport} placeholder="export" />
+            </label>
+          </div>
+        </div>
+        <div className="border-border border-t" />
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.accessKeyId')}</span>
+            <span className="text-muted-foreground">{t('dataSources.aws.accessKeyId')}</span>
             <Input
               value={form.accessKeyId}
               onChange={(e) => form.setAccessKeyId(e.target.value)}
@@ -371,7 +429,7 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
             />
           </label>
           <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.secretAccessKey')}</span>
+            <span className="text-muted-foreground">{t('dataSources.aws.secretAccessKey')}</span>
             <Input
               type="password"
               value={form.secretAccessKey}
@@ -380,16 +438,19 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
             />
           </label>
           <label className="grid gap-1 text-xs sm:col-span-2">
-            <span className="text-muted-foreground">{t('dataSources.awsCur.sessionToken')}</span>
+            <span className="text-muted-foreground">{t('dataSources.aws.sessionToken')}</span>
             <Input
               type="password"
               value={form.sessionToken}
               onChange={(e) => form.setSessionToken(e.target.value)}
               autoComplete="off"
-              placeholder={t('dataSources.awsCur.sessionTokenPlaceholder')}
+              placeholder={t('dataSources.aws.sessionTokenPlaceholder')}
             />
           </label>
         </div>
+        <p className="text-muted-foreground text-xs">
+          {t('dataSources.aws.credentialsNotSaved')}
+        </p>
         <div className="flex justify-end">
           <Button
             type="button"
@@ -398,14 +459,14 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
             onClick={form.onCreateExport}
           >
             {form.creatingExport ? <Spinner /> : null}
-            {t('dataSources.awsCur.createExport')}
+            {t('dataSources.aws.createExport')}
           </Button>
         </div>
         {form.exportArn ? (
           <Alert>
             <Info />
             <AlertDescription>
-              {t('dataSources.awsCur.exportCreated', { exportArn: form.exportArn })}
+              {t('dataSources.aws.exportCreated', { exportArn: form.exportArn })}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -416,6 +477,49 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
           </Alert>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function S3PrefixInput({
+  form,
+  disabled,
+  placeholder,
+}: {
+  form: ReturnType<typeof useAwsFocusForm>;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  if (!form.selectedS3BasePrefix) {
+    return (
+      <Input
+        value={form.s3Prefix}
+        onChange={(e) => form.setS3Prefix(e.target.value)}
+        onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
+        placeholder={placeholder}
+        disabled={disabled}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        'border-input bg-background flex h-9 min-w-0 items-center overflow-hidden rounded-md border text-sm',
+        disabled && 'opacity-50',
+      )}
+    >
+      <span className="bg-muted/40 text-muted-foreground border-border max-w-[55%] shrink-0 overflow-hidden border-r px-3 py-2 font-mono text-xs text-ellipsis whitespace-nowrap">
+        {form.selectedS3BasePrefix}/
+      </span>
+      <input
+        value={form.s3Prefix}
+        onChange={(e) => form.setS3Prefix(e.target.value)}
+        onBlur={() => form.setS3Prefix((value) => normalizeS3Prefix(value))}
+        placeholder={placeholder}
+        disabled={disabled}
+        className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-xs outline-none disabled:cursor-not-allowed"
+      />
     </div>
   );
 }
@@ -540,8 +644,8 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
   );
 }
 
-function s3UrlLabel(location: ExternalLocationSummary): string {
-  return location.url ?? location.name;
+function s3BucketLabel(location: ExternalLocationSummary): string {
+  return location.url ? (s3BucketFromUrl(location.url) ?? location.url) : location.name;
 }
 
 function FocusViewSection({ row }: { row: DataSource }) {
