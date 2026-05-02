@@ -15,10 +15,12 @@ export type Locale = 'en' | 'ja';
 const DICTIONARIES: Record<Locale, Dictionary> = { en, ja };
 const STORAGE_KEY = 'lakecost.locale';
 
+export type TFunction = (key: string, params?: Record<string, string | number>) => string;
+
 interface I18nContextValue {
   locale: Locale;
   setLocale: (next: Locale) => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
+  t: TFunction;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);

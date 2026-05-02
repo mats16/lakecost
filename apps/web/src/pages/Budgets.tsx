@@ -29,8 +29,15 @@ import {
 import { AlertCircle, Plus, X } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { useBudgets, useCreateBudget } from '../api/hooks';
-import type { CreateBudgetInput } from '@lakecost/shared';
+import {
+  BudgetScopeTypeSchema,
+  BudgetPeriodSchema,
+  type CreateBudgetInput,
+} from '@lakecost/shared';
 import { useCurrencyUsd, useI18n } from '../i18n';
+
+const SCOPE_OPTIONS = BudgetScopeTypeSchema.options;
+const PERIOD_OPTIONS = BudgetPeriodSchema.options;
 
 export function Budgets() {
   const { t } = useI18n();
@@ -41,9 +48,10 @@ export function Budgets() {
 
   const [name, setName] = useState('');
   const [amountUsd, setAmountUsd] = useState(1000);
-  const [scopeType, setScopeType] = useState<CreateBudgetInput['scopeType']>('workspace');
+  const [scopeType, setScopeType] = useState<CreateBudgetInput['scopeType']>('provider');
   const [scopeValue, setScopeValue] = useState('*');
   const [period, setPeriod] = useState<CreateBudgetInput['period']>('monthly');
+  const scopeValuePlaceholder = t(`budgets.scope.placeholder.${scopeType}`);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,22 +126,21 @@ export function Budgets() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="account">{t('budgets.scope.account')}</SelectItem>
-                      <SelectItem value="workspace">{t('budgets.scope.workspace')}</SelectItem>
-                      <SelectItem value="sku">{t('budgets.scope.sku')}</SelectItem>
-                      <SelectItem value="tag">{t('budgets.scope.tag')}</SelectItem>
+                      {SCOPE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {t(`budgets.scope.${option}`)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="budget-scope-value">
-                    {t('budgets.scope.valuePlaceholder')}
-                  </FieldLabel>
+                  <FieldLabel htmlFor="budget-scope-value">{scopeValuePlaceholder}</FieldLabel>
                   <Input
                     id="budget-scope-value"
                     required
-                    placeholder={t('budgets.scope.valuePlaceholder')}
+                    placeholder={scopeValuePlaceholder}
                     value={scopeValue}
                     onChange={(e) => setScopeValue(e.target.value)}
                   />
@@ -149,8 +156,11 @@ export function Budgets() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="monthly">{t('budgets.period.monthly')}</SelectItem>
-                      <SelectItem value="quarterly">{t('budgets.period.quarterly')}</SelectItem>
+                      {PERIOD_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {t(`budgets.period.${option}`)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
@@ -207,7 +217,7 @@ export function Budgets() {
                   <TableRow key={b.id}>
                     <TableCell className="font-medium">{b.name}</TableCell>
                     <TableCell>
-                      {b.scopeType}: {b.scopeValue}
+                      {t(`budgets.scope.${b.scopeType}`)}: {b.scopeValue}
                     </TableCell>
                     <TableCell>{t(`budgets.period.${b.period}`)}</TableCell>
                     <TableCell className="text-right">{formatUsd(b.amountUsd)}</TableCell>

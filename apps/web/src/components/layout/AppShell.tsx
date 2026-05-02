@@ -14,8 +14,8 @@ import {
   DropdownMenuTrigger,
 } from '@databricks/appkit-ui/react';
 import {
-  AppWindow,
   Bolt,
+  ChartLine,
   ChevronDown,
   ExternalLink,
   Globe,
@@ -23,7 +23,6 @@ import {
   LineChart,
   Notebook,
   Shapes,
-  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import { useI18n, type Locale } from '../../i18n';
@@ -43,7 +42,15 @@ interface NavGroup {
   matchPrefix: string;
 }
 
-const PRIMARY: NavItem[] = [{ to: '/dashboard', labelKey: 'nav.overview', icon: AppWindow }];
+const INFORM: NavGroup = {
+  labelKey: 'nav.inform',
+  icon: ChartLine,
+  matchPrefix: '/overview',
+  items: [
+    { to: '/overview', labelKey: 'nav.overview', end: true },
+    { to: '/overview/budgets', labelKey: 'nav.budgets' },
+  ],
+};
 
 const CONFIGURE: NavGroup = {
   labelKey: 'nav.configure',
@@ -56,10 +63,7 @@ const CONFIGURE: NavGroup = {
   ],
 };
 
-const SECONDARY: NavItem[] = [
-  { to: '/explorer', labelKey: 'nav.costExplorer', icon: LineChart },
-  { to: '/budgets', labelKey: 'nav.budgets', icon: Wallet },
-];
+const SECONDARY: NavItem[] = [{ to: '/explorer', labelKey: 'nav.costExplorer', icon: LineChart }];
 
 interface ExternalNavItem {
   path: string;
@@ -87,14 +91,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const appSettings = useAppSettings();
   const catalogName = appSettings.data?.settings.catalog_name?.trim() || null;
   const databricksItems = buildDatabricksItems(catalogName);
+  const onInformRoute = location.pathname.startsWith(INFORM.matchPrefix);
   const onConfigureRoute = location.pathname.startsWith(CONFIGURE.matchPrefix);
+  const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
 
   useEffect(() => {
+    if (onInformRoute) {
+      setInformOpen(true);
+    }
     if (onConfigureRoute) {
       setConfigureOpen(true);
     }
-  }, [onConfigureRoute]);
+  }, [onConfigureRoute, onInformRoute]);
 
   return (
     <div className="app-shell">
@@ -102,20 +111,40 @@ export function AppShell({ children }: { children: ReactNode }) {
         <h1>{t('appName')}</h1>
         <div className="nav-section-label">{t('nav.finops')}</div>
         <nav>
-          {PRIMARY.map((item) => {
-            const Icon = item.icon;
-            return (
+          <div className={`nav-group ${informOpen ? 'open' : ''} ${onInformRoute ? 'active' : ''}`}>
+            <div className="nav-group-row">
               <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) => (isActive ? 'active' : '')}
+                to={INFORM.items[0]?.to ?? '/overview'}
+                className={() => (onInformRoute ? 'group-head active' : 'group-head')}
               >
-                {Icon ? <Icon className="nav-icon" aria-hidden="true" /> : null}
-                <span>{t(item.labelKey)}</span>
+                <INFORM.icon className="nav-icon" aria-hidden="true" />
+                <span>{t(INFORM.labelKey)}</span>
               </NavLink>
-            );
-          })}
+              <button
+                type="button"
+                className="nav-chevron"
+                aria-expanded={informOpen}
+                aria-label={t(INFORM.labelKey)}
+                onClick={() => setInformOpen((v) => !v)}
+              >
+                <ChevronDown className="nav-icon" aria-hidden="true" />
+              </button>
+            </div>
+            {informOpen ? (
+              <div className="nav-children">
+                {INFORM.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => (isActive ? 'active' : '')}
+                  >
+                    <span>{t(item.labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ) : null}
+          </div>
 
           {SECONDARY.map((item) => {
             const Icon = item.icon;

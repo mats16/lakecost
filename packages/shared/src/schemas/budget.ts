@@ -1,9 +1,15 @@
 import { z } from 'zod';
 
-export const BudgetScopeTypeSchema = z.enum(['account', 'workspace', 'sku', 'tag']);
+export const BudgetScopeTypeSchema = z.enum([
+  'provider',
+  'billingAccount',
+  'subAccount',
+  'sku',
+  'tag',
+]);
 export type BudgetScopeType = z.infer<typeof BudgetScopeTypeSchema>;
 
-export const BudgetPeriodSchema = z.enum(['monthly', 'quarterly']);
+export const BudgetPeriodSchema = z.enum(['monthly', 'quarterly', 'yearly']);
 export type BudgetPeriod = z.infer<typeof BudgetPeriodSchema>;
 
 export const BudgetSchema = z.object({

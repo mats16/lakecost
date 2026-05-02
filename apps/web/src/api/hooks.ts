@@ -16,6 +16,7 @@ import type {
   SetupStateResponse,
   SetupStepId,
   StorageCredentialListResponse,
+  TransformationPipelinesResponse,
   UsageBySkuRow,
   UsageDailyResponse,
   UsageTopWorkloadRow,
@@ -326,6 +327,15 @@ export function useRunDataSourceJob() {
         method: 'POST',
         body: JSON.stringify({}),
       }),
+  });
+}
+
+export function useTransformationPipelines() {
+  return useQuery({
+    queryKey: ['transformations', 'pipelines'],
+    queryFn: () => apiFetch<TransformationPipelinesResponse>('/api/transformations/pipelines'),
+    staleTime: 60 * 1000,
+    retry: false,
   });
 }
 
