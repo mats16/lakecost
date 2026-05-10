@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Budget,
+  AwsFocusExportCreateBody,
+  AwsFocusExportCreateResponse,
   CatalogListResponse,
   CreateBudgetInput,
   DataSource,
@@ -10,11 +12,18 @@ import type {
   DataSourceSetupResult,
   DataSourceTemplate,
   DataSourceUpdateBody,
+  ExternalLocationCreateBody,
+  ExternalLocationCreateResponse,
   ExternalLocationListResponse,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
   SetupStepId,
+  ServiceCredentialCreateBody,
+  ServiceCredentialCreateResponse,
+  ServiceCredentialListResponse,
+  StorageCredentialCreateBody,
+  StorageCredentialCreateResponse,
   StorageCredentialListResponse,
   TransformationPipelinesResponse,
   UsageBySkuRow,
@@ -217,9 +226,36 @@ export function useCatalogs() {
 export function useExternalLocations() {
   return useQuery({
     queryKey: ['externalLocations'],
-    queryFn: () => apiFetch<ExternalLocationListResponse>('/api/external-locations'),
+    queryFn: () => apiFetch<ExternalLocationListResponse>('/api/unity-catalog/external-locations'),
     staleTime: 60 * 1000,
     retry: false,
+  });
+}
+
+export function useCreateExternalLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ExternalLocationCreateBody) =>
+      apiFetch<ExternalLocationCreateResponse>('/api/unity-catalog/external-locations', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['externalLocations'] });
+    },
+  });
+}
+
+export function useDeleteExternalLocation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiFetch<void>(`/api/unity-catalog/external-locations/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['externalLocations'] });
+    },
   });
 }
 
@@ -229,6 +265,74 @@ export function useStorageCredentials() {
     queryFn: () => apiFetch<StorageCredentialListResponse>('/api/storage-credentials'),
     staleTime: 60 * 1000,
     retry: false,
+  });
+}
+
+export function useServiceCredentials() {
+  return useQuery({
+    queryKey: ['serviceCredentials'],
+    queryFn: () => apiFetch<ServiceCredentialListResponse>('/api/unity-catalog/credentials'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useCreateServiceCredential() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ServiceCredentialCreateBody) =>
+      apiFetch<ServiceCredentialCreateResponse>('/api/unity-catalog/credentials', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['serviceCredentials'] });
+    },
+  });
+}
+
+export function useCreateStorageCredential() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StorageCredentialCreateBody) =>
+      apiFetch<StorageCredentialCreateResponse>('/api/unity-catalog/credentials', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['serviceCredentials'] });
+      qc.invalidateQueries({ queryKey: ['storageCredentials'] });
+    },
+  });
+}
+
+export function useCreateAwsFocusExport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AwsFocusExportCreateBody) =>
+      apiFetch<AwsFocusExportCreateResponse>('/api/unity-catalog/credentials/aws-focus-export', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['serviceCredentials'] });
+      qc.invalidateQueries({ queryKey: ['storageCredentials'] });
+      qc.invalidateQueries({ queryKey: ['externalLocations'] });
+    },
+  });
+}
+
+export function useDeleteCredential() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) =>
+      apiFetch<void>(`/api/unity-catalog/credentials/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['serviceCredentials'] });
+      qc.invalidateQueries({ queryKey: ['storageCredentials'] });
+    },
   });
 }
 

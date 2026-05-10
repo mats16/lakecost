@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { ZodType } from 'zod';
 import type { Env } from '@lakecost/shared';
 import { logger } from '../config/logger.js';
+import { sleep } from '../utils/sleep.js';
 
 export type WorkspaceClient = SdkWorkspaceClient;
 
@@ -176,10 +177,6 @@ export function buildAppExecutor(env: Env): StatementExecutor | undefined {
   const wc = buildAppWorkspaceClient(env);
   if (!wc) return undefined;
   return new StatementExecutor({ workspaceClient: wc, warehouseId: env.SQL_WAREHOUSE_ID });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function snakeToCamel(s: string): string {

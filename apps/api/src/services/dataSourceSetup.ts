@@ -18,7 +18,11 @@ import {
   type Env,
 } from '@lakecost/shared';
 import { z } from 'zod';
-import { buildUserExecutor, buildUserWorkspaceClient } from './statementExecution.js';
+import {
+  buildAppWorkspaceClient,
+  buildUserExecutor,
+  buildUserWorkspaceClient,
+} from './statementExecution.js';
 import {
   deletePipelineSchedule,
   upsertPipelineSchedule,
@@ -138,12 +142,6 @@ export async function setupFocusDataSource(
   dataSourceId: number,
   body: DataSourceSetupBody,
 ): Promise<DataSourceSetupResult> {
-  if (!userToken) {
-    throw new DataSourceSetupError(
-      'Missing OBO access token. Run behind Databricks Apps or `databricks apps run-local`.',
-      401,
-    );
-  }
   if (!env.DATABRICKS_HOST) {
     throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
   }
@@ -161,13 +159,19 @@ export async function setupFocusDataSource(
       400,
     );
   }
+  if (source.providerName === 'Databricks' && !userToken) {
+    throw new DataSourceSetupError(
+      'Missing OBO access token. Run behind Databricks Apps or `databricks apps run-local`.',
+      401,
+    );
+  }
 
   const appSettings = settingsToRecord(settingsRows);
   const catalog = (appSettings[CATALOG_SETTING_KEY] ?? '').trim();
   const medallionSchemas = medallionSchemaNamesFromSettings(appSettings);
   if (!catalog) {
     throw new DataSourceSetupError(
-      'Main catalog not configured. Set catalog_name in Configure → Catalog first.',
+      'Main catalog not configured. Set catalog_name in Catalog first.',
       400,
     );
   }
@@ -247,8 +251,17 @@ export async function setupFocusDataSource(
     throw new DataSourceSetupError(`Invalid view target: ${(err as Error).message}`, 400);
   }
 
-  const wc = buildUserWorkspaceClient(env, userToken);
-  if (!wc) throw new DataSourceSetupError('Failed to build Databricks workspace client', 500);
+  const wc = isAwsProvider(source.providerName)
+    ? buildAppWorkspaceClient(env)
+    : buildUserWorkspaceClient(env, userToken as string);
+  if (!wc) {
+    throw new DataSourceSetupError(
+      isAwsProvider(source.providerName)
+        ? 'Failed to build Databricks app service principal workspace client. Check DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET.'
+        : 'Failed to build Databricks workspace client',
+      500,
+    );
+  }
 
   const labelBase = resourceLabelBase(source);
   const scheduleParams: PipelineScheduleParams = {
@@ -264,7 +277,7 @@ export async function setupFocusDataSource(
   };
 
   if (source.providerName === 'Databricks') {
-    await assertCanReadUsageTable(env, userToken);
+    await assertCanReadUsageTable(env, userToken as string);
   }
 
   let result;
@@ -435,7 +448,6 @@ export async function runDataSourceJob(
   if (source.jobId === null) {
     throw new DataSourceSetupError('No Databricks job has been created for this data source.', 400);
   }
-
   const wc = buildUserWorkspaceClient(env, userToken);
   if (!wc) throw new DataSourceSetupError('Failed to build Databricks workspace client', 500);
 

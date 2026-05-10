@@ -381,6 +381,9 @@ function buildProvisionMessages(
   if (lines.length === 0 && grantsOk) {
     lines.push(t('settings.provisionAllOk', { name: p.catalog }));
   }
+  if (grantsOk) {
+    lines.push(t('settings.provisionAwsCredentialNote'));
+  }
 
   const remediation =
     grantFailures.length > 0 && p.servicePrincipalId

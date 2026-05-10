@@ -167,7 +167,7 @@ export async function preflightFocusDataSource(
     steps.push({
       label: 'Target catalog',
       status: 'error',
-      message: 'Main catalog is not configured in Configure -> Catalog.',
+      message: 'Main catalog is not configured in Catalog.',
     });
   }
   if (steps.some((s) => s.status === 'error')) {

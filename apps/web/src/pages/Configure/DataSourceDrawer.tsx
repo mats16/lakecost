@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Alert,
   AlertDescription,
@@ -264,6 +265,7 @@ function AwsFocusSection({
 function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
   const credentialsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/credentials` : null;
+  const serviceCredentialsUrl = '/credentials';
   const externalLocationsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/locations` : null;
   return (
     <Card>
@@ -283,21 +285,56 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
       </CardHeader>
       <CardContent>
         <div className="grid gap-3">
+          {!form.registered ? (
+            <div className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">{t('dataSources.aws.setupMode')}</span>
+              <Select
+                value={form.setupMode}
+                onValueChange={(value) => form.onSetupModeChange(value as typeof form.setupMode)}
+                disabled={form.savePending || form.creatingExport}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="existing">
+                    {t('dataSources.aws.useExistingExternalLocation')}
+                  </SelectItem>
+                  <SelectItem value="create">
+                    {t('dataSources.aws.createExternalLocationAndExport')}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
           <label className="grid gap-1 text-xs">
             <span className="text-muted-foreground">
               {t('dataSources.aws.awsAccountId')} ({t('dataSources.aws.from')}{' '}
-              <SourceLabelLink href={credentialsUrl}>
-                {t('dataSources.aws.storageCredentialSource')}
-              </SourceLabelLink>
+              {form.setupMode === 'create' ? (
+                <SourceLabelLink href={serviceCredentialsUrl}>
+                  {t('dataSources.aws.finLakeServiceRoleSource')}
+                </SourceLabelLink>
+              ) : (
+                <SourceLabelLink href={credentialsUrl}>
+                  {t('dataSources.aws.storageCredentialSource')}
+                </SourceLabelLink>
+              )}
               )
             </span>
             <Select
               value={form.awsAccountId}
               onValueChange={form.onAccountChange}
-              disabled={form.registered || form.storageCredentialsLoading || form.savePending}
+              disabled={form.registered || form.loadingInputs || form.savePending}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.aws.awsAccountIdPlaceholder')} />
+                <SelectValue
+                  placeholder={
+                    form.setupMode === 'create'
+                      ? t('dataSources.aws.serviceAccountIdPlaceholder')
+                      : t('dataSources.aws.awsAccountIdPlaceholder')
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {form.accountOptions.map((accountId) => (
@@ -309,33 +346,66 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
             </Select>
           </label>
 
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">
-              {t('dataSources.aws.s3Bucket')} ({t('dataSources.aws.from')}{' '}
-              <SourceLabelLink href={externalLocationsUrl}>
-                {t('dataSources.aws.externalLocationSource')}
-              </SourceLabelLink>
-              )
-            </span>
-            <Select
-              value={form.externalLocationName}
-              onValueChange={form.onLocationChange}
-              disabled={
-                form.registered || !form.awsAccountId || form.loadingInputs || form.savePending
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.aws.s3UrlPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {form.locationOptions.map((loc) => (
-                  <SelectItem key={loc.name} value={loc.name}>
-                    {s3BucketLabel(loc)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+          {form.setupMode === 'existing' ? (
+            <label className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">
+                {t('dataSources.aws.s3Bucket')} ({t('dataSources.aws.from')}{' '}
+                <SourceLabelLink href={externalLocationsUrl}>
+                  {t('dataSources.aws.externalLocationSource')}
+                </SourceLabelLink>
+                )
+              </span>
+              <Select
+                value={form.externalLocationName}
+                onValueChange={form.onLocationChange}
+                disabled={
+                  form.registered || !form.awsAccountId || form.loadingInputs || form.savePending
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('dataSources.aws.s3UrlPlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {form.locationOptions.map((loc) => (
+                    <SelectItem key={loc.name} value={loc.name}>
+                      {s3BucketLabel(loc)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : (
+            <div className="grid gap-2">
+              <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <label className="grid gap-1 text-xs">
+                  <span className="text-muted-foreground">{t('dataSources.aws.s3Bucket')}</span>
+                  <Input
+                    value={form.createBucketName}
+                    onChange={(e) => form.setCreateBucketName(e.target.value)}
+                    disabled={form.registered || form.savePending || form.creatingExport}
+                    placeholder={form.awsAccountId ? `finlake-${form.awsAccountId}` : 'finlake-'}
+                  />
+                </label>
+                <label className="flex min-h-9 items-center gap-2 text-xs sm:pb-2">
+                  <input
+                    type="checkbox"
+                    checked={form.createBucketIfMissing}
+                    disabled={form.registered || form.savePending || form.creatingExport}
+                    onChange={(e) => form.setCreateBucketIfMissing(e.target.checked)}
+                  />
+                  <span className="text-muted-foreground whitespace-nowrap">
+                    {t('dataSources.aws.createBucketIfMissing')}
+                  </span>
+                </label>
+              </div>
+              {form.createBucketName && !form.selectedS3Bucket ? (
+                <Alert>
+                  <Info />
+                  <AlertDescription>{t('dataSources.aws.invalidBucketName')}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+          )}
 
           {form.selectedS3Url ? (
             <>
@@ -345,7 +415,7 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
                   <S3PrefixInput
                     form={form}
                     disabled={form.registered || form.savePending}
-                    placeholder="export"
+                    placeholder="bcm-data-export"
                   />
                 </label>
                 <label className="grid gap-1 text-xs">
@@ -367,7 +437,7 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
             </>
           ) : null}
 
-          {!form.registered ? (
+          {!form.registered && form.setupMode === 'existing' ? (
             <div className="flex flex-wrap items-center gap-3">
               <Button
                 type="button"
@@ -381,11 +451,23 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
               {form.savedAt && !form.dirty && !form.savePending ? (
                 <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
               ) : null}
-              {form.selectedS3Url ? <AwsExportPanel form={form} /> : null}
+            </div>
+          ) : null}
+
+          {!form.registered && form.setupMode === 'create' && form.selectedS3Url ? (
+            <div className="grid gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <AwsExportPanel form={form} />
+                {form.savedAt && !form.dirty && !form.savePending ? (
+                  <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
+                ) : null}
+              </div>
+              <CreateResourceProgressModal form={form} />
             </div>
           ) : null}
 
           {!form.registered &&
+          form.setupMode === 'existing' &&
           !form.storageCredentialsLoading &&
           form.accountOptions.length === 0 ? (
             <Alert>
@@ -395,6 +477,17 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
           ) : null}
 
           {!form.registered &&
+          form.setupMode === 'create' &&
+          !form.serviceCredentialsLoading &&
+          form.serviceAccountOptions.length === 0 ? (
+            <Alert>
+              <Info />
+              <AlertDescription>{t('dataSources.aws.noServiceCredentials')}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {!form.registered &&
+          form.setupMode === 'existing' &&
           form.awsAccountId &&
           !form.loadingInputs &&
           form.linkedLocations.length === 0 ? (
@@ -420,6 +513,13 @@ function SourceLabelLink({ href, children }: { href: string | null; children: Re
   const className = 'border-current border-b pb-px';
 
   if (!href) return <span className={className}>{children}</span>;
+  if (href.startsWith('/')) {
+    return (
+      <Link to={href} className={`hover:text-foreground ${className}`}>
+        {children}
+      </Link>
+    );
+  }
 
   return (
     <a
@@ -435,6 +535,20 @@ function SourceLabelLink({ href, children }: { href: string | null; children: Re
 
 function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
+  if (form.setupMode === 'create') {
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={form.createExportDisabled}
+        onClick={form.onCreateExport}
+      >
+        {form.creatingExport ? <Spinner /> : null}
+        {t('dataSources.aws.createExport')}
+      </Button>
+    );
+  }
+
   return (
     <>
       <Button type="button" variant="secondary" onClick={() => form.openExportModal(true)}>
@@ -443,6 +557,136 @@ function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
       <AwsExportModal form={form} />
     </>
   );
+}
+
+function CreateResourceProgressModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+  const { t } = useI18n();
+  if (!form.createProgressModalOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55 p-4"
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="aws-create-progress-title"
+        className="bg-background border-border grid w-full max-w-xl gap-4 rounded-lg border p-5 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h3 id="aws-create-progress-title" className="text-base font-semibold">
+            {t('dataSources.aws.resourceProgress')}
+          </h3>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors disabled:opacity-50"
+            aria-label={t('common.close')}
+            disabled={form.creatingExport}
+            onClick={form.closeCreateProgressModal}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+        <CreateResourceChecklist form={form} />
+        {form.exportError ? (
+          <Alert variant="destructive">
+            <Info />
+            <AlertDescription>{form.exportError}</AlertDescription>
+          </Alert>
+        ) : null}
+        {!form.creatingExport ? (
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" onClick={form.closeCreateProgressModal}>
+              {t('common.close')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CreateResourceChecklist({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+  const { t } = useI18n();
+
+  return (
+    <div className="grid gap-2">
+      {form.createResourceSteps.map((step) => (
+        <div key={step.id} className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2">
+          <CreateResourceStepIcon status={step.status} />
+          <div className="min-w-0">
+            <div className="text-sm">{t(`dataSources.aws.resourceSteps.${step.id}`)}</div>
+            <CreateResourceStepDetail step={step} />
+          </div>
+          <span className="text-muted-foreground text-xs">
+            {t(`dataSources.aws.resourceStepStatus.${step.status}`)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CreateResourceStepDetail({
+  step,
+}: {
+  step: ReturnType<typeof useAwsFocusForm>['createResourceSteps'][number];
+}) {
+  if (!step.detail) return null;
+
+  const href =
+    step.href && (step.status === 'done' || step.status === 'skipped') ? step.href : null;
+  const className =
+    'text-muted-foreground inline-flex max-w-full items-center gap-1 truncate font-mono text-xs';
+
+  if (!href) {
+    return <div className="text-muted-foreground truncate font-mono text-xs">{step.detail}</div>;
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={`${className} hover:text-foreground`}
+      title={step.detail}
+    >
+      <span className="truncate">{step.detail}</span>
+      <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+    </a>
+  );
+}
+
+function CreateResourceStepIcon({
+  status,
+}: {
+  status: 'idle' | 'pending' | 'done' | 'skipped' | 'error';
+}) {
+  if (status === 'pending') return <Spinner />;
+  if (status === 'done') {
+    return (
+      <span className="bg-(--success) text-(--background) grid size-4 place-items-center rounded-full">
+        <Check className="size-3" aria-hidden="true" />
+      </span>
+    );
+  }
+  if (status === 'skipped') {
+    return (
+      <span className="border-muted-foreground/50 text-muted-foreground grid size-4 place-items-center rounded-full border">
+        <Check className="size-3" aria-hidden="true" />
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="bg-destructive text-destructive-foreground grid size-4 place-items-center rounded-full">
+        <X className="size-3" aria-hidden="true" />
+      </span>
+    );
+  }
+  return <span className="border-muted-foreground/40 size-4 rounded-full border" />;
 }
 
 function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
@@ -475,7 +719,11 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
       >
         <div className="flex items-center justify-between gap-3">
           <h3 id="aws-export-modal-title" className="text-base font-semibold">
-            {t('dataSources.aws.exportCreateSection')}
+            {t(
+              form.setupMode === 'create'
+                ? 'dataSources.aws.createExternalLocationAndExport'
+                : 'dataSources.aws.exportCreateSection',
+            )}
           </h3>
           <button
             type="button"
@@ -486,6 +734,16 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
             <X className="size-4" aria-hidden="true" />
           </button>
         </div>
+        {form.setupMode === 'create' && form.createBucketIfMissing ? (
+          <Alert>
+            <Info />
+            <AlertDescription>
+              {t('dataSources.aws.bucketWillBeCreated', {
+                bucket: form.selectedS3Bucket ?? '',
+              })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <div className="grid gap-2">
           <label className="grid gap-1 text-xs">
             <span className="text-muted-foreground">{t('dataSources.aws.exportName')}</span>
@@ -498,45 +756,69 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="grid gap-1 text-xs">
               <span className="text-muted-foreground">{t('dataSources.aws.s3Bucket')}</span>
-              <Input value={form.selectedS3Bucket ?? ''} disabled />
+              <Input
+                value={
+                  form.setupMode === 'create'
+                    ? form.createBucketName
+                    : (form.selectedS3Bucket ?? '')
+                }
+                onChange={(e) => form.setCreateBucketName(e.target.value)}
+                disabled={form.setupMode !== 'create' || form.creatingExport}
+              />
             </label>
             <label className="grid gap-1 text-xs">
               <span className="text-muted-foreground">{t('dataSources.aws.s3PathPrefix')}</span>
-              <S3PrefixInput form={form} disabled={form.creatingExport} placeholder="export" />
+              <S3PrefixInput
+                form={form}
+                disabled={form.creatingExport}
+                placeholder="bcm-data-export"
+              />
             </label>
           </div>
         </div>
-        <div className="border-border border-t" />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.aws.accessKeyId')}</span>
-            <Input
-              value={form.accessKeyId}
-              onChange={(e) => form.setAccessKeyId(e.target.value)}
-              autoComplete="off"
-            />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.aws.secretAccessKey')}</span>
-            <Input
-              type="password"
-              value={form.secretAccessKey}
-              onChange={(e) => form.setSecretAccessKey(e.target.value)}
-              autoComplete="new-password"
-            />
-          </label>
-          <label className="grid gap-1 text-xs sm:col-span-2">
-            <span className="text-muted-foreground">{t('dataSources.aws.sessionToken')}</span>
-            <Input
-              type="password"
-              value={form.sessionToken}
-              onChange={(e) => form.setSessionToken(e.target.value)}
-              autoComplete="off"
-              placeholder={t('dataSources.aws.sessionTokenPlaceholder')}
-            />
-          </label>
-        </div>
-        <p className="text-muted-foreground text-xs">{t('dataSources.aws.credentialsNotSaved')}</p>
+        {form.setupMode === 'existing' ? (
+          <>
+            <div className="border-border border-t" />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label className="grid gap-1 text-xs">
+                <span className="text-muted-foreground">{t('dataSources.aws.accessKeyId')}</span>
+                <Input
+                  value={form.accessKeyId}
+                  onChange={(e) => form.setAccessKeyId(e.target.value)}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="grid gap-1 text-xs">
+                <span className="text-muted-foreground">
+                  {t('dataSources.aws.secretAccessKey')}
+                </span>
+                <Input
+                  type="password"
+                  value={form.secretAccessKey}
+                  onChange={(e) => form.setSecretAccessKey(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label className="grid gap-1 text-xs sm:col-span-2">
+                <span className="text-muted-foreground">{t('dataSources.aws.sessionToken')}</span>
+                <Input
+                  type="password"
+                  value={form.sessionToken}
+                  onChange={(e) => form.setSessionToken(e.target.value)}
+                  autoComplete="off"
+                  placeholder={t('dataSources.aws.sessionTokenPlaceholder')}
+                />
+              </label>
+            </div>
+          </>
+        ) : null}
+        <p className="text-muted-foreground text-xs">
+          {t(
+            form.setupMode === 'create'
+              ? 'dataSources.aws.serviceCredentialUsed'
+              : 'dataSources.aws.credentialsNotSaved',
+          )}
+        </p>
         <div className="flex justify-end">
           <Button
             type="button"
@@ -545,7 +827,11 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
             onClick={form.onCreateExport}
           >
             {form.creatingExport ? <Spinner /> : null}
-            {t('dataSources.aws.createExport')}
+            {t(
+              form.setupMode === 'create'
+                ? 'dataSources.aws.createExternalLocationAndExportAction'
+                : 'dataSources.aws.createExport',
+            )}
           </Button>
         </div>
         {form.exportArn ? (

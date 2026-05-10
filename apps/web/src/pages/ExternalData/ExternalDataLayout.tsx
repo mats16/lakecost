@@ -3,18 +3,16 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useI18n } from '../../i18n';
 
 const TABS = [
-  { to: '/data-sources', labelKey: 'nav.dataSources' },
-  { to: '/transformations', labelKey: 'nav.transformations' },
+  { to: '/locations', labelKey: 'nav.externalLocations' },
   { to: '/credentials', labelKey: 'nav.credentials' },
-  { to: '/catalog', labelKey: 'nav.configureCatalog' },
 ];
 
-export function ConfigureLayout({ children }: { children?: ReactNode }) {
+export function ExternalDataLayout({ children }: { children?: ReactNode }) {
   const { t } = useI18n();
   return (
     <>
       <header className="page-header configure-header">
-        <h2>{t('configure.title')}</h2>
+        <h2>{t('nav.externalData')}</h2>
         <nav className="upper-tabs">
           {TABS.map((tab) => (
             <NavLink
