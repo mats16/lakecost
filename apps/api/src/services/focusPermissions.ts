@@ -385,7 +385,7 @@ async function assertSchemaPrivileges(
       .map(extractPrivilege)
       .filter((p): p is string => p !== null),
   );
-  const missing = ['USE SCHEMA', 'SELECT', 'CREATE TABLE'].filter(
+  const missing = ['USE SCHEMA', 'SELECT', 'CREATE TABLE', 'CREATE MATERIALIZED VIEW'].filter(
     (p) => !privileges.has(p) && !privileges.has('ALL PRIVILEGES'),
   );
   if (missing.length > 0) {

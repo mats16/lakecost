@@ -27,7 +27,7 @@ export type MedallionSchema = (typeof MEDALLION_SCHEMAS)[number];
 /** SQL privilege list needed by the App SP for each medallion schema. */
 export function schemaGrantPrivileges(schema: MedallionSchema): string {
   return schema === 'silver' || schema === 'gold'
-    ? 'USE SCHEMA, SELECT, CREATE TABLE'
+    ? 'USE SCHEMA, SELECT, CREATE TABLE, CREATE MATERIALIZED VIEW'
     : 'USE SCHEMA, SELECT';
 }
 

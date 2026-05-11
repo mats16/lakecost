@@ -83,7 +83,8 @@ interface ProvisionOptions {
  * Provisions the medallion layout (`bronze` / `silver` / `gold`) under
  * `catalog`, optionally creating the catalog itself, and grants the App
  * Service Principal the access it needs to run the FOCUS pipeline:
- * USE/SELECT on medallion schemas and CREATE TABLE on silver/gold outputs.
+ * USE/SELECT on medallion schemas and CREATE TABLE / CREATE MATERIALIZED VIEW
+ * on silver/gold outputs.
  *
  * All DDL/GRANT statements are run **as the calling user** (OBO) so the SP
  * does not need any prior privileges. Schema creates and GRANTs are
