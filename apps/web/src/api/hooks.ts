@@ -15,6 +15,9 @@ import type {
   ExternalLocationCreateBody,
   ExternalLocationCreateResponse,
   ExternalLocationListResponse,
+  GovernedTagsResponse,
+  GovernedTagSyncBody,
+  GovernedTagSyncResult,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
@@ -349,6 +352,29 @@ export function useDataSourceTemplates() {
     queryKey: ['dataSourceTemplates'],
     queryFn: () => apiFetch<{ items: DataSourceTemplate[] }>('/api/data-sources/templates'),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useGovernedTags() {
+  return useQuery({
+    queryKey: ['governedTags'],
+    queryFn: () => apiFetch<GovernedTagsResponse>('/api/tags'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useSyncGovernedTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: GovernedTagSyncBody) =>
+      apiFetch<GovernedTagSyncResult>('/api/tags/sync', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['governedTags'] });
+    },
   });
 }
 

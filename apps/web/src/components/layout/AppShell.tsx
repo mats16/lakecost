@@ -57,7 +57,8 @@ const CONFIGURE: NavGroup = {
   icon: Bolt,
   matchPrefix: '/data-sources',
   items: [
-    { to: '/data-sources', labelKey: 'nav.dataSources' },
+    { to: '/data-sources', labelKey: 'nav.dataSources', end: true },
+    { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
     { to: '/credentials', labelKey: 'nav.credentials' },
     { to: '/catalog', labelKey: 'nav.configureCatalog' },
@@ -188,6 +189,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    end={item.end}
                     className={({ isActive }) => (isActive ? 'active' : '')}
                   >
                     <span>{t(item.labelKey)}</span>

@@ -20,6 +20,7 @@ import { externalLocationsRouter } from './routes/externalLocations.js';
 import { storageCredentialsRouter } from './routes/storageCredentials.js';
 import { serviceCredentialsRouter } from './routes/serviceCredentials.js';
 import { transformationsRouter } from './routes/transformations.js';
+import { governedTagsRouter } from './routes/governedTags.js';
 
 export interface AppDeps {
   env: Env;
@@ -44,6 +45,7 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/app-settings', appSettingsRouter(db, env));
   app.use('/api/settings', settingsRouter(db));
   app.use('/api/me', meRouter(env));
+  app.use('/api/tags', governedTagsRouter(env));
   app.use('/api/data-sources', dataSourcesRouter(db, env));
   app.use('/api/transformations', transformationsRouter(db, env));
   app.use('/api/catalogs', catalogsRouter(env));

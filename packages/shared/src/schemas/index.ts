@@ -9,3 +9,4 @@ export * from './catalog.js';
 export * from './externalLocation.js';
 export * from './storageCredential.js';
 export * from './serviceCredential.js';
+export * from './governedTags.js';

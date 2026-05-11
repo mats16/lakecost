@@ -17,13 +17,14 @@ import {
   GetBucketPolicyCommand,
   HeadBucketCommand,
   PutBucketPolicyCommand,
+  PutBucketTaggingCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import {
   externalLocationNameForBucket,
+  finlakeAwsResourceTags,
   roleNameFromArn,
   storageCredentialNameForBucket,
-  ucNameSuffixFromBucket,
   type AwsFocusExportCreateBody,
   type AwsFocusExportCreateResponse,
   type Env,
@@ -45,6 +46,12 @@ import {
   toStorageCredentialSummary,
   type StorageCredentialInfoLike,
 } from './storageCredentials.js';
+import {
+  AWS_BCM_REGION,
+  AWS_SERVICE_ROLE_NAME,
+  generateAwsTemporaryCredentials,
+  type AwsTemporaryCredentials,
+} from './awsCredentials.js';
 import { WorkspaceServiceError, isPermissionDenied } from './workspaceClientErrors.js';
 import {
   listAccessibleServiceCredentials,
@@ -54,18 +61,10 @@ import { requireAppWorkspaceClient } from './servicePrincipalIdentity.js';
 
 const AWS_FOCUS_12_QUERY_STATEMENT =
   'SELECT AvailabilityZone, BilledCost, BillingAccountId, BillingAccountName, BillingAccountType, BillingCurrency, BillingPeriodEnd, BillingPeriodStart, CapacityReservationId, CapacityReservationStatus, ChargeCategory, ChargeClass, ChargeDescription, ChargeFrequency, ChargePeriodEnd, ChargePeriodStart, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountQuantity, CommitmentDiscountStatus, CommitmentDiscountType, CommitmentDiscountUnit, ConsumedQuantity, ConsumedUnit, ContractedCost, ContractedUnitPrice, EffectiveCost, InvoiceId, InvoiceIssuerName, ListCost, ListUnitPrice, PricingCategory, PricingCurrency, PricingCurrencyContractedUnitPrice, PricingCurrencyEffectiveCost, PricingCurrencyListUnitPrice, PricingQuantity, PricingUnit, ProviderName, PublisherName, RegionId, RegionName, ResourceId, ResourceName, ResourceType, ServiceCategory, ServiceName, ServiceSubcategory, SkuId, SkuMeter, SkuPriceDetails, SkuPriceId, SubAccountId, SubAccountName, SubAccountType, Tags, x_Discounts, x_Operation, x_ServiceCode FROM FOCUS_1_2_AWS';
-const AWS_BCM_REGION = 'us-east-1';
 const AWS_EXPORT_BUCKET_POLICY_SID = 'EnableAWSDataExportsToWriteToS3AndCheckPolicy';
-const AWS_SERVICE_ROLE_NAME = 'FinLakeServiceRole';
 const AWS_STORAGE_ROLE_NAME = 'FinLakeStorageRole';
 const AWS_STORAGE_POLICY_NAME = 'FinLakeStorageAccess';
 const AWS_STORAGE_ROLE_BOUNDARY_POLICY_NAME = 'FinLakeStorageRoleBoundary';
-
-interface AwsTemporaryCredentials {
-  accessKeyId: string;
-  secretAccessKey: string;
-  sessionToken: string;
-}
 
 type ResourceStatus = 'created' | 'skipped';
 
@@ -87,7 +86,11 @@ export async function createAwsFocusExportResources(
   input: AwsFocusExportCreateBody,
 ): Promise<AwsFocusExportCreateResponse> {
   const serviceCredential = await findFinLakeServiceCredential(env, input.awsAccountId);
-  const credentials = await generateAwsTemporaryCredentials(env, serviceCredential.name);
+  const credentials = await generateAwsTemporaryCredentials(
+    env,
+    serviceCredential.name,
+    AwsFocusExportServiceError,
+  );
 
   const s3Client = new S3Client({
     region: AWS_BCM_REGION,
@@ -175,33 +178,6 @@ async function findFinLakeServiceCredential(
     );
   }
   return credential;
-}
-
-async function generateAwsTemporaryCredentials(
-  env: Env,
-  credentialName: string,
-): Promise<AwsTemporaryCredentials> {
-  const wc = requireAppWorkspaceClient(env, AwsFocusExportServiceError);
-  try {
-    const res = await wc.credentials.generateTemporaryServiceCredential({
-      credential_name: credentialName,
-    });
-    const aws = res.aws_temp_credentials;
-    if (!aws?.access_key_id || !aws.secret_access_key || !aws.session_token) {
-      throw new Error('Databricks did not return AWS temporary credentials');
-    }
-    return {
-      accessKeyId: aws.access_key_id,
-      secretAccessKey: aws.secret_access_key,
-      sessionToken: aws.session_token,
-    };
-  } catch (err) {
-    logger.error({ err, credentialName }, 'generateTemporaryServiceCredential failed');
-    throw new AwsFocusExportServiceError(
-      `Failed to generate temporary AWS credentials from ${credentialName}: ${(err as Error).message}`,
-      isPermissionDenied(err) ? 403 : 502,
-    );
-  }
 }
 
 async function ensureFinLakeStorageCredential(
@@ -520,7 +496,7 @@ async function ensureAwsDataExport({
             Frequency: 'SYNCHRONOUS',
           },
         },
-        ResourceTags: [{ Key: 'Environment', Value: 'production' }],
+        ResourceTags: finlakeAwsResourceTags(),
       }),
     );
     return { value: res.ExportArn ?? '', status: 'created' };
@@ -622,11 +598,17 @@ async function ensureAwsBucketExists({
 
   try {
     await client.send(new CreateBucketCommand({ Bucket: bucket }));
+    await client.send(
+      new PutBucketTaggingCommand({
+        Bucket: bucket,
+        Tagging: { TagSet: finlakeAwsResourceTags() },
+      }),
+    );
     return 'created';
   } catch (err) {
-    logger.error({ err, bucket }, 'CreateBucket failed');
+    logger.error({ err, bucket }, 'CreateBucket/PutBucketTagging failed');
     throw new AwsFocusExportServiceError(
-      `Failed to create S3 bucket ${bucket}: ${(err as Error).message}`,
+      `Failed to create or tag S3 bucket ${bucket}: ${(err as Error).message}`,
       502,
     );
   }

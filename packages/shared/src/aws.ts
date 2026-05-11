@@ -1,3 +1,18 @@
+export interface AwsResourceTag {
+  Key: string;
+  Value: string;
+}
+
+export const FINLAKE_AWS_RESOURCE_TAGS: readonly AwsResourceTag[] = Object.freeze([
+  { Key: 'CostCenter', Value: 'finlake' },
+  { Key: 'Project', Value: 'finops' },
+  { Key: 'Environment', Value: 'production' },
+]);
+
+export function finlakeAwsResourceTags(): AwsResourceTag[] {
+  return [...FINLAKE_AWS_RESOURCE_TAGS];
+}
+
 export function roleNameFromArn(roleArn: string | null): string | null {
   if (!roleArn) return null;
   const match = /^arn:aws(?:-[a-z]+)*:iam::\d{12}:role\/(.+)$/.exec(roleArn);

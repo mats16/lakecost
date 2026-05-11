@@ -3,7 +3,8 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useI18n } from '../../i18n';
 
 const TABS = [
-  { to: '/data-sources', labelKey: 'nav.dataSources' },
+  { to: '/data-sources', labelKey: 'nav.dataSources', end: true },
+  { to: '/tags', labelKey: 'nav.tags' },
   { to: '/transformations', labelKey: 'nav.transformations' },
   { to: '/credentials', labelKey: 'nav.credentials' },
   { to: '/catalog', labelKey: 'nav.configureCatalog' },
@@ -20,6 +21,7 @@ export function ConfigureLayout({ children }: { children?: ReactNode }) {
             <NavLink
               key={tab.to}
               to={tab.to}
+              end={tab.end}
               className={({ isActive }) => (isActive ? 'active' : '')}
             >
               {t(tab.labelKey)}

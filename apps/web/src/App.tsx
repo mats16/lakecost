@@ -7,6 +7,7 @@ import { ConfigureLayout } from './pages/Configure/ConfigureLayout';
 import { DataSources } from './pages/Configure/DataSources';
 import { Catalog } from './pages/Configure/Catalog';
 import { Transformations } from './pages/Configure/Transformations';
+import { GovernedTags } from './pages/Configure/GovernedTags';
 import { Credentials } from './pages/ExternalData/Credentials';
 
 export function App() {
@@ -21,6 +22,7 @@ export function App() {
 
         <Route element={<ConfigureLayout />}>
           <Route path="/data-sources" element={<DataSources />} />
+          <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
           <Route path="/credentials" element={<Credentials />} />
           <Route path="/catalog" element={<Catalog />} />

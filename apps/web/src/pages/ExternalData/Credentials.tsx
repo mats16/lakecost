@@ -818,6 +818,7 @@ function buildServicePermissionPolicy(
           's3:GetBucketPolicy',
           's3:ListBucket',
           's3:PutBucketPolicy',
+          's3:PutBucketTagging',
         ],
         Resource: 'arn:aws:s3:::finlake-*',
       },
