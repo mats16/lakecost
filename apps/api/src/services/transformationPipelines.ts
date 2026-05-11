@@ -1,104 +1,68 @@
-import type { DatabaseClient } from '@finlake/db';
-import { z } from 'zod';
+import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   type Env,
+  type TransformationResource,
+  type TransformationPipelineShared,
   type TransformationPipelineRow,
   type TransformationPipelinesResponse,
 } from '@finlake/shared';
-import { buildUserExecutor, type SqlParam } from './statementExecution.js';
+import {
+  buildAppWorkspaceClient,
+  buildUserWorkspaceClient,
+  type WorkspaceClient,
+} from './statementExecution.js';
 import { normalizeHost } from './normalizeHost.js';
 import { WorkspaceServiceError } from './workspaceClientErrors.js';
+import {
+  LEGACY_SHARED_PIPELINE_SETTING_KEYS,
+  SHARED_PIPELINE_SETTING_KEYS,
+  syncSharedFocusPipeline,
+} from './dataSourceSetup.js';
 
 interface SourceForPipeline {
   id: number;
   name: string;
   providerName: string;
   tableName: string;
+}
+
+interface SharedPipelineIds {
   jobId: number | null;
   pipelineId: string | null;
-  config: Record<string, unknown>;
 }
 
 export class TransformationPipelineAuthError extends WorkspaceServiceError {}
 
 const LOOKBACK_DAYS = 7;
-const DAY_INDICES = [0, 1, 2, 3, 4, 5, 6] as const;
-
-const dayFields = Object.fromEntries(
-  DAY_INDICES.flatMap((i) => [
-    [`day${i}Date`, z.string()],
-    [`day${i}ResultState`, z.string().nullable()],
-    [`day${i}UpdateCount`, z.number().int().nonnegative().nullable()],
-  ]),
-);
-
-const PipelineQueryRowSchema = z.object({
-  dataSourceId: z.number().int().positive(),
-  dataSourceName: z.string(),
-  providerName: z.string(),
-  tableName: z.string(),
-  jobId: z.number().int().positive().nullable(),
-  pipelineId: z.string().nullable(),
-  cronExpression: z.string().nullable(),
-  timezoneId: z.string().nullable(),
-  accountId: z.string().nullable(),
-  workspaceId: z.string().nullable(),
-  pipelineName: z.string().nullable(),
-  pipelineType: z.string().nullable(),
-  createdBy: z.string().nullable(),
-  runAs: z.string().nullable(),
-  createTime: z.string().nullable(),
-  changeTime: z.string().nullable(),
-  deleteTime: z.string().nullable(),
-  updateId: z.string().nullable(),
-  updateType: z.string().nullable(),
-  triggerType: z.string().nullable(),
-  resultState: z.string().nullable(),
-  runAsUserName: z.string().nullable(),
-  periodStartTime: z.string().nullable(),
-  periodEndTime: z.string().nullable(),
-  durationSeconds: z.number().nullable(),
-  ...dayFields,
-});
-type PipelineQueryRow = z.infer<typeof PipelineQueryRowSchema>;
+const MAX_HISTORY_ITEMS = 100;
 
 export async function listTransformationPipelines(
   db: DatabaseClient,
   env: Env,
   userToken: string | undefined,
 ): Promise<TransformationPipelinesResponse> {
-  const sources = (await db.repos.dataSources.list()).map(toSourceForPipeline);
-  const configured = sources.filter((source) => source.pipelineId);
+  const [rawSources, rawSettings] = await Promise.all([
+    db.repos.dataSources.list(),
+    db.repos.appSettings.list(),
+  ]);
+  const sources = rawSources.map(toSourceForPipeline);
+  const appSettings = settingsToRecord(rawSettings);
+  const shared = sharedPipelineIds(appSettings);
   const generatedAt = new Date().toISOString();
   const fallbackDays = lastLookbackLocalDays();
-
-  if (configured.length === 0) {
-    return { rows: sources.map((s) => localOnlyRow(s, fallbackDays)), generatedAt };
-  }
-  if (!userToken) {
-    throw new TransformationPipelineAuthError('Missing OBO access token', 401);
-  }
-
-  const executor = buildUserExecutor(env, userToken);
-  if (!executor) {
-    throw new Error(
-      'DATABRICKS_HOST, SQL_WAREHOUSE_ID, and an OBO access token are required to read system.lakeflow tables.',
-    );
-  }
-
-  const rows = await executor.run(
-    buildPipelineSql(configured),
-    buildPipelineParams(configured, env.DATABRICKS_WORKSPACE_ID),
-    PipelineQueryRowSchema,
-  );
   const consoleHost = normalizeHost(env.DATABRICKS_HOST);
-  const rowsByDataSourceId = new Map(
-    rows.map((row) => [row.dataSourceId, toResponseRow(row, consoleHost)]),
+  const resources = await listTransformationResources(
+    env,
+    userToken,
+    shared,
+    consoleHost,
+    fallbackDays,
   );
+
   return {
-    rows: sources.map(
-      (source) => rowsByDataSourceId.get(source.id) ?? localOnlyRow(source, fallbackDays),
-    ),
+    shared: toSharedResponse(shared, consoleHost, resources),
+    resources,
+    rows: sources.map((source) => localOnlyRow(source, fallbackDays, shared, consoleHost)),
     generatedAt,
   };
 }
@@ -111,25 +75,27 @@ function toSourceForPipeline(
     name: source.name,
     providerName: source.providerName,
     tableName: source.tableName,
-    jobId: source.jobId,
-    pipelineId: source.pipelineId,
-    config: source.config,
   };
 }
 
-function localOnlyRow(source: SourceForPipeline, days: string[]): TransformationPipelineRow {
+function localOnlyRow(
+  source: SourceForPipeline,
+  days: string[],
+  shared: SharedPipelineIds,
+  consoleHost: string | null,
+): TransformationPipelineRow {
   return {
     dataSourceId: source.id,
     dataSourceName: source.name,
     providerName: source.providerName,
     tableName: source.tableName,
-    jobId: source.jobId,
-    pipelineId: source.pipelineId,
-    cronExpression: stringConfig(source.config.cronExpression),
-    timezoneId: stringConfig(source.config.timezoneId),
+    jobId: shared.jobId,
+    pipelineId: shared.pipelineId,
+    cronExpression: null,
+    timezoneId: null,
     accountId: null,
     workspaceId: null,
-    pipelineUrl: null,
+    pipelineUrl: pipelineUrl(shared.pipelineId, consoleHost),
     pipelineName: null,
     pipelineType: null,
     createdBy: null,
@@ -153,285 +119,338 @@ function localOnlyRow(source: SourceForPipeline, days: string[]): Transformation
   };
 }
 
-function toResponseRow(
-  row: PipelineQueryRow,
+async function listTransformationResources(
+  env: Env,
+  userToken: string | undefined,
+  shared: SharedPipelineIds,
   consoleHost: string | null,
-): TransformationPipelineRow {
+  days: string[],
+): Promise<TransformationResource[]> {
+  const resources: Array<Promise<TransformationResource>> = [];
+  if (shared.jobId !== null) {
+    resources.push(jobResource(env, userToken, shared, consoleHost, days));
+  }
+  if (shared.pipelineId) {
+    resources.push(pipelineResource(env, userToken, shared, consoleHost, days));
+  }
+  return Promise.all(resources);
+}
+
+async function workspaceClient(env: Env, userToken: string | undefined): Promise<WorkspaceClient> {
+  const wc =
+    buildAppWorkspaceClient(env) ??
+    (userToken ? buildUserWorkspaceClient(env, userToken) : undefined);
+  if (!wc) {
+    throw new TransformationPipelineAuthError(
+      'DATABRICKS_HOST and app credentials or an OBO access token are required to read Databricks Jobs/Pipelines APIs.',
+      401,
+    );
+  }
+  return wc;
+}
+
+async function jobResource(
+  env: Env,
+  userToken: string | undefined,
+  shared: SharedPipelineIds,
+  consoleHost: string | null,
+  days: string[],
+): Promise<TransformationResource> {
+  const jobId = shared.jobId;
+  if (jobId === null) {
+    throw new Error('jobResource called without a job id');
+  }
+  const wc = await workspaceClient(env, userToken);
+  const fallback = baseResource('job', String(jobId), jobUrl(jobId, consoleHost), days);
+
+  try {
+    const [job, runs] = await Promise.all([wc.jobs.get({ job_id: jobId }), listJobRuns(wc, jobId)]);
+    const latestRun = runs[0];
+    const periodStartTime = millisToIso(latestRun?.start_time);
+    const periodEndTime = millisToIso(latestRun?.end_time);
+    return {
+      ...fallback,
+      name: job.settings?.name ?? fallback.name,
+      owner: job.run_as_user_name ?? job.creator_user_name ?? latestRun?.creator_user_name ?? null,
+      cronExpression: job.settings?.schedule?.quartz_cron_expression ?? null,
+      timezoneId: job.settings?.schedule?.timezone_id ?? null,
+      createTime: millisToIso(job.created_time),
+      updateId: latestRun?.run_id ? String(latestRun.run_id) : null,
+      resultState: latestRun ? jobRunResultState(latestRun) : null,
+      periodStartTime,
+      periodEndTime,
+      durationSeconds: jobRunDurationSeconds(latestRun),
+      statusDays: statusDays(
+        days,
+        runs
+          .map((run) => ({
+            at: run.start_time ?? run.end_time ?? null,
+            resultState: jobRunResultState(run),
+          }))
+          .filter((item): item is StatusItem => item.at !== null),
+      ),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function pipelineResource(
+  env: Env,
+  userToken: string | undefined,
+  shared: SharedPipelineIds,
+  consoleHost: string | null,
+  days: string[],
+): Promise<TransformationResource> {
+  const pipelineId = shared.pipelineId;
+  if (!pipelineId) {
+    throw new Error('pipelineResource called without a pipeline id');
+  }
+  const wc = await workspaceClient(env, userToken);
+  const fallback = baseResource('pipeline', pipelineId, pipelineUrl(pipelineId, consoleHost), days);
+
+  try {
+    const [pipeline, updates] = await Promise.all([
+      wc.pipelines.get({ pipeline_id: pipelineId }),
+      listPipelineUpdates(wc, pipelineId),
+    ]);
+    const latestUpdate = updates[0];
+    const latestTime = latestUpdate?.creation_time;
+    return {
+      ...fallback,
+      name: pipeline.name ?? pipeline.spec?.name ?? fallback.name,
+      owner:
+        pipeline.run_as_user_name ??
+        pipelineRunAsName(pipeline.run_as) ??
+        pipeline.creator_user_name ??
+        null,
+      changeTime: millisToIso(pipeline.last_modified),
+      updateId: latestUpdate?.update_id ?? null,
+      resultState: latestUpdate?.state ?? pipeline.state ?? null,
+      periodStartTime: millisToIso(latestTime),
+      statusDays: statusDays(
+        days,
+        updates.flatMap((update): StatusItem[] =>
+          typeof update.creation_time === 'number'
+            ? [{ at: update.creation_time, resultState: update.state ?? null }]
+            : [],
+        ),
+      ),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function baseResource(
+  resourceType: TransformationResource['resourceType'],
+  resourceId: string,
+  url: string | null,
+  days: string[],
+): TransformationResource {
   return {
-    dataSourceId: row.dataSourceId,
-    dataSourceName: row.dataSourceName,
-    providerName: row.providerName,
-    tableName: row.tableName,
-    jobId: row.jobId,
-    pipelineId: row.pipelineId,
-    cronExpression: row.cronExpression,
-    timezoneId: row.timezoneId,
-    accountId: row.accountId,
-    workspaceId: row.workspaceId,
-    pipelineUrl: pipelineUrl(row.pipelineId, consoleHost),
-    pipelineName: row.pipelineName,
-    pipelineType: row.pipelineType,
-    createdBy: row.createdBy,
-    runAs: row.runAs,
-    createTime: row.createTime,
-    changeTime: row.changeTime,
-    deleteTime: row.deleteTime,
-    updateId: row.updateId,
-    updateType: row.updateType,
-    triggerType: row.triggerType,
-    resultState: row.resultState,
-    runAsUserName: row.runAsUserName,
-    periodStartTime: row.periodStartTime,
-    periodEndTime: row.periodEndTime,
-    durationSeconds: row.durationSeconds,
-    statusDays: DAY_INDICES.map((i) => {
-      const r = row as Record<string, unknown>;
-      return {
-        date: r[`day${i}Date`] as string,
-        resultState: r[`day${i}ResultState`] as string | null,
-        updateCount: (r[`day${i}UpdateCount`] as number | null) ?? 0,
-      };
-    }),
+    resourceType,
+    resourceId,
+    name: `${resourceType === 'job' ? 'Job' : 'Pipeline'} ${resourceId}`,
+    url,
+    owner: null,
+    cronExpression: null,
+    timezoneId: null,
+    createTime: null,
+    changeTime: null,
+    updateId: null,
+    resultState: null,
+    periodStartTime: null,
+    periodEndTime: null,
+    durationSeconds: null,
+    statusDays: emptyStatusDays(days),
   };
 }
 
-function buildPipelineSql(sources: SourceForPipeline[]): string {
-  const requested = sources
-    .map(
-      (_source, i) => `
-      SELECT
-        CAST(:data_source_id_${i} AS BIGINT) AS data_source_id,
-        :data_source_name_${i} AS data_source_name,
-        :provider_name_${i} AS provider_name,
-        :table_name_${i} AS table_name,
-        CAST(:job_id_${i} AS BIGINT) AS job_id,
-        :pipeline_id_${i} AS pipeline_id,
-        :cron_expression_${i} AS cron_expression,
-        :timezone_id_${i} AS timezone_id`,
-    )
-    .join('\n      UNION ALL\n');
-  const pipelineIds = sources.map((_source, i) => `:pipeline_id_${i}`).join(', ');
+type JobRun = Awaited<ReturnType<WorkspaceClient['jobs']['getRun']>>;
 
-  return `
-    WITH requested AS (
-      ${requested}
-    ),
-    latest_pipelines AS (
-      SELECT
-        account_id,
-        workspace_id,
-        pipeline_id,
-        name AS pipeline_name,
-        pipeline_type,
-        created_by,
-        run_as,
-        create_time,
-        change_time,
-        delete_time
-      FROM (
-        SELECT
-          account_id,
-          workspace_id,
-          pipeline_id,
-          name,
-          pipeline_type,
-          created_by,
-          run_as,
-          create_time,
-          change_time,
-          delete_time,
-          ROW_NUMBER() OVER (
-            PARTITION BY pipeline_id
-            ORDER BY CASE WHEN delete_time IS NULL THEN 1 ELSE 0 END DESC, change_time DESC
-          ) AS rn
-        FROM system.lakeflow.pipelines
-        WHERE pipeline_id IN (${pipelineIds})
-          AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
-      )
-      WHERE rn = 1
-    ),
-    latest_updates AS (
-      SELECT
-        workspace_id,
-        pipeline_id,
-        update_id,
-        update_type,
-        trigger_type,
-        result_state,
-        run_as_user_name,
-        period_start_time,
-        period_end_time,
-        CAST(unix_timestamp(period_end_time) - unix_timestamp(period_start_time) AS BIGINT) AS duration_seconds
-      FROM (
-        SELECT
-          workspace_id,
-          pipeline_id,
-          update_id,
-          update_type,
-          trigger_type,
-          result_state,
-          run_as_user_name,
-          period_start_time,
-          period_end_time,
-          ROW_NUMBER() OVER (
-            PARTITION BY pipeline_id
-            ORDER BY period_end_time DESC, period_start_time DESC
-          ) AS rn
-        FROM system.lakeflow.pipeline_update_timeline
-        WHERE pipeline_id IN (${pipelineIds})
-          AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
-          AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL ${LOOKBACK_DAYS} DAYS
-      )
-      WHERE rn = 1
-    ),
-    daily_updates AS (
-      SELECT
-        pipeline_id,
-        to_date(period_start_time) AS status_date,
-        result_state,
-        ROW_NUMBER() OVER (
-          PARTITION BY pipeline_id, to_date(period_start_time)
-          ORDER BY period_end_time DESC NULLS LAST, period_start_time DESC
-        ) AS rn
-      FROM system.lakeflow.pipeline_update_timeline
-      WHERE pipeline_id IN (${pipelineIds})
-        AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
-        AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL ${LOOKBACK_DAYS} DAYS
-    ),
-    daily_counts AS (
-      SELECT
-        pipeline_id,
-        to_date(period_start_time) AS status_date,
-        COUNT(DISTINCT update_id) AS update_count
-      FROM system.lakeflow.pipeline_update_timeline
-      WHERE pipeline_id IN (${pipelineIds})
-        AND (:workspace_id IS NULL OR workspace_id = :workspace_id)
-        AND period_start_time > CURRENT_TIMESTAMP() - INTERVAL ${LOOKBACK_DAYS} DAYS
-      GROUP BY pipeline_id, to_date(period_start_time)
-    ),
-    daily_status AS (
-      SELECT
-        u.pipeline_id,
-        u.status_date,
-        u.result_state,
-        c.update_count
-      FROM daily_updates u
-      LEFT JOIN daily_counts c
-        ON u.pipeline_id = c.pipeline_id
-        AND u.status_date = c.status_date
-      WHERE u.rn = 1
-    )
-    SELECT
-      r.data_source_id,
-      r.data_source_name,
-      r.provider_name,
-      r.table_name,
-      r.job_id,
-      r.pipeline_id,
-      r.cron_expression,
-      r.timezone_id,
-      p.account_id,
-      COALESCE(p.workspace_id, u.workspace_id) AS workspace_id,
-      p.pipeline_name,
-      p.pipeline_type,
-      p.created_by,
-      p.run_as,
-      p.create_time,
-      p.change_time,
-      p.delete_time,
-      u.update_id,
-      u.update_type,
-      u.trigger_type,
-      u.result_state,
-      u.run_as_user_name,
-      u.period_start_time,
-      u.period_end_time,
-      u.duration_seconds,
-      CAST(date_sub(current_date(), 6) AS STRING) AS day0_date,
-      d0.result_state AS day0_result_state,
-      d0.update_count AS day0_update_count,
-      CAST(date_sub(current_date(), 5) AS STRING) AS day1_date,
-      d1.result_state AS day1_result_state,
-      d1.update_count AS day1_update_count,
-      CAST(date_sub(current_date(), 4) AS STRING) AS day2_date,
-      d2.result_state AS day2_result_state,
-      d2.update_count AS day2_update_count,
-      CAST(date_sub(current_date(), 3) AS STRING) AS day3_date,
-      d3.result_state AS day3_result_state,
-      d3.update_count AS day3_update_count,
-      CAST(date_sub(current_date(), 2) AS STRING) AS day4_date,
-      d4.result_state AS day4_result_state,
-      d4.update_count AS day4_update_count,
-      CAST(date_sub(current_date(), 1) AS STRING) AS day5_date,
-      d5.result_state AS day5_result_state,
-      d5.update_count AS day5_update_count,
-      CAST(current_date() AS STRING) AS day6_date,
-      d6.result_state AS day6_result_state,
-      d6.update_count AS day6_update_count
-    FROM requested r
-    LEFT JOIN latest_pipelines p
-      ON r.pipeline_id = p.pipeline_id
-    LEFT JOIN latest_updates u
-      ON r.pipeline_id = u.pipeline_id
-    LEFT JOIN daily_status d0
-      ON r.pipeline_id = d0.pipeline_id
-      AND d0.status_date = date_sub(current_date(), 6)
-    LEFT JOIN daily_status d1
-      ON r.pipeline_id = d1.pipeline_id
-      AND d1.status_date = date_sub(current_date(), 5)
-    LEFT JOIN daily_status d2
-      ON r.pipeline_id = d2.pipeline_id
-      AND d2.status_date = date_sub(current_date(), 4)
-    LEFT JOIN daily_status d3
-      ON r.pipeline_id = d3.pipeline_id
-      AND d3.status_date = date_sub(current_date(), 3)
-    LEFT JOIN daily_status d4
-      ON r.pipeline_id = d4.pipeline_id
-      AND d4.status_date = date_sub(current_date(), 2)
-    LEFT JOIN daily_status d5
-      ON r.pipeline_id = d5.pipeline_id
-      AND d5.status_date = date_sub(current_date(), 1)
-    LEFT JOIN daily_status d6
-      ON r.pipeline_id = d6.pipeline_id
-      AND d6.status_date = current_date()
-    ORDER BY r.data_source_name
-  `;
+async function listJobRuns(wc: WorkspaceClient, jobId: number): Promise<JobRun[]> {
+  const runs: JobRun[] = [];
+  const startTimeFrom = Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  for await (const run of wc.jobs.listRuns({
+    job_id: jobId,
+    start_time_from: startTimeFrom,
+    limit: 24,
+    expand_tasks: false,
+  })) {
+    runs.push(run);
+    if (runs.length >= MAX_HISTORY_ITEMS) break;
+  }
+  return runs.sort((a, b) => (b.start_time ?? b.end_time ?? 0) - (a.start_time ?? a.end_time ?? 0));
 }
 
-function buildPipelineParams(
-  sources: SourceForPipeline[],
-  workspaceId: string | undefined,
-): SqlParam[] {
-  return [
-    { name: 'workspace_id', value: workspaceId ?? null, type: 'STRING' as const },
-    ...sources.flatMap((source, i) => [
-      { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
-      { name: `data_source_name_${i}`, value: source.name, type: 'STRING' as const },
-      { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
-      { name: `table_name_${i}`, value: source.tableName, type: 'STRING' as const },
-      { name: `job_id_${i}`, value: source.jobId, type: 'BIGINT' as const },
-      { name: `pipeline_id_${i}`, value: source.pipelineId, type: 'STRING' as const },
-      {
-        name: `cron_expression_${i}`,
-        value: stringConfig(source.config.cronExpression),
-        type: 'STRING' as const,
-      },
-      {
-        name: `timezone_id_${i}`,
-        value: stringConfig(source.config.timezoneId),
-        type: 'STRING' as const,
-      },
-    ]),
-  ];
+type PipelineUpdate = NonNullable<
+  Awaited<ReturnType<WorkspaceClient['pipelines']['listUpdates']>>['updates']
+>[number];
+
+async function listPipelineUpdates(
+  wc: WorkspaceClient,
+  pipelineId: string,
+): Promise<PipelineUpdate[]> {
+  const updates: PipelineUpdate[] = [];
+  const startTimeFrom = Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  let pageToken: string | undefined;
+
+  do {
+    const response = await wc.pipelines.listUpdates({
+      pipeline_id: pipelineId,
+      max_results: 25,
+      page_token: pageToken,
+    });
+    const page = response.updates ?? [];
+    updates.push(...page.filter((update) => (update.creation_time ?? 0) >= startTimeFrom));
+    pageToken = response.next_page_token;
+    if (page.length > 0 && page.every((update) => (update.creation_time ?? 0) < startTimeFrom)) {
+      break;
+    }
+  } while (pageToken && updates.length < MAX_HISTORY_ITEMS);
+
+  return updates
+    .slice(0, MAX_HISTORY_ITEMS)
+    .sort((a, b) => (b.creation_time ?? 0) - (a.creation_time ?? 0));
 }
 
-function stringConfig(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null;
+interface StatusItem {
+  at: number;
+  resultState: string | null;
+}
+
+function emptyStatusDays(days: string[]): TransformationResource['statusDays'] {
+  return days.map((date) => ({
+    date,
+    resultState: null,
+    updateCount: 0,
+  }));
+}
+
+function statusDays(days: string[], items: StatusItem[]): TransformationResource['statusDays'] {
+  const byDate = new Map<
+    string,
+    { resultState: string | null; updateCount: number; latestAt: number }
+  >();
+  for (const item of items) {
+    const date = new Date(item.at).toISOString().slice(0, 10);
+    const current = byDate.get(date);
+    if (!current) {
+      byDate.set(date, {
+        resultState: item.resultState,
+        updateCount: 1,
+        latestAt: item.at,
+      });
+    } else {
+      current.updateCount += 1;
+      if (item.at >= current.latestAt) {
+        current.latestAt = item.at;
+        current.resultState = item.resultState;
+      }
+    }
+  }
+
+  return days.map((date) => {
+    const day = byDate.get(date);
+    return {
+      date,
+      resultState: day?.resultState ?? null,
+      updateCount: day?.updateCount ?? 0,
+    };
+  });
+}
+
+function jobRunResultState(run: JobRun): string | null {
+  const result = run.state?.result_state;
+  if (result === 'SUCCESS' || result === 'SUCCESS_WITH_FAILURES') return 'COMPLETED';
+  if (result === 'FAILED') return 'FAILED';
+  if (result === 'CANCELED' || result === 'TIMEDOUT') return 'CANCELED';
+  if (run.state?.life_cycle_state === 'TERMINATED') return result ?? 'COMPLETED';
+  if (run.state?.life_cycle_state === 'SKIPPED') return 'CANCELED';
+  if (run.state?.life_cycle_state) return 'RUNNING';
+  return null;
+}
+
+function jobRunDurationSeconds(run: JobRun | undefined): number | null {
+  if (!run) return null;
+  if (typeof run.run_duration === 'number' && run.run_duration > 0) {
+    return Math.round(run.run_duration / 1000);
+  }
+  if (typeof run.start_time === 'number' && typeof run.end_time === 'number' && run.end_time > 0) {
+    return Math.max(0, Math.round((run.end_time - run.start_time) / 1000));
+  }
+  return null;
+}
+
+function pipelineRunAsName(
+  runAs: { user_name?: string; service_principal_name?: string } | undefined,
+): string | null {
+  return runAs?.user_name ?? runAs?.service_principal_name ?? null;
+}
+
+function millisToIso(value: number | null | undefined): string | null {
+  if (typeof value !== 'number' || value <= 0) return null;
+  return new Date(value).toISOString();
+}
+
+function sharedPipelineIds(settings: Record<string, string>): SharedPipelineIds {
+  const rawJobId =
+    settings[SHARED_PIPELINE_SETTING_KEYS.jobId] ??
+    settings[LEGACY_SHARED_PIPELINE_SETTING_KEYS.jobId];
+  const jobId = rawJobId ? Number(rawJobId) : null;
+  return {
+    jobId: Number.isSafeInteger(jobId) && jobId !== null && jobId > 0 ? jobId : null,
+    pipelineId:
+      settings[SHARED_PIPELINE_SETTING_KEYS.pipelineId] ??
+      settings[LEGACY_SHARED_PIPELINE_SETTING_KEYS.pipelineId] ??
+      null,
+  };
+}
+
+function toSharedResponse(
+  shared: SharedPipelineIds,
+  consoleHost: string | null,
+  resources: TransformationResource[] = [],
+): TransformationPipelineShared {
+  const job = resources.find((resource) => resource.resourceType === 'job');
+  return {
+    jobId: shared.jobId,
+    jobUrl: jobUrl(shared.jobId, consoleHost),
+    pipelineId: shared.pipelineId,
+    pipelineUrl: pipelineUrl(shared.pipelineId, consoleHost),
+    cronExpression: job?.cronExpression ?? null,
+    timezoneId: job?.timezoneId ?? null,
+  };
+}
+
+export async function updateSharedTransformationSchedule(
+  db: DatabaseClient,
+  env: Env,
+  input: { cronExpression: string; timezoneId: string },
+): Promise<TransformationPipelineShared> {
+  const cronExpression = input.cronExpression.trim();
+  const timezoneId = input.timezoneId.trim();
+  const enabledSources = (await db.repos.dataSources.list()).filter((source) => source.enabled);
+  if (enabledSources.length > 0) {
+    await syncSharedFocusPipeline(env, db, enabledSources, { cronExpression, timezoneId });
+  }
+  const settings = settingsToRecord(await db.repos.appSettings.list());
+  return {
+    ...toSharedResponse(sharedPipelineIds(settings), normalizeHost(env.DATABRICKS_HOST)),
+    cronExpression,
+    timezoneId,
+  };
 }
 
 function pipelineUrl(pipelineId: string | null, consoleHost: string | null): string | null {
   if (!pipelineId || !consoleHost) return null;
   return `${consoleHost}/pipelines/${encodeURIComponent(pipelineId)}`;
+}
+
+function jobUrl(jobId: number | null, consoleHost: string | null): string | null {
+  if (!jobId || !consoleHost) return null;
+  return `${consoleHost}/jobs/${jobId}`;
 }
 
 function lastLookbackLocalDays(): string[] {

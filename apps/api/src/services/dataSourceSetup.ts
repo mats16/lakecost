@@ -6,44 +6,43 @@ import {
   DATABRICKS_FOCUS_VERSION,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
+  LAKEFLOW_PIPELINE_SETTING_KEYS,
+  focusSourceTables,
   focusViewFqn,
   medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
+  quoteIdent,
+  quotePrincipal,
   s3BucketFromUrl,
   s3ExportPath,
   tableLeafName,
   validateAccountPricesTable,
+  type DataSource,
   type DataSourceSetupBody,
   type DataSourceSetupResult,
   type Env,
+  type FocusSourceTableRef,
 } from '@finlake/shared';
 import { z } from 'zod';
 import {
+  buildAppExecutor,
   buildAppWorkspaceClient,
   buildUserExecutor,
-  buildUserWorkspaceClient,
 } from './statementExecution.js';
 import {
-  deletePipelineSchedule,
   upsertPipelineSchedule,
   type PipelineScheduleParams,
+  type PipelineSourceFile,
 } from './databricksJobs.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import {
-  buildAwsFocusPipelineConfiguration,
-  buildAwsFocusPipelineSql,
+  awsBillingTableName,
+  buildAwsFocusSilverPipelineSql,
 } from './awsFocusTransformPipelineSql.js';
-import {
-  buildFocusPipelineConfiguration,
-  buildFocusPipelineSql,
-} from './databricksFocusTransformPipelineSql.js';
+import { buildFocusSilverPipelineSql } from './databricksFocusTransformPipelineSql.js';
 
 interface FocusConfig {
   accountPricesTable: string;
-  cronExpression: string;
-  timezoneId: string;
-  legacyPipelineId: string | null;
-  workspacePath: string | null;
 }
 
 interface AwsFocusConfig {
@@ -51,11 +50,99 @@ interface AwsFocusConfig {
   s3Bucket: string | null;
   s3Prefix: string | null;
   exportName: string | null;
-  cronExpression: string;
-  timezoneId: string;
-  legacyPipelineId: string | null;
-  workspacePath: string | null;
 }
+
+export const SHARED_PIPELINE_SETTING_KEYS = {
+  jobId: LAKEFLOW_PIPELINE_SETTING_KEYS.jobId,
+  pipelineId: LAKEFLOW_PIPELINE_SETTING_KEYS.pipelineId,
+  workspaceRoot: 'focus_pipeline_workspace_root',
+} as const;
+
+export const LEGACY_SHARED_PIPELINE_SETTING_KEYS = {
+  jobId: 'focus_pipeline_job_id',
+  pipelineId: 'focus_pipeline_id',
+} as const;
+
+const SHARED_PIPELINE_FILENAME_GOLD = 'gold_billing_daily.sql';
+const FOCUS_12_BILLING_COLUMNS = [
+  { name: 'AvailabilityZone', type: 'STRING' },
+  { name: 'BilledCost', type: 'DOUBLE' },
+  { name: 'BillingAccountId', type: 'STRING' },
+  { name: 'BillingAccountName', type: 'STRING' },
+  { name: 'BillingAccountType', type: 'STRING' },
+  { name: 'BillingCurrency', type: 'STRING' },
+  { name: 'BillingPeriodEnd', type: 'TIMESTAMP' },
+  { name: 'BillingPeriodStart', type: 'TIMESTAMP' },
+  { name: 'CapacityReservationId', type: 'STRING' },
+  { name: 'CapacityReservationStatus', type: 'STRING' },
+  { name: 'ChargeCategory', type: 'STRING' },
+  { name: 'ChargeClass', type: 'STRING' },
+  { name: 'ChargeDescription', type: 'STRING' },
+  { name: 'ChargeFrequency', type: 'STRING' },
+  { name: 'ChargePeriodEnd', type: 'TIMESTAMP' },
+  { name: 'ChargePeriodStart', type: 'TIMESTAMP' },
+  { name: 'CommitmentDiscountCategory', type: 'STRING' },
+  { name: 'CommitmentDiscountId', type: 'STRING' },
+  { name: 'CommitmentDiscountName', type: 'STRING' },
+  { name: 'CommitmentDiscountQuantity', type: 'DOUBLE' },
+  { name: 'CommitmentDiscountStatus', type: 'STRING' },
+  { name: 'CommitmentDiscountType', type: 'STRING' },
+  { name: 'CommitmentDiscountUnit', type: 'STRING' },
+  { name: 'ConsumedQuantity', type: 'DOUBLE' },
+  { name: 'ConsumedUnit', type: 'STRING' },
+  { name: 'ContractedCost', type: 'DOUBLE' },
+  { name: 'ContractedUnitPrice', type: 'DOUBLE' },
+  { name: 'EffectiveCost', type: 'DOUBLE' },
+  { name: 'InvoiceId', type: 'STRING' },
+  { name: 'InvoiceIssuerName', type: 'STRING' },
+  { name: 'ListCost', type: 'DOUBLE' },
+  { name: 'ListUnitPrice', type: 'DOUBLE' },
+  { name: 'PricingCategory', type: 'STRING' },
+  { name: 'PricingCurrency', type: 'STRING' },
+  { name: 'PricingCurrencyContractedUnitPrice', type: 'DOUBLE' },
+  { name: 'PricingCurrencyEffectiveCost', type: 'DOUBLE' },
+  { name: 'PricingCurrencyListUnitPrice', type: 'DOUBLE' },
+  { name: 'PricingQuantity', type: 'DOUBLE' },
+  { name: 'PricingUnit', type: 'STRING' },
+  { name: 'ProviderName', type: 'STRING' },
+  { name: 'PublisherName', type: 'STRING' },
+  { name: 'RegionId', type: 'STRING' },
+  { name: 'RegionName', type: 'STRING' },
+  { name: 'ResourceId', type: 'STRING' },
+  { name: 'ResourceName', type: 'STRING' },
+  { name: 'ResourceType', type: 'STRING' },
+  { name: 'ServiceCategory', type: 'STRING' },
+  { name: 'ServiceName', type: 'STRING' },
+  { name: 'ServiceSubcategory', type: 'STRING' },
+  { name: 'SkuId', type: 'STRING' },
+  { name: 'SkuMeter', type: 'STRING' },
+  { name: 'SkuPriceDetails', type: 'MAP<STRING, STRING>' },
+  { name: 'SkuPriceId', type: 'STRING' },
+  { name: 'SubAccountId', type: 'STRING' },
+  { name: 'SubAccountName', type: 'STRING' },
+  { name: 'SubAccountType', type: 'STRING' },
+  { name: 'Tags', type: 'MAP<STRING, STRING>' },
+] as const;
+const BILLING_DAILY_SOURCE_COLUMNS = [
+  'ChargePeriodStart',
+  'BillingPeriodStart',
+  'BillingAccountId',
+  'BillingAccountName',
+  'BillingCurrency',
+  'SubAccountId',
+  'SubAccountName',
+  'SubAccountType',
+  'ProviderName',
+  'ServiceCategory',
+  'ServiceSubcategory',
+  'ServiceName',
+  'SkuId',
+  'SkuMeter',
+  'ListCost',
+  'BilledCost',
+  'ContractedCost',
+  'EffectiveCost',
+] as const;
 
 export function readFocusConfig(config: Record<string, unknown>): FocusConfig {
   const get = (k: string): string | null => {
@@ -64,10 +151,6 @@ export function readFocusConfig(config: Record<string, unknown>): FocusConfig {
   };
   return {
     accountPricesTable: get('accountPricesTable') ?? ACCOUNT_PRICES_DEFAULT,
-    cronExpression: get('cronExpression') ?? FOCUS_REFRESH_CRON_DEFAULT,
-    timezoneId: get('timezoneId') ?? FOCUS_REFRESH_TIMEZONE_DEFAULT,
-    legacyPipelineId: get('pipelineId'),
-    workspacePath: get('workspacePath'),
   };
 }
 
@@ -83,10 +166,6 @@ function readAwsFocusConfig(config: Record<string, unknown>): AwsFocusConfig {
       get('s3Bucket') ?? (externalLocationUrl ? s3BucketFromUrl(externalLocationUrl) : null),
     s3Prefix: get('s3Prefix'),
     exportName: get('exportName'),
-    cronExpression: get('cronExpression') ?? FOCUS_REFRESH_CRON_DEFAULT,
-    timezoneId: get('timezoneId') ?? FOCUS_REFRESH_TIMEZONE_DEFAULT,
-    legacyPipelineId: get('pipelineId'),
-    workspacePath: get('workspacePath'),
   };
 }
 
@@ -130,10 +209,8 @@ export function resourceLabelBase(source: {
 }
 
 /**
- * Provision a Lakeflow Declarative Pipeline that materializes the FOCUS view,
- * plus a Databricks Job that triggers the pipeline on cron. On success the
- * data source row's `job_id`, `pipeline_id`, and `config.workspacePath` are
- * updated.
+ * Register or update one data source, then regenerate the shared FinLake
+ * Lakeflow pipeline/job that materializes all enabled sources.
  */
 export async function setupFocusDataSource(
   env: Env,
@@ -176,133 +253,87 @@ export async function setupFocusDataSource(
     );
   }
 
-  const tableName = body.tableName ?? tableLeafName(source.tableName);
-
-  const target = { catalog, schema: medallionSchemas.silver, table: tableName };
-  let pipelineSql: string;
   let fqn: string;
-  let configuration: Record<string, string> | undefined;
-  let cronExpression: string;
-  let timezoneId: string;
-  let workspacePath: string;
-  let pipelineId: string | null;
   let nextConfig: Record<string, unknown>;
   let focusVersion: string;
+  let tableName: string;
+  let databricksAccountPricesTable: string | null = null;
   try {
-    fqn = focusViewFqn(target);
     if (source.providerName === 'Databricks') {
       const existing = readFocusConfig(source.config);
+      tableName = body.tableName ?? tableLeafName(source.tableName);
       const accountPricesRaw = body.accountPricesTable ?? existing.accountPricesTable;
       const accountPricesTable = validateAccountPricesTable(accountPricesRaw);
-      pipelineSql = buildFocusPipelineSql({
-        catalog,
-        table: tableName,
-        goldSchema: medallionSchemas.gold,
-        accountPricesTable,
-      });
-      configuration = buildFocusPipelineConfiguration(
-        tableName,
-        accountPricesTable,
-        medallionSchemas.gold,
-      );
-      cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
-      timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
-      workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, dataSourceId);
-      pipelineId = source.pipelineId ?? existing.legacyPipelineId;
+      databricksAccountPricesTable = accountPricesTable;
       focusVersion = DATABRICKS_FOCUS_VERSION;
       nextConfig = {
         ...source.config,
         accountPricesTable,
-        cronExpression,
-        timezoneId,
         targetSchema: medallionSchemas.silver,
         goldSchema: medallionSchemas.gold,
       };
     } else {
       const existing = readAwsFocusConfig(source.config);
       const awsSource = readAwsFocusSource(existing);
-      configuration = buildAwsFocusPipelineConfiguration(
-        tableName,
-        awsSource.s3Bucket,
-        awsSource.s3Prefix,
-        awsSource.exportName,
-        medallionSchemas.gold,
-      );
-      pipelineSql = buildAwsFocusPipelineSql();
-      cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
-      timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
-      workspacePath = workspacePathFor(
-        env.DATABRICKS_APP_NAME,
-        dataSourceId,
-        'awsFocusTransformPipeline.sql',
-      );
-      pipelineId = source.pipelineId ?? existing.legacyPipelineId;
+      tableName = awsBillingTableName(awsSource.awsAccountId);
       focusVersion = AWS_FOCUS_VERSION;
       nextConfig = {
         ...source.config,
-        cronExpression,
-        timezoneId,
+        awsAccountId: awsSource.awsAccountId,
         sourcePath: s3ExportDataPath(awsSource),
         targetSchema: medallionSchemas.silver,
         goldSchema: medallionSchemas.gold,
       };
     }
+    fqn = focusViewFqn({ catalog, schema: medallionSchemas.silver, table: tableName });
   } catch (err) {
     throw new DataSourceSetupError(`Invalid view target: ${(err as Error).message}`, 400);
   }
 
-  const wc = isAwsProvider(source.providerName)
-    ? buildAppWorkspaceClient(env)
-    : buildUserWorkspaceClient(env, userToken as string);
+  const wc = buildAppWorkspaceClient(env);
   if (!wc) {
     throw new DataSourceSetupError(
-      isAwsProvider(source.providerName)
-        ? 'Failed to build Databricks app service principal workspace client. Check DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET.'
-        : 'Failed to build Databricks workspace client',
+      'Failed to build Databricks app service principal workspace client. Check DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET.',
       500,
     );
   }
 
-  const labelBase = resourceLabelBase(source);
-  const scheduleParams: PipelineScheduleParams = {
-    pipelineName: `${labelBase}-pipeline`,
-    jobName: `${labelBase}-job`,
-    pipelineSql,
-    workspacePath,
-    catalog,
-    schema: medallionSchemas.silver,
-    configuration,
-    cronExpression,
-    timezoneId,
-  };
-
   if (source.providerName === 'Databricks') {
     await assertCanReadUsageTable(env, userToken as string);
+    await grantAppSystemTableAccess(env, userToken as string, databricksAccountPricesTable);
+    await assertAppCanReadSystemTables(env, databricksAccountPricesTable);
   }
 
+  const candidateSource: DataSource = {
+    ...source,
+    tableName,
+    focusVersion,
+    enabled: true,
+    config: nextConfig,
+  };
+  const allSources = await db.repos.dataSources.list();
+  const candidateSources = allSources.map((row) =>
+    row.id === dataSourceId ? candidateSource : row,
+  ) as DataSource[];
   let result;
   try {
-    result = await upsertPipelineSchedule(wc, scheduleParams, {
-      jobId: source.jobId,
-      pipelineId,
+    result = await syncSharedFocusPipeline(env, db, candidateSources, {
+      catalog,
+      silverSchema: medallionSchemas.silver,
+      goldSchema: medallionSchemas.gold,
     });
   } catch (err) {
     throw new DataSourceSetupError(
-      `Failed to provision pipeline/job for ${fqn}: ${(err as Error).message}`,
+      `Failed to provision shared pipeline/job for ${fqn}: ${(err as Error).message}`,
       500,
     );
   }
 
   const updated = await db.repos.dataSources.update(dataSourceId, {
     tableName,
-    jobId: result.jobId,
-    pipelineId: result.pipelineId,
     focusVersion,
     enabled: true,
-    config: {
-      ...nextConfig,
-      workspacePath: result.workspacePath,
-    },
+    config: nextConfig,
   });
 
   return {
@@ -310,8 +341,9 @@ export async function setupFocusDataSource(
     jobId: result.jobId,
     pipelineId: result.pipelineId,
     fqn,
-    cronExpression,
-    timezoneId,
+    goldFqn: focusViewFqn({ catalog, schema: medallionSchemas.gold, table: 'billing_daily' }),
+    cronExpression: result.cronExpression,
+    timezoneId: result.timezoneId,
     createdView: false,
   };
 }
@@ -321,10 +353,14 @@ function isAwsProvider(providerName: string): boolean {
 }
 
 function readAwsFocusSource(config: AwsFocusConfig): {
+  awsAccountId: string;
   s3Bucket: string;
   s3Prefix: string;
   exportName: string;
 } {
+  if (!config.awsAccountId || !/^\d{12}$/.test(config.awsAccountId)) {
+    throw new Error('AWS billing account id must be configured as a 12 digit account id.');
+  }
   if (!config.s3Bucket) {
     throw new Error('S3 bucket is not configured. Save the AWS source before creating the job.');
   }
@@ -335,7 +371,12 @@ function readAwsFocusSource(config: AwsFocusConfig): {
   if (!config.exportName) {
     throw new Error('Export name is not configured. Save the AWS source before creating the job.');
   }
-  return { s3Bucket: config.s3Bucket, s3Prefix, exportName: config.exportName };
+  return {
+    awsAccountId: config.awsAccountId,
+    s3Bucket: config.s3Bucket,
+    s3Prefix,
+    exportName: config.exportName,
+  };
 }
 
 function s3ExportDataPath({
@@ -377,8 +418,8 @@ async function assertCanReadUsageTable(env: Env, userToken: string): Promise<voi
     throw new DataSourceSetupError(
       [
         'Cannot read system.billing.usage with the current user.',
-        'Grant USE CATALOG on system, USE SCHEMA on system.billing, and SELECT on',
-        'system.billing.usage before creating the FOCUS pipeline/job.',
+        'Grant USE CATALOG, USE SCHEMA, and SELECT on the system catalog',
+        'before creating the FOCUS pipeline/job.',
         (err as Error).message,
       ].join(' '),
       400,
@@ -386,83 +427,406 @@ async function assertCanReadUsageTable(env: Env, userToken: string): Promise<voi
   }
 }
 
-/**
- * Best-effort cleanup of the Databricks-side pipeline+job for a data source.
- * Returns `true` if cleanup ran (or was unnecessary), `false` if skipped due
- * to missing credentials — callers may want to warn the user.
- */
-export async function teardownFocusDataSource(
+async function grantAppSystemTableAccess(
   env: Env,
-  userToken: string | undefined,
-  source: { jobId: number | null; pipelineId: string | null; config: Record<string, unknown> },
-): Promise<{ skippedTeardown: boolean }> {
-  const hasRemoteResources =
-    source.jobId !== null ||
-    source.pipelineId !== null ||
-    (typeof source.config.pipelineId === 'string' && source.config.pipelineId.length > 0) ||
-    (typeof source.config.workspacePath === 'string' && source.config.workspacePath.length > 0);
+  userToken: string,
+  accountPricesTable: string | null,
+): Promise<void> {
+  if (!env.SQL_WAREHOUSE_ID) {
+    throw new DataSourceSetupError(
+      [
+        'SQL_WAREHOUSE_ID must be configured to grant app service principal',
+        'system table access before creating the shared FOCUS pipeline/job.',
+      ].join(' '),
+      400,
+    );
+  }
+  const sp = (env.DATABRICKS_CLIENT_ID ?? '').trim();
+  if (!sp) {
+    throw new DataSourceSetupError(
+      'DATABRICKS_CLIENT_ID must be configured before granting system table access.',
+      400,
+    );
+  }
+  const executor = buildUserExecutor(env, userToken);
+  if (!executor) {
+    throw new DataSourceSetupError(
+      'OBO access token + DATABRICKS_HOST + SQL_WAREHOUSE_ID required to grant system table access.',
+      400,
+    );
+  }
+  const statements = grantSystemTableStatements(
+    focusSourceTables(accountPricesTable ?? ACCOUNT_PRICES_DEFAULT),
+    sp,
+  );
+  for (const stmt of statements) {
+    try {
+      await executor.run(stmt.sql, [], z.unknown());
+    } catch (err) {
+      throw new DataSourceSetupError(
+        `Failed to grant ${stmt.label} to the app service principal before creating the shared FOCUS pipeline/job: ${(err as Error).message}`,
+        400,
+      );
+    }
+  }
+}
 
-  if (!userToken || !env.DATABRICKS_HOST) {
-    return { skippedTeardown: hasRemoteResources };
+function grantSystemTableStatements(tables: FocusSourceTableRef[], principalName: string) {
+  const principal = quotePrincipal(principalName);
+  const catalogSeen = new Set<string>();
+  const statements: Array<{ label: string; sql: string }> = [];
+
+  for (const table of tables) {
+    if (catalogSeen.has(table.catalog)) continue;
+    catalogSeen.add(table.catalog);
+    const catalog = quoteIdent(table.catalog);
+    statements.push({
+      label: `USE CATALOG ${table.catalog}`,
+      sql: `GRANT USE CATALOG ON CATALOG ${catalog} TO ${principal}`,
+    });
+    statements.push({
+      label: `USE SCHEMA on catalog ${table.catalog}`,
+      sql: `GRANT USE SCHEMA ON CATALOG ${catalog} TO ${principal}`,
+    });
+    statements.push({
+      label: `SELECT on catalog ${table.catalog}`,
+      sql: `GRANT SELECT ON CATALOG ${catalog} TO ${principal}`,
+    });
   }
-  const pipelineId =
-    source.pipelineId ??
-    (typeof source.config.pipelineId === 'string' && source.config.pipelineId.length > 0
-      ? source.config.pipelineId
-      : null);
-  const workspacePath =
-    typeof source.config.workspacePath === 'string' && source.config.workspacePath.length > 0
-      ? source.config.workspacePath
-      : null;
-  if (source.jobId === null && pipelineId === null && workspacePath === null) {
-    return { skippedTeardown: false };
+  return statements;
+}
+
+async function assertAppCanReadSystemTables(
+  env: Env,
+  accountPricesTable: string | null,
+): Promise<void> {
+  if (!env.SQL_WAREHOUSE_ID) {
+    throw new DataSourceSetupError(
+      [
+        'SQL_WAREHOUSE_ID must be configured to verify app service principal',
+        'system table access before creating the shared FOCUS pipeline/job.',
+      ].join(' '),
+      400,
+    );
   }
-  const wc = buildUserWorkspaceClient(env, userToken);
-  if (!wc) return { skippedTeardown: true };
-  await deletePipelineSchedule(wc, {
-    jobId: source.jobId,
-    pipelineId,
-    workspacePath,
-  });
-  return { skippedTeardown: false };
+  const executor = buildAppExecutor(env);
+  if (!executor) {
+    throw new DataSourceSetupError(
+      'Failed to build Databricks SQL executor for app service principal system.billing.usage access check.',
+      500,
+    );
+  }
+  try {
+    for (const table of focusSourceTables(accountPricesTable ?? ACCOUNT_PRICES_DEFAULT)) {
+      await executor.run(
+        `SELECT 1 AS ok FROM ${focusViewFqn(table)} LIMIT 1`,
+        [],
+        z.object({ ok: z.number() }),
+      );
+    }
+  } catch (err) {
+    throw new DataSourceSetupError(
+      [
+        'Cannot read required system tables with the app service principal after granting access.',
+        'Grant USE CATALOG, USE SCHEMA, and SELECT on the required catalogs to the app service principal',
+        'before creating the shared FOCUS pipeline/job.',
+        (err as Error).message,
+      ].join(' '),
+      400,
+    );
+  }
 }
 
 export async function runDataSourceJob(
   env: Env,
   db: DatabaseClient,
-  userToken: string | undefined,
+  _userToken: string | undefined,
   dataSourceId: number,
 ): Promise<{ dataSourceId: number; jobId: number; runId: number }> {
-  if (!userToken) {
-    throw new DataSourceSetupError(
-      'Missing OBO access token. Run behind Databricks Apps or `databricks apps run-local`.',
-      401,
-    );
-  }
   if (!env.DATABRICKS_HOST) {
     throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
   }
 
   const source = await db.repos.dataSources.get(dataSourceId);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
-  if (source.jobId === null) {
-    throw new DataSourceSetupError('No Databricks job has been created for this data source.', 400);
+  const appSettings = settingsToRecord(await db.repos.appSettings.list());
+  const jobId = sharedJobIdSetting(appSettings);
+  if (jobId === null) {
+    throw new DataSourceSetupError('No shared Databricks job has been created.', 400);
   }
-  const wc = buildUserWorkspaceClient(env, userToken);
-  if (!wc) throw new DataSourceSetupError('Failed to build Databricks workspace client', 500);
+  const wc = buildAppWorkspaceClient(env);
+  if (!wc) {
+    throw new DataSourceSetupError(
+      'Failed to build Databricks app service principal workspace client',
+      500,
+    );
+  }
 
   let run;
   try {
-    run = await wc.jobs.runNow({ job_id: source.jobId });
+    run = await wc.jobs.runNow({ job_id: jobId });
   } catch (err) {
-    throw new DataSourceSetupError(
-      `Failed to run job #${source.jobId}: ${(err as Error).message}`,
-      500,
-    );
+    throw new DataSourceSetupError(`Failed to run job #${jobId}: ${(err as Error).message}`, 500);
   }
   if (typeof run.run_id !== 'number') {
     throw new DataSourceSetupError(`Databricks Jobs API returned no run_id`, 500);
   }
 
-  return { dataSourceId: source.id, jobId: source.jobId, runId: run.run_id };
+  return { dataSourceId: source.id, jobId, runId: run.run_id };
+}
+
+export async function syncSharedFocusPipeline(
+  env: Env,
+  db: DatabaseClient,
+  sourcesOverride?: DataSource[],
+  opts?: {
+    catalog?: string;
+    silverSchema?: string;
+    goldSchema?: string;
+    cronExpression?: string;
+    timezoneId?: string;
+  },
+): Promise<{
+  jobId: number;
+  pipelineId: string;
+  workspacePaths: string[];
+  cronExpression: string;
+  timezoneId: string;
+}> {
+  if (!env.DATABRICKS_APP_NAME) {
+    throw new DataSourceSetupError('DATABRICKS_APP_NAME must be configured.', 400);
+  }
+  const [settingsRows, allSources] = await Promise.all([
+    db.repos.appSettings.list(),
+    sourcesOverride ? Promise.resolve(sourcesOverride) : db.repos.dataSources.list(),
+  ]);
+  const appSettings = settingsToRecord(settingsRows);
+  const catalog = opts?.catalog ?? (appSettings[CATALOG_SETTING_KEY] ?? '').trim();
+  const medallionSchemas = medallionSchemaNamesFromSettings(appSettings);
+  const silverSchema = opts?.silverSchema ?? medallionSchemas.silver;
+  const goldSchema = opts?.goldSchema ?? medallionSchemas.gold;
+  if (!catalog) {
+    throw new DataSourceSetupError(
+      'Main catalog not configured. Set catalog_name in Catalog first.',
+      400,
+    );
+  }
+
+  const enabledSources = allSources.filter((source) => source.enabled);
+  if (enabledSources.length === 0) {
+    throw new DataSourceSetupError(
+      'No enabled data sources are available for the shared pipeline.',
+      400,
+    );
+  }
+
+  const wc = buildAppWorkspaceClient(env);
+  if (!wc) {
+    throw new DataSourceSetupError(
+      'Failed to build Databricks app service principal workspace client. Check DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET.',
+      500,
+    );
+  }
+  const existingJobId = sharedJobIdSetting(appSettings);
+  const existingSchedule =
+    opts?.cronExpression && opts?.timezoneId
+      ? null
+      : await readExistingJobSchedule(wc, existingJobId);
+  const cronExpression =
+    opts?.cronExpression ?? existingSchedule?.cronExpression ?? FOCUS_REFRESH_CRON_DEFAULT;
+  const timezoneId =
+    opts?.timezoneId ?? existingSchedule?.timezoneId ?? FOCUS_REFRESH_TIMEZONE_DEFAULT;
+
+  const workspaceRoot =
+    appSettings[SHARED_PIPELINE_SETTING_KEYS.workspaceRoot] ??
+    sharedPipelineWorkspaceRoot(env.DATABRICKS_APP_NAME);
+  const sourceFiles = enabledSources.map((source) => sourcePipelineFile(workspaceRoot, source));
+  const goldFile: PipelineSourceFile = {
+    workspacePath: `${workspaceRoot}/${SHARED_PIPELINE_FILENAME_GOLD}`,
+    pipelineSql: buildBillingDailyGoldSql({
+      catalog,
+      silverSchema,
+      goldSchema,
+      sources: sourceFiles.map((file) => ({
+        tableName: file.tableName,
+        providerName: file.providerName,
+      })),
+    }),
+  };
+  const params: PipelineScheduleParams = {
+    pipelineName: 'finops-focus-shared-pipeline',
+    jobName: 'finops-focus-shared-job',
+    files: [...sourceFiles, goldFile],
+    catalog,
+    schema: silverSchema,
+    cronExpression,
+    timezoneId,
+    servicePrincipalId: env.DATABRICKS_CLIENT_ID,
+  };
+  const result = await upsertPipelineSchedule(wc, params, {
+    jobId: existingJobId,
+    pipelineId: sharedPipelineIdSetting(appSettings),
+  });
+
+  await Promise.all([
+    db.repos.appSettings.upsert(SHARED_PIPELINE_SETTING_KEYS.jobId, String(result.jobId)),
+    db.repos.appSettings.upsert(SHARED_PIPELINE_SETTING_KEYS.pipelineId, result.pipelineId),
+    db.repos.appSettings.upsert(SHARED_PIPELINE_SETTING_KEYS.workspaceRoot, workspaceRoot),
+    db.repos.appSettings.delete(LEGACY_SHARED_PIPELINE_SETTING_KEYS.jobId),
+    db.repos.appSettings.delete(LEGACY_SHARED_PIPELINE_SETTING_KEYS.pipelineId),
+  ]);
+
+  return { ...result, cronExpression, timezoneId };
+}
+
+async function readExistingJobSchedule(
+  wc: ReturnType<typeof buildAppWorkspaceClient> & {},
+  jobId: number | null,
+): Promise<{ cronExpression: string; timezoneId: string } | null> {
+  if (jobId === null) return null;
+  try {
+    const job = await wc.jobs.get({ job_id: jobId });
+    const cronExpression = job.settings?.schedule?.quartz_cron_expression?.trim();
+    const timezoneId = job.settings?.schedule?.timezone_id?.trim();
+    return cronExpression && timezoneId ? { cronExpression, timezoneId } : null;
+  } catch {
+    return null;
+  }
+}
+
+function sharedPipelineWorkspaceRoot(appName: string): string {
+  return `/Workspace/Shared/${appName}/data_sources/shared`;
+}
+
+function sharedJobIdSetting(settings: Record<string, string>): number | null {
+  return numberSetting(
+    settings[SHARED_PIPELINE_SETTING_KEYS.jobId] ??
+      settings[LEGACY_SHARED_PIPELINE_SETTING_KEYS.jobId],
+  );
+}
+
+function sharedPipelineIdSetting(settings: Record<string, string>): string | null {
+  return stringSetting(
+    settings[SHARED_PIPELINE_SETTING_KEYS.pipelineId] ??
+      settings[LEGACY_SHARED_PIPELINE_SETTING_KEYS.pipelineId],
+  );
+}
+
+function sourcePipelineFile(
+  workspaceRoot: string,
+  source: DataSource,
+): PipelineSourceFile & { tableName: string; providerName: string } {
+  if (source.providerName === 'Databricks') {
+    const config = readFocusConfig(source.config);
+    const tableName = tableLeafName(source.tableName);
+    return {
+      tableName,
+      providerName: source.providerName,
+      workspacePath: `${workspaceRoot}/databricks_${source.id}.sql`,
+      pipelineSql: buildFocusSilverPipelineSql({
+        table: tableName,
+        accountPricesTable: config.accountPricesTable,
+      }),
+    };
+  }
+  if (!isAwsProvider(source.providerName)) {
+    throw new Error(`Unsupported shared pipeline provider "${source.providerName}"`);
+  }
+  const awsSource = readAwsFocusSource(readAwsFocusConfig(source.config));
+  const tableName = awsBillingTableName(awsSource.awsAccountId);
+  return {
+    tableName,
+    providerName: source.providerName,
+    workspacePath: `${workspaceRoot}/aws_${awsSource.awsAccountId}.sql`,
+    pipelineSql: buildAwsFocusSilverPipelineSql({
+      tableName,
+      s3Bucket: awsSource.s3Bucket,
+      s3Prefix: awsSource.s3Prefix,
+      exportName: awsSource.exportName,
+    }),
+  };
+}
+
+export function buildBillingDailyGoldSql({
+  catalog,
+  silverSchema,
+  goldSchema,
+  sources,
+}: {
+  catalog: string;
+  silverSchema: string;
+  goldSchema: string;
+  sources: Array<{ tableName: string; providerName: string }>;
+}): string {
+  const focus12UnionSql = sources
+    .map(
+      (source) =>
+        `SELECT
+    ${FOCUS_12_BILLING_COLUMNS.map((col) => quoteIdent(col.name)).join(',\n    ')}
+  FROM ${quoteIdent(catalog)}.${quoteIdent(silverSchema)}.${quoteIdent(source.tableName)}`,
+    )
+    .join('\n  UNION ALL\n  ');
+  return /* sql */ `CREATE VIEW ${quoteIdent('billing')}
+COMMENT 'FOCUS 1.2 compatible billing details managed by FinLake'
+AS
+WITH focus_rows AS (
+  ${focus12UnionSql}
+)
+SELECT
+  ${FOCUS_12_BILLING_COLUMNS.map((column) => quoteIdent(column.name)).join(',\n  ')}
+FROM focus_rows;
+
+CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent('billing_daily')}
+COMMENT 'FOCUS daily billing rollup managed by FinLake'
+AS
+WITH focus_rows AS (
+  SELECT
+    ${BILLING_DAILY_SOURCE_COLUMNS.map(quoteIdent).join(',\n    ')}
+  FROM ${quoteIdent(silverSchema)}.${quoteIdent('billing')}
+)
+SELECT
+  CAST(ChargePeriodStart AS DATE) AS x_ChargeDate,
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE) AS x_BillingMonth,
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  SkuId,
+  SkuMeter,
+  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS ListCost,
+  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS BilledCost,
+  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS ContractedCost,
+  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS EffectiveCost
+FROM focus_rows
+GROUP BY
+  CAST(ChargePeriodStart AS DATE),
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE),
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  SkuId,
+  SkuMeter;`;
+}
+
+function stringSetting(value: string | undefined): string | null {
+  return value && value.trim().length > 0 ? value.trim() : null;
+}
+
+function numberSetting(value: string | undefined): number | null {
+  if (!value) return null;
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }

@@ -28,6 +28,7 @@ import type {
   StorageCredentialCreateBody,
   StorageCredentialCreateResponse,
   StorageCredentialListResponse,
+  TransformationPipelineShared,
   TransformationPipelinesResponse,
   UsageBySkuRow,
   UsageDailyResponse,
@@ -431,6 +432,8 @@ export function useDeleteDataSource() {
     onSuccess: (_data, id) => {
       qc.removeQueries({ queryKey: ['dataSources', id] });
       qc.invalidateQueries({ queryKey: ['dataSources'] });
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+      qc.invalidateQueries({ queryKey: ['transformations'] });
     },
   });
 }
@@ -446,6 +449,8 @@ export function useSetupDataSource() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['dataSources', data.dataSourceId] });
       qc.invalidateQueries({ queryKey: ['dataSources'] });
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+      qc.invalidateQueries({ queryKey: ['transformations'] });
     },
   });
 }
@@ -466,6 +471,20 @@ export function useTransformationPipelines() {
     queryFn: () => apiFetch<TransformationPipelinesResponse>('/api/transformations/pipelines'),
     staleTime: 60 * 1000,
     retry: false,
+  });
+}
+
+export function useUpdateTransformationSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { cronExpression: string; timezoneId: string }) =>
+      apiFetch<TransformationPipelineShared>('/api/transformations/shared-schedule', {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transformations'] });
+    },
   });
 }
 

@@ -21,6 +21,12 @@ export const MEDALLION_SCHEMA_DEFAULTS = {
   gold: 'gold',
 } as const satisfies Record<MedallionSchema, string>;
 
+/** `app_settings` keys holding the shared Lakeflow pipeline/job identifiers. */
+export const LAKEFLOW_PIPELINE_SETTING_KEYS = {
+  pipelineId: 'lakeflow_pipeline_id',
+  jobId: 'lakeflow_pipeline_job_id',
+} as const;
+
 export function medallionSchemaNamesFromSettings(
   settings: Record<string, string | undefined>,
 ): Record<MedallionSchema, string> {
@@ -59,8 +65,6 @@ export const DataSourceSchema = z.object({
   providerName: z.string().min(1).max(64),
   billingAccountId: z.string().max(128).nullable(),
   tableName: DataSourceIdentifierSchema,
-  jobId: z.number().int().positive().nullable(),
-  pipelineId: z.string().min(1).max(128).nullable(),
   focusVersion: z.string().min(1).max(32).nullable(),
   enabled: z.boolean(),
   config: z.record(z.string(), z.unknown()),
@@ -164,8 +168,6 @@ export const FOCUS_REFRESH_TIMEZONE_DEFAULT = 'UTC';
 export const DataSourceSetupBodySchema = z.object({
   tableName: DataSourceIdentifierSchema.optional(),
   accountPricesTable: z.string().min(1).max(256).optional(),
-  cronExpression: z.string().min(1).max(120).optional(),
-  timezoneId: z.string().min(1).max(64).optional(),
 });
 export type DataSourceSetupBody = z.infer<typeof DataSourceSetupBodySchema>;
 
@@ -174,6 +176,7 @@ export const DataSourceSetupResultSchema = z.object({
   jobId: z.number().int().positive(),
   pipelineId: z.string().min(1),
   fqn: z.string(),
+  goldFqn: z.string(),
   cronExpression: z.string(),
   timezoneId: z.string(),
   createdView: z.boolean(),

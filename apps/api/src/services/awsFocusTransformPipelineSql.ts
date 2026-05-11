@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { IDENT_RE } from '@finlake/shared';
+import { IDENT_RE, quoteIdent } from '@finlake/shared';
 
 export const AWS_FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const AWS_FOCUS_S3_BUCKET_PARAMETER = 's3_bucket';
@@ -42,6 +42,37 @@ export function buildAwsFocusPipelineSql(): string {
   return pipelineTemplate;
 }
 
+export function awsBillingTableName(billingAccountId: string): string {
+  if (!/^\d{12}$/.test(billingAccountId)) {
+    throw new Error(`Invalid AWS billing account id "${billingAccountId}": expected 12 digits`);
+  }
+  return `aws_billing_${billingAccountId}`;
+}
+
+export function buildAwsFocusSilverPipelineSql(opts: {
+  tableName: string;
+  s3Bucket: string;
+  s3Prefix: string;
+  exportName: string;
+}): string {
+  buildAwsFocusPipelineConfiguration(
+    opts.tableName,
+    opts.s3Bucket,
+    opts.s3Prefix,
+    opts.exportName,
+    'gold',
+  );
+  return silverTemplate
+    .replaceAll('${table_name}', quoteIdent(opts.tableName))
+    .replaceAll('${s3_bucket}', sqlString(opts.s3Bucket))
+    .replaceAll('${s3_prefix}', sqlString(opts.s3Prefix))
+    .replaceAll('${export_name}', sqlString(opts.exportName));
+}
+
+function sqlString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 // Definite assignment: the guard below throws if no candidate is found.
 let pipelineTemplate!: string;
 const candidates = [
@@ -59,3 +90,11 @@ for (const candidate of candidates) {
 if (!pipelineTemplate) {
   throw new Error('awsFocusTransformPipeline.sql template not found');
 }
+
+const goldStart = pipelineTemplate.indexOf(
+  'CREATE OR REFRESH MATERIALIZED VIEW `${gold_schema_name}`',
+);
+if (goldStart < 0) {
+  throw new Error('awsFocusTransformPipeline.sql gold section marker not found');
+}
+const silverTemplate = pipelineTemplate.slice(0, goldStart).trimEnd();

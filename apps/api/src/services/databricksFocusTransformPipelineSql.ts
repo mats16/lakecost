@@ -1,5 +1,10 @@
 import { readFileSync } from 'node:fs';
-import { ACCOUNT_PRICES_DEFAULT, IDENT_RE, validateAccountPricesTable } from '@finlake/shared';
+import {
+  ACCOUNT_PRICES_DEFAULT,
+  IDENT_RE,
+  quoteIdent,
+  validateAccountPricesTable,
+} from '@finlake/shared';
 
 export const FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const FOCUS_ACCOUNT_PRICES_PARAMETER = 'account_prices';
@@ -41,6 +46,27 @@ export function buildFocusPipelineSql(opts: {
   return pipelineTemplate;
 }
 
+export function buildFocusSilverPipelineSql(opts: {
+  table: string;
+  accountPricesTable?: string;
+}): string {
+  if (!IDENT_RE.test(opts.table)) {
+    throw new Error(`Invalid table identifier "${opts.table}"`);
+  }
+  const rawAccountPrices =
+    opts.accountPricesTable && opts.accountPricesTable.trim().length > 0
+      ? opts.accountPricesTable.trim()
+      : ACCOUNT_PRICES_DEFAULT;
+  const accountPricesTable = validateAccountPricesTable(rawAccountPrices);
+  return silverTemplate
+    .replaceAll('`${table_name}`', quoteIdent(opts.table))
+    .replaceAll('${account_prices}', quoteQualifiedTable(accountPricesTable));
+}
+
+function quoteQualifiedTable(value: string): string {
+  return value.split('.').map(quoteIdent).join('.');
+}
+
 // Read the template once at module load — it's a static file that never changes at runtime.
 let pipelineTemplate: string;
 const candidates = [
@@ -58,3 +84,11 @@ for (const candidate of candidates) {
 if (!pipelineTemplate!) {
   throw new Error('databricksFocusTransformPipeline.sql template not found');
 }
+
+const goldStart = pipelineTemplate.indexOf(
+  'CREATE OR REFRESH MATERIALIZED VIEW `${gold_schema_name}`',
+);
+if (goldStart < 0) {
+  throw new Error('databricksFocusTransformPipeline.sql gold section marker not found');
+}
+const silverTemplate = pipelineTemplate.slice(0, goldStart).trimEnd();

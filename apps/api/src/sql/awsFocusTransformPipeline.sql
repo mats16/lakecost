@@ -55,10 +55,7 @@ CREATE OR REFRESH MATERIALIZED VIEW ${table_name} (
   `SubAccountId` STRING COMMENT 'Identifier for a resource or service grouping under the billing account.',
   `SubAccountName` STRING COMMENT 'Display name for the sub-account grouping.',
   `SubAccountType` STRING COMMENT 'Provider-assigned type for the sub-account grouping.',
-  `Tags` MAP<STRING, STRING> COMMENT 'Provider-defined and user-defined tags evaluated for the charge.',
-  `x_Discounts` MAP<STRING, DOUBLE> COMMENT 'AWS-specific discount amounts that apply to the line item.',
-  `x_Operation` STRING COMMENT 'AWS operation covered by the line item.',
-  `x_ServiceCode` STRING COMMENT 'AWS product or service code measured by the line item.'
+  `Tags` MAP<STRING, STRING> COMMENT 'Provider-defined and user-defined tags evaluated for the charge.'
 ) AS
 SELECT
   `AvailabilityZone`,
@@ -117,10 +114,7 @@ SELECT
   `SubAccountId`,
   `SubAccountName`,
   `SubAccountType`,
-  `Tags`,
-  `x_Discounts`,
-  `x_Operation`,
-  `x_ServiceCode`
+  `Tags`
 FROM read_files(
   's3://${s3_bucket}/${s3_prefix}/${export_name}/data/**/*.parquet',
   format => 'parquet'

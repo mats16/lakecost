@@ -24,6 +24,7 @@ import {
 import { Check, ExternalLink, Info, Pencil, X } from 'lucide-react';
 import {
   useAppSettings,
+  useCreateDataSource,
   useDataSource,
   useDeleteDataSource,
   useMe,
@@ -34,8 +35,7 @@ import {
 import {
   ACCOUNT_PRICES_DEFAULT,
   CATALOG_SETTING_KEY,
-  FOCUS_REFRESH_CRON_DEFAULT,
-  FOCUS_REFRESH_TIMEZONE_DEFAULT,
+  LAKEFLOW_PIPELINE_SETTING_KEYS,
   medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   s3BucketFromUrl,
@@ -47,7 +47,9 @@ import {
 } from '@finlake/shared';
 import { useI18n } from '../../i18n';
 import { displayNameForRow, findTemplateById, findTemplateForRow } from './dataSourceCatalog';
+import type { DatabricksFocusDraft } from './DataSources';
 import { type AwsFocusDraft, useAwsFocusForm } from './useAwsFocusForm';
+import { numberSetting } from './utils';
 
 const AWS_BCM_DATA_EXPORTS_URL =
   'https://us-east-1.console.aws.amazon.com/costmanagement/home#/bcm-data-exports';
@@ -55,24 +57,42 @@ const AWS_BCM_DATA_EXPORTS_URL =
 interface Props {
   dataSourceId: number | null;
   draftAwsSource?: AwsFocusDraft | null;
+  draftDatabricksSource?: DatabricksFocusDraft | null;
   onClose: () => void;
   onCreated?: (row: DataSource) => void;
+}
+
+type ResourceStepStatus = 'idle' | 'pending' | 'done' | 'skipped' | 'error';
+
+interface ResourceStep {
+  id: string;
+  status: ResourceStepStatus;
+  detail: string | null;
+  href: string | null;
 }
 
 function catalogTableUrl(workspaceUrl: string, fqn: string): string {
   return `${workspaceUrl}/explore/data/${fqn.split('.').map(encodeURIComponent).join('/')}`;
 }
 
-export function DataSourceDrawer({ dataSourceId, draftAwsSource, onClose, onCreated }: Props) {
+export function DataSourceDrawer({
+  dataSourceId,
+  draftAwsSource,
+  draftDatabricksSource,
+  onClose,
+  onCreated,
+}: Props) {
   const { t } = useI18n();
   const ds = useDataSource(dataSourceId ?? undefined);
-  const isOpen = dataSourceId !== null || Boolean(draftAwsSource);
+  const isOpen = dataSourceId !== null || Boolean(draftAwsSource) || Boolean(draftDatabricksSource);
   const row = ds.data;
   const template = row
     ? findTemplateForRow(row)
     : draftAwsSource
       ? findTemplateById(draftAwsSource.templateId)
-      : undefined;
+      : draftDatabricksSource
+        ? findTemplateById(draftDatabricksSource.templateId)
+        : undefined;
   const descriptionKey =
     template?.id === 'databricks_focus13'
       ? 'dataSources.systemTables.focusViewDesc'
@@ -97,7 +117,9 @@ export function DataSourceDrawer({ dataSourceId, draftAwsSource, onClose, onCrea
                   : row.name
                 : draftAwsSource
                   ? (template?.name ?? draftAwsSource.name)
-                  : t('common.loading')
+                  : draftDatabricksSource
+                    ? (template?.name ?? draftDatabricksSource.name)
+                    : t('common.loading')
             }
           />
         </SheetHeader>
@@ -108,6 +130,9 @@ export function DataSourceDrawer({ dataSourceId, draftAwsSource, onClose, onCrea
           {row ? <Configurator row={row} onClose={onClose} /> : null}
           {!row && draftAwsSource ? (
             <AwsFocusSection row={null} draft={draftAwsSource} onCreated={onCreated} />
+          ) : null}
+          {!row && draftDatabricksSource ? (
+            <FocusViewSection row={null} draft={draftDatabricksSource} onCreated={onCreated} />
           ) : null}
         </div>
       </SheetContent>
@@ -297,11 +322,11 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="existing">
-                    {t('dataSources.aws.useExistingExternalLocation')}
-                  </SelectItem>
                   <SelectItem value="create">
                     {t('dataSources.aws.createExternalLocationAndExport')}
+                  </SelectItem>
+                  <SelectItem value="existing">
+                    {t('dataSources.aws.useExistingExternalLocation')}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -386,17 +411,19 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
                     placeholder={form.awsAccountId ? `finlake-${form.awsAccountId}` : 'finlake-'}
                   />
                 </label>
-                <label className="flex min-h-9 items-center gap-2 text-xs sm:pb-2">
-                  <input
-                    type="checkbox"
-                    checked={form.createBucketIfMissing}
-                    disabled={form.registered || form.savePending || form.creatingExport}
-                    onChange={(e) => form.setCreateBucketIfMissing(e.target.checked)}
-                  />
-                  <span className="text-muted-foreground whitespace-nowrap">
-                    {t('dataSources.aws.createBucketIfMissing')}
-                  </span>
-                </label>
+                {!form.registered ? (
+                  <label className="flex min-h-9 items-center gap-2 text-xs sm:pb-2">
+                    <input
+                      type="checkbox"
+                      checked={form.createBucketIfMissing}
+                      disabled={form.savePending || form.creatingExport}
+                      onChange={(e) => form.setCreateBucketIfMissing(e.target.checked)}
+                    />
+                    <span className="text-muted-foreground whitespace-nowrap">
+                      {t('dataSources.aws.createBucketIfMissing')}
+                    </span>
+                  </label>
+                ) : null}
               </div>
               {form.createBucketName && !form.selectedS3Bucket ? (
                 <Alert>
@@ -462,7 +489,7 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
                   <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
                 ) : null}
               </div>
-              <CreateResourceProgressModal form={form} />
+              <AwsCreateResourceProgressModal form={form} />
             </div>
           ) : null}
 
@@ -539,9 +566,9 @@ function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
     return (
       <Button
         type="button"
-        variant="secondary"
         disabled={form.createExportDisabled}
         onClick={form.onCreateExport}
+        className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
       >
         {form.creatingExport ? <Spinner /> : null}
         {t('dataSources.aws.createExport')}
@@ -559,9 +586,47 @@ function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
   );
 }
 
-function CreateResourceProgressModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+function AwsCreateResourceProgressModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
   const { t } = useI18n();
-  if (!form.createProgressModalOpen) return null;
+
+  return (
+    <ResourceProgressModal
+      open={form.createProgressModalOpen}
+      titleId="aws-create-progress-title"
+      title={t('dataSources.aws.resourceProgress')}
+      steps={form.createResourceSteps}
+      stepLabelPrefix="dataSources.aws.resourceSteps"
+      statusLabelPrefix="dataSources.aws.resourceStepStatus"
+      error={form.exportError}
+      closeDisabled={form.creatingExport}
+      onClose={form.closeCreateProgressModal}
+    />
+  );
+}
+
+function ResourceProgressModal({
+  open,
+  titleId,
+  title,
+  steps,
+  stepLabelPrefix,
+  statusLabelPrefix,
+  error,
+  closeDisabled,
+  onClose,
+}: {
+  open: boolean;
+  titleId: string;
+  title: string;
+  steps: ResourceStep[];
+  stepLabelPrefix: string;
+  statusLabelPrefix: string;
+  error?: string | null;
+  closeDisabled?: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  if (!open) return null;
 
   return (
     <div
@@ -571,34 +636,38 @@ function CreateResourceProgressModal({ form }: { form: ReturnType<typeof useAwsF
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="aws-create-progress-title"
+        aria-labelledby={titleId}
         className="bg-background border-border grid w-full max-w-xl gap-4 rounded-lg border p-5 shadow-xl"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-3">
-          <h3 id="aws-create-progress-title" className="text-base font-semibold">
-            {t('dataSources.aws.resourceProgress')}
+          <h3 id={titleId} className="text-base font-semibold">
+            {title}
           </h3>
           <button
             type="button"
             className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors disabled:opacity-50"
             aria-label={t('common.close')}
-            disabled={form.creatingExport}
-            onClick={form.closeCreateProgressModal}
+            disabled={closeDisabled}
+            onClick={onClose}
           >
             <X className="size-4" aria-hidden="true" />
           </button>
         </div>
-        <CreateResourceChecklist form={form} />
-        {form.exportError ? (
+        <CreateResourceChecklist
+          steps={steps}
+          stepLabelPrefix={stepLabelPrefix}
+          statusLabelPrefix={statusLabelPrefix}
+        />
+        {error ? (
           <Alert variant="destructive">
             <Info />
-            <AlertDescription>{form.exportError}</AlertDescription>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
-        {!form.creatingExport ? (
+        {!closeDisabled ? (
           <div className="flex justify-end">
-            <Button type="button" variant="secondary" onClick={form.closeCreateProgressModal}>
+            <Button type="button" variant="secondary" onClick={onClose}>
               {t('common.close')}
             </Button>
           </div>
@@ -608,20 +677,28 @@ function CreateResourceProgressModal({ form }: { form: ReturnType<typeof useAwsF
   );
 }
 
-function CreateResourceChecklist({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
+function CreateResourceChecklist({
+  steps,
+  stepLabelPrefix,
+  statusLabelPrefix,
+}: {
+  steps: ResourceStep[];
+  stepLabelPrefix: string;
+  statusLabelPrefix: string;
+}) {
   const { t } = useI18n();
 
   return (
     <div className="grid gap-2">
-      {form.createResourceSteps.map((step) => (
+      {steps.map((step) => (
         <div key={step.id} className="grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2">
           <CreateResourceStepIcon status={step.status} />
           <div className="min-w-0">
-            <div className="text-sm">{t(`dataSources.aws.resourceSteps.${step.id}`)}</div>
+            <div className="text-sm">{t(`${stepLabelPrefix}.${step.id}`)}</div>
             <CreateResourceStepDetail step={step} />
           </div>
           <span className="text-muted-foreground text-xs">
-            {t(`dataSources.aws.resourceStepStatus.${step.status}`)}
+            {t(`${statusLabelPrefix}.${step.status}`)}
           </span>
         </div>
       ))}
@@ -629,11 +706,7 @@ function CreateResourceChecklist({ form }: { form: ReturnType<typeof useAwsFocus
   );
 }
 
-function CreateResourceStepDetail({
-  step,
-}: {
-  step: ReturnType<typeof useAwsFocusForm>['createResourceSteps'][number];
-}) {
+function CreateResourceStepDetail({ step }: { step: ResourceStep }) {
   if (!step.detail) return null;
 
   const href =
@@ -659,11 +732,7 @@ function CreateResourceStepDetail({
   );
 }
 
-function CreateResourceStepIcon({
-  status,
-}: {
-  status: 'idle' | 'pending' | 'done' | 'skipped' | 'error';
-}) {
+function CreateResourceStepIcon({ status }: { status: ResourceStepStatus }) {
   if (status === 'pending') return <Spinner />;
   if (status === 'done') {
     return (
@@ -822,9 +891,9 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
         <div className="flex justify-end">
           <Button
             type="button"
-            variant="secondary"
             disabled={form.createExportDisabled}
             onClick={form.onCreateExport}
+            className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
           >
             {form.creatingExport ? <Spinner /> : null}
             {t(
@@ -907,23 +976,7 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <label className="grid gap-1 text-xs sm:col-span-2">
             <span className="text-muted-foreground">{t('dataSources.systemTables.tableName')}</span>
-            <Input value={form.tableName} onChange={(e) => form.setTableName(e.target.value)} />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.cron')}</span>
-            <Input
-              value={form.cron}
-              onChange={(e) => form.setCron(e.target.value)}
-              placeholder={FOCUS_REFRESH_CRON_DEFAULT}
-            />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.timezone')}</span>
-            <Input
-              value={form.timezone}
-              onChange={(e) => form.setTimezone(e.target.value)}
-              placeholder={FOCUS_REFRESH_TIMEZONE_DEFAULT}
-            />
+            <Input value={form.tableName} disabled />
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -940,7 +993,7 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
                 : 'dataSources.systemTables.setupAndSchedule',
             )}
           </Button>
-          {form.jobId !== null ? (
+          {form.sourceSetup && form.jobId !== null ? (
             <Button
               type="button"
               variant="secondary"
@@ -954,9 +1007,7 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
         </div>
         <DatabricksResourceLinks
           workspaceUrl={form.workspaceUrl}
-          jobId={form.jobId}
-          pipelineId={form.pipelineId}
-          tableFqn={form.jobId !== null && form.remoteCatalog ? form.fqn : null}
+          tableFqn={form.sourceSetup && form.remoteCatalog ? form.fqn : null}
         />
         {!form.remoteCatalog ? (
           <Alert className="mt-3">
@@ -1012,56 +1063,174 @@ function s3BucketLabel(location: ExternalLocationSummary): string {
   return location.url ? (s3BucketFromUrl(location.url) ?? location.url) : location.name;
 }
 
-function FocusViewSection({ row }: { row: DataSource }) {
+type DatabricksSetupStepId = 'systemGrants' | 'lakeflowJob';
+
+function systemCatalogPermissionsUrl(workspaceUrl: string | null): string | null {
+  return workspaceUrl ? `${workspaceUrl}/explore/data/system?activeTab=permissions` : null;
+}
+
+function databricksPipelineUrl(
+  workspaceUrl: string | null,
+  pipelineId: string | null,
+): string | null {
+  return workspaceUrl && pipelineId ? `${workspaceUrl}/pipelines/${pipelineId}` : null;
+}
+
+function initialDatabricksSetupSteps(): ResourceStep[] {
+  return [
+    { id: 'systemGrants', status: 'idle', detail: null, href: null },
+    { id: 'lakeflowJob', status: 'idle', detail: null, href: null },
+  ];
+}
+
+function updateDatabricksSetupSteps(
+  steps: ResourceStep[],
+  updates: Partial<Record<DatabricksSetupStepId, Partial<Omit<ResourceStep, 'id'>>>>,
+): ResourceStep[] {
+  return steps.map((step) => {
+    const update = updates[step.id as DatabricksSetupStepId];
+    return update ? { ...step, ...update } : step;
+  });
+}
+
+function databricksErrorStep(message: string): DatabricksSetupStepId {
+  if (/grant|system table|system\.|USE CATALOG|USE SCHEMA|SELECT/i.test(message)) {
+    return 'systemGrants';
+  }
+  return 'lakeflowJob';
+}
+
+function FocusViewSection({
+  row,
+  draft,
+  onCreated,
+}: {
+  row: DataSource | null;
+  draft?: DatabricksFocusDraft;
+  onCreated?: (row: DataSource) => void;
+}) {
   const { t } = useI18n();
   const me = useMe();
   const settings = useAppSettings();
+  const createDs = useCreateDataSource();
   const setupDs = useSetupDataSource();
   const runJob = useRunDataSourceJob();
 
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
   const silverSchema = medallionSchemaNamesFromSettings(settings.data?.settings ?? {}).silver;
   const remoteAccountPrices =
-    (row.config.accountPricesTable as string | undefined) ?? ACCOUNT_PRICES_DEFAULT;
-  const remoteCron =
-    (row.config.cronExpression as string | undefined) ?? FOCUS_REFRESH_CRON_DEFAULT;
-  const remoteTz = (row.config.timezoneId as string | undefined) ?? FOCUS_REFRESH_TIMEZONE_DEFAULT;
-
-  const [tableName, setTableName] = useState(tableLeafName(row.tableName));
+    (row?.config.accountPricesTable as string | undefined) ?? ACCOUNT_PRICES_DEFAULT;
+  const [tableName, setTableName] = useState(
+    tableLeafName(row?.tableName ?? draft?.tableName ?? 'databricks_billing'),
+  );
   const [accountPrices, setAccountPrices] = useState(remoteAccountPrices);
-  const [cron, setCron] = useState(remoteCron);
-  const [timezone, setTimezone] = useState(remoteTz);
   const [result, setResult] = useState<DataSourceSetupResult | null>(null);
-  const jobId = result?.jobId ?? row.jobId;
-  const pipelineId = result?.pipelineId ?? row.pipelineId;
+  const [setupSteps, setSetupSteps] = useState<ResourceStep[]>(initialDatabricksSetupSteps);
+  const [setupProgressModalOpen, setSetupProgressModalOpen] = useState(false);
+  const [createdRowAfterSetup, setCreatedRowAfterSetup] = useState<DataSource | null>(null);
+  const [lastSetupWasUpdate, setLastSetupWasUpdate] = useState(false);
+  const sharedJobId = numberSetting(settings.data?.settings[LAKEFLOW_PIPELINE_SETTING_KEYS.jobId]);
+  const jobId = result?.jobId ?? sharedJobId;
   const workspaceUrl = me.data?.workspaceUrl ?? null;
-  // Use only the persisted row state so the label stays correct after first setup
-  const hadScheduleBeforeSetup = row.jobId !== null;
+  const isSetup = Boolean(row?.enabled || result);
 
-  useEffect(() => setTableName(tableLeafName(row.tableName)), [row.tableName]);
+  useEffect(
+    () => setTableName(tableLeafName(row?.tableName ?? draft?.tableName ?? 'databricks_billing')),
+    [draft?.tableName, row?.tableName],
+  );
   useEffect(() => setAccountPrices(remoteAccountPrices), [remoteAccountPrices]);
-  useEffect(() => setCron(remoteCron), [remoteCron]);
-  useEffect(() => setTimezone(remoteTz), [remoteTz]);
+  useEffect(() => {
+    setSetupSteps(initialDatabricksSetupSteps());
+    setSetupProgressModalOpen(false);
+    setCreatedRowAfterSetup(null);
+    setLastSetupWasUpdate(Boolean(row?.enabled));
+  }, [row?.id]);
 
   const fqn = remoteCatalog
     ? unquotedFqn(remoteCatalog, silverSchema, tableName)
     : `${silverSchema}.${tableName}`;
 
   const onSetup = async () => {
-    const r = await setupDs.mutateAsync({
-      id: row.id,
-      body: {
-        tableName,
-        accountPricesTable: accountPrices,
-        cronExpression: cron,
-        timezoneId: timezone,
-      },
-    });
-    setResult(r);
+    setResult(null);
+    setLastSetupWasUpdate(Boolean(row?.enabled));
+    setSetupProgressModalOpen(true);
+    setCreatedRowAfterSetup(null);
+    setSetupSteps(
+      updateDatabricksSetupSteps(initialDatabricksSetupSteps(), {
+        systemGrants: {
+          status: 'pending',
+          detail: 'system',
+          href: systemCatalogPermissionsUrl(workspaceUrl),
+        },
+        lakeflowJob: { status: 'idle', detail: null },
+      }),
+    );
+    let dataSource = row;
+    try {
+      if (!dataSource) {
+        if (!draft) throw new Error('Missing draft data source configuration.');
+        const created = await createDs.mutateAsync({
+          templateId: draft.templateId,
+          name: draft.name,
+          providerName: draft.providerName,
+          tableName,
+          enabled: false,
+          config: {
+            accountPricesTable: accountPrices,
+          },
+        });
+        dataSource = created;
+        setCreatedRowAfterSetup(created);
+      }
+
+      const r = await setupDs.mutateAsync({
+        id: dataSource.id,
+        body: {
+          tableName,
+          accountPricesTable: accountPrices,
+        },
+      });
+      setResult(r);
+      setSetupSteps((steps) =>
+        updateDatabricksSetupSteps(steps, {
+          systemGrants: {
+            status: 'done',
+            detail: 'system',
+            href: systemCatalogPermissionsUrl(workspaceUrl),
+          },
+          lakeflowJob: {
+            status: 'done',
+            detail: r.pipelineId,
+            href: databricksPipelineUrl(workspaceUrl, r.pipelineId),
+          },
+        }),
+      );
+    } catch (err) {
+      const message = (err as Error).message;
+      const failed = databricksErrorStep(message);
+      setSetupSteps((steps) =>
+        updateDatabricksSetupSteps(steps, {
+          [failed]: { status: 'error', detail: message },
+          ...(failed === 'systemGrants' ? { lakeflowJob: { status: 'idle', detail: null } } : {}),
+        }),
+      );
+    }
   };
 
   const onRunJob = async () => {
+    if (!row) return;
     await runJob.mutateAsync(row.id);
+  };
+  const setupBusy = setupDs.isPending || createDs.isPending;
+  const setupErrorMessage =
+    (createDs.error as Error | null)?.message ?? (setupDs.error as Error | null)?.message ?? null;
+  const closeSetupProgressModal = () => {
+    if (setupBusy) return;
+    setSetupProgressModalOpen(false);
+    if (createdRowAfterSetup) {
+      onCreated?.(createdRowAfterSetup);
+      setCreatedRowAfterSetup(null);
+    }
   };
 
   return (
@@ -1085,38 +1254,22 @@ function FocusViewSection({ row }: { row: DataSource }) {
               placeholder={ACCOUNT_PRICES_DEFAULT}
             />
           </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.cron')}</span>
-            <Input
-              value={cron}
-              onChange={(e) => setCron(e.target.value)}
-              placeholder={FOCUS_REFRESH_CRON_DEFAULT}
-            />
-          </label>
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.systemTables.timezone')}</span>
-            <Input
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              placeholder={FOCUS_REFRESH_TIMEZONE_DEFAULT}
-            />
-          </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            disabled={setupDs.isPending || !remoteCatalog}
+            disabled={setupBusy || !remoteCatalog || tableName.trim() === ''}
             onClick={onSetup}
             className="bg-(--success) text-(--background) hover:bg-(--success)/90"
           >
-            {setupDs.isPending ? <Spinner /> : null}
+            {setupBusy ? <Spinner /> : null}
             {t(
-              hadScheduleBeforeSetup
+              isSetup
                 ? 'dataSources.systemTables.updateSchedule'
                 : 'dataSources.systemTables.setupAndSchedule',
             )}
           </Button>
-          {jobId !== null ? (
+          {row?.enabled && jobId !== null ? (
             <Button
               type="button"
               variant="secondary"
@@ -1130,9 +1283,14 @@ function FocusViewSection({ row }: { row: DataSource }) {
         </div>
         <DatabricksResourceLinks
           workspaceUrl={workspaceUrl}
-          jobId={jobId}
-          pipelineId={pipelineId}
-          tableFqn={jobId !== null && remoteCatalog ? fqn : null}
+          tableFqn={isSetup && remoteCatalog ? fqn : null}
+        />
+        <DatabricksSetupProgressModal
+          open={setupProgressModalOpen}
+          steps={setupSteps}
+          error={setupErrorMessage}
+          closeDisabled={setupBusy}
+          onClose={closeSetupProgressModal}
         />
         {!remoteCatalog ? (
           <Alert className="mt-3">
@@ -1145,7 +1303,7 @@ function FocusViewSection({ row }: { row: DataSource }) {
             <Info />
             <AlertDescription>
               {t(
-                hadScheduleBeforeSetup
+                lastSetupWasUpdate
                   ? 'dataSources.systemTables.updateOk'
                   : 'dataSources.systemTables.setupOk',
                 {
@@ -1167,6 +1325,12 @@ function FocusViewSection({ row }: { row: DataSource }) {
             </AlertDescription>
           </Alert>
         ) : null}
+        {createDs.error ? (
+          <Alert className="mt-3" variant="destructive">
+            <Info />
+            <AlertDescription>{(createDs.error as Error).message}</AlertDescription>
+          </Alert>
+        ) : null}
         {setupDs.error ? (
           <Alert className="mt-3" variant="destructive">
             <Info />
@@ -1184,19 +1348,45 @@ function FocusViewSection({ row }: { row: DataSource }) {
   );
 }
 
+function DatabricksSetupProgressModal({
+  open,
+  steps,
+  error,
+  closeDisabled,
+  onClose,
+}: {
+  open: boolean;
+  steps: ResourceStep[];
+  error: string | null;
+  closeDisabled: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    <ResourceProgressModal
+      open={open}
+      titleId="databricks-create-progress-title"
+      title={t('dataSources.systemTables.resourceProgress')}
+      steps={steps}
+      stepLabelPrefix="dataSources.systemTables.resourceSteps"
+      statusLabelPrefix="dataSources.systemTables.resourceStepStatus"
+      error={error}
+      closeDisabled={closeDisabled}
+      onClose={onClose}
+    />
+  );
+}
+
 function DatabricksResourceLinks({
   workspaceUrl,
-  jobId,
-  pipelineId,
   tableFqn,
 }: {
   workspaceUrl: string | null;
-  jobId: number | null;
-  pipelineId: string | null;
   tableFqn: string | null;
 }) {
   const { t } = useI18n();
-  if (jobId === null && !pipelineId && !tableFqn) return null;
+  if (!tableFqn) return null;
 
   return (
     <div className="border-border bg-background/35 mt-4 rounded-md border p-3">
@@ -1204,27 +1394,11 @@ function DatabricksResourceLinks({
         {t('dataSources.systemTables.resourcesTitle')}
       </div>
       <div className="grid grid-cols-1 gap-2">
-        {jobId !== null ? (
-          <ResourceLink
-            label={t('dataSources.systemTables.jobResource')}
-            id={String(jobId)}
-            href={workspaceUrl ? `${workspaceUrl}/jobs/${jobId}` : null}
-          />
-        ) : null}
-        {pipelineId ? (
-          <ResourceLink
-            label={t('dataSources.systemTables.pipelineResource')}
-            id={pipelineId}
-            href={workspaceUrl ? `${workspaceUrl}/pipelines/${pipelineId}` : null}
-          />
-        ) : null}
-        {tableFqn ? (
-          <ResourceLink
-            label={t('dataSources.systemTables.tableResource')}
-            id={tableFqn}
-            href={workspaceUrl ? catalogTableUrl(workspaceUrl, tableFqn) : null}
-          />
-        ) : null}
+        <ResourceLink
+          label={t('dataSources.systemTables.tableResource')}
+          id={tableFqn}
+          href={workspaceUrl ? catalogTableUrl(workspaceUrl, tableFqn) : null}
+        />
       </div>
     </div>
   );
