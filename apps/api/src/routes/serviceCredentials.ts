@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import {
   ServiceCredentialCreateBodySchema,
   StorageCredentialCreateBodySchema,
@@ -21,6 +22,12 @@ import {
   StorageCredentialServiceError,
 } from '../services/storageCredentials.js';
 import { ExternalLocationServiceError } from '../services/externalLocations.js';
+
+const UcNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.\-]+$/);
 
 export function serviceCredentialsRouter(env: Env): Router {
   const router = Router();
@@ -111,7 +118,14 @@ export function serviceCredentialsRouter(env: Env): Router {
 
   router.delete('/:name', async (req, res, next) => {
     try {
-      await deleteCredential(env, req.params.name);
+      const nameParse = UcNameSchema.safeParse(req.params.name);
+      if (!nameParse.success) {
+        res
+          .status(400)
+          .json({ error: { message: 'Invalid name', issues: nameParse.error.issues } });
+        return;
+      }
+      await deleteCredential(env, nameParse.data);
       res.status(204).end();
     } catch (err) {
       if (err instanceof ServiceCredentialServiceError) {

@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import type { ServiceCredentialSummary } from '@lakecost/shared';
+import { roleNameFromArn, type ServiceCredentialSummary } from '@lakecost/shared';
 import { AlertCircle, ExternalLink, MoreVertical, RefreshCcw, Trash2, X } from 'lucide-react';
 import {
   useCreateServiceCredential,
@@ -147,7 +147,7 @@ export function Credentials() {
               <Button
                 type="button"
                 size="sm"
-                className="bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+                className="bg-(--success) text-(--background) hover:bg-(--success)/90"
                 onClick={() => {
                   createCredential.reset();
                   setServiceCredentialNameEdited(false);
@@ -367,7 +367,7 @@ function CreateCredentialModal({
           </Button>
           <Button
             type="submit"
-            className="bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+            className="bg-(--success) text-(--background) hover:bg-(--success)/90"
             disabled={createPending}
           >
             {createPending ? (
@@ -894,11 +894,6 @@ function buildStorageRoleBoundaryPolicy(awsAccountId: string) {
       },
     ],
   };
-}
-
-function roleNameFromArn(roleArn: string): string | null {
-  const match = /^arn:aws(?:-[a-z]+)*:iam::\d{12}:role\/(.+)$/.exec(roleArn);
-  return match?.[1] ?? null;
 }
 
 function awsAccountIdFromRoleArn(roleArn: string): string | null {

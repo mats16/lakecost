@@ -170,7 +170,7 @@ export function ExternalLocations() {
               <Button
                 type="button"
                 size="sm"
-                className="bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+                className="bg-(--success) text-(--background) hover:bg-(--success)/90"
                 onClick={openCreateModal}
               >
                 {t('externalData.externalLocations.create')}
@@ -540,7 +540,7 @@ function CreateExternalLocationModal({
           </Button>
           <Button
             type="submit"
-            className="bg-emerald-400 text-slate-950 hover:bg-emerald-300"
+            className="bg-(--success) text-(--background) hover:bg-(--success)/90"
             disabled={createPending}
           >
             {createPending ? (

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { ExternalLocationCreateBodySchema, type Env } from '@lakecost/shared';
 import {
   createExternalLocation,
@@ -6,6 +7,12 @@ import {
   ExternalLocationServiceError,
   listAccessibleExternalLocations,
 } from '../services/externalLocations.js';
+
+const UcNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.\-]+$/);
 
 export function externalLocationsRouter(env: Env): Router {
   const router = Router();
@@ -48,7 +55,14 @@ export function externalLocationsRouter(env: Env): Router {
 
   router.delete('/:name', async (req, res, next) => {
     try {
-      await deleteExternalLocation(env, req.params.name);
+      const nameParse = UcNameSchema.safeParse(req.params.name);
+      if (!nameParse.success) {
+        res
+          .status(400)
+          .json({ error: { message: 'Invalid name', issues: nameParse.error.issues } });
+        return;
+      }
+      await deleteExternalLocation(env, nameParse.data);
       res.status(204).end();
     } catch (err) {
       if (err instanceof ExternalLocationServiceError) {

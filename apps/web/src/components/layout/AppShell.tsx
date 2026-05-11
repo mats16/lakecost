@@ -93,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const catalogName = appSettings.data?.settings.catalog_name?.trim() || null;
   const databricksItems = buildDatabricksItems(catalogName);
   const onInformRoute = location.pathname.startsWith(INFORM.matchPrefix);
-  const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname === item.to);
+  const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname.startsWith(item.to));
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
 

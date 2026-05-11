@@ -19,13 +19,17 @@ import {
   PutBucketPolicyCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import type {
-  AwsFocusExportCreateBody,
-  AwsFocusExportCreateResponse,
-  Env,
-  ExternalLocationSummary,
-  ServiceCredentialSummary,
-  StorageCredentialSummary,
+import {
+  externalLocationNameForBucket,
+  roleNameFromArn,
+  storageCredentialNameForBucket,
+  ucNameSuffixFromBucket,
+  type AwsFocusExportCreateBody,
+  type AwsFocusExportCreateResponse,
+  type Env,
+  type ExternalLocationSummary,
+  type ServiceCredentialSummary,
+  type StorageCredentialSummary,
 } from '@lakecost/shared';
 import { logger } from '../config/logger.js';
 import { sleep } from '../utils/sleep.js';
@@ -363,12 +367,13 @@ async function ensureAwsStorageRole({
   return { value: roleArn, status: roleStatus };
 }
 
+const IAM_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
+
 async function updateAssumeRolePolicyWithRetry(
   client: IAMClient,
   policyDocument: string,
 ): Promise<void> {
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  for (let attempt = 0; attempt <= IAM_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
       await client.send(
         new UpdateAssumeRolePolicyCommand({
@@ -378,8 +383,8 @@ async function updateAssumeRolePolicyWithRetry(
       );
       return;
     } catch (err) {
-      if (attempt >= maxAttempts || !isInvalidPrincipalError(err)) throw err;
-      await sleep(1000 * attempt);
+      if (attempt >= IAM_RETRY_DELAYS_MS.length || !isInvalidPrincipalError(err)) throw err;
+      await sleep(IAM_RETRY_DELAYS_MS[attempt]!);
     }
   }
 }
@@ -687,7 +692,7 @@ function awsDataExportBucketPolicyStatement(bucket: string, accountId: string) {
   };
 }
 
-function mergeAwsDataExportBucketPolicy(
+export function mergeAwsDataExportBucketPolicy(
   policyText: string | undefined,
   bucket: string,
   accountId: string,
@@ -717,14 +722,6 @@ function mergeAwsDataExportBucketPolicy(
     null,
     2,
   );
-}
-
-function storageCredentialNameForBucket(bucket: string): string {
-  return `db_s3_credential_${ucNameSuffixFromBucket(bucket) || 'bucket'}`.slice(0, 128);
-}
-
-function externalLocationNameForBucket(bucket: string): string {
-  return `db_s3_external_${ucNameSuffixFromBucket(bucket) || 'bucket'}`.slice(0, 128);
 }
 
 function storageRoleTrustPolicy(
@@ -776,20 +773,6 @@ function storageRolePermissionPolicy(bucket: string) {
       },
     ],
   };
-}
-
-function ucNameSuffixFromBucket(bucket: string): string {
-  return bucket
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function roleNameFromArn(roleArn: string | null): string | null {
-  if (!roleArn) return null;
-  const match = /^arn:aws(?:-[a-z]+)*:iam::\d{12}:role\/(.+)$/.exec(roleArn);
-  return match?.[1] ?? null;
 }
 
 function normalizeS3Url(url: string | null | undefined): string | null {
