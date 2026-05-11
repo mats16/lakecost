@@ -16,9 +16,8 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<Dashboard />} />
-        <Route path="/overview/budgets" element={<Budgets />} />
         <Route path="/explorer" element={<CostExplorer />} />
-        <Route path="/budgets" element={<Navigate to="/overview/budgets" replace />} />
+        <Route path="/budgets" element={<Budgets />} />
 
         <Route element={<ConfigureLayout />}>
           <Route path="/data-sources" element={<DataSources />} />

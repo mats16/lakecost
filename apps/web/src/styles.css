@@ -300,6 +300,14 @@ a {
 
 .page-header {
   margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-header-content {
+  min-width: 0;
 }
 
 .page-header h2 {
@@ -313,6 +321,25 @@ a {
   margin: 0;
   color: var(--muted-foreground);
   font-size: 14px;
+}
+
+.page-header-actions {
+  flex-shrink: 0;
+}
+
+.success-action-button {
+  --ring: var(--success);
+  border-color: var(--success);
+  background: var(--success);
+  color: var(--background);
+}
+
+.success-action-button:hover {
+  background: color-mix(in oklab, var(--success) 90%, black);
+}
+
+.success-action-button:focus-visible {
+  outline-color: var(--success);
 }
 
 /* Configure page header tabs */
