@@ -245,6 +245,8 @@ export const ja: Dictionary = {
     mainCatalogPlaceholder: 'main',
     catalogTypeLabel: 'カタログのタイプ',
     catalogNameLabel: 'カタログの名前',
+    catalogUserGroupLabel: '読み取りグループ',
+    catalogUserGroupInvalid: '読み取りグループを入力してください。',
     catalogModeExisting: '既存のカタログを利用する',
     catalogModeCreate: '新規にカタログを作成する',
     catalogSelectPlaceholder: 'カタログを選択…',
@@ -260,7 +262,7 @@ export const ja: Dictionary = {
     provisionWarning: '一部の処理がスキップされました',
     provisionFailed: 'プロビジョニングでエラーが発生しました',
     provisionAllOk:
-      'カタログ「{name}」には bronze/silver/gold スキーマとサービスプリンシパル権限が既に揃っています。',
+      'カタログ「{name}」には bronze/silver/gold スキーマ、サービスプリンシパル権限、読み取りグループのカタログ/スキーマ権限が既に揃っています。',
     provisionAwsCredentialNote:
       'AWS Storage Credential と IAM trust policy の検証は、このカタログ権限修復ではなく AWS data source のセットアップで実行されます。',
     provisionCatalogCreated: 'カタログ「{name}」を作成しました。',
@@ -268,6 +270,7 @@ export const ja: Dictionary = {
       'スキーマ「{schema}」を作成できませんでした。下の警告を確認してください。',
     provisionGrantFailed: '{scope} への GRANT に失敗しました: {message}',
     provisionScopeCatalog: 'catalog',
+    provisionScopeUsersCatalog: '{group} のカタログアクセス',
     medallion: {
       schemaLabel: 'スキーマ名',
       goldLabel: 'Gold',

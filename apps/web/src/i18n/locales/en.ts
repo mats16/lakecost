@@ -240,6 +240,8 @@ export const en = {
     mainCatalogPlaceholder: 'main',
     catalogTypeLabel: 'Catalog type',
     catalogNameLabel: 'Catalog name',
+    catalogUserGroupLabel: 'Reader group',
+    catalogUserGroupInvalid: 'Reader group is required.',
     catalogModeExisting: 'Use an existing catalog',
     catalogModeCreate: 'Create a new catalog',
     catalogSelectPlaceholder: 'Select a catalog…',
@@ -255,13 +257,14 @@ export const en = {
     provisionWarning: 'Saved with warnings',
     provisionFailed: 'Provisioning had errors',
     provisionAllOk:
-      'Catalog "{name}" already had bronze/silver/gold and the service principal grants in place.',
+      'Catalog "{name}" already had bronze/silver/gold, service principal grants, and reader group catalog/schema grants in place.',
     provisionAwsCredentialNote:
       'AWS Storage Credential and IAM trust policy validation runs from the AWS data source setup, not this catalog permission action.',
     provisionCatalogCreated: 'Created catalog "{name}".',
     provisionSchemaFailed: 'Could not create schema "{schema}" — see warnings below.',
     provisionGrantFailed: 'GRANT for {scope} failed: {message}',
     provisionScopeCatalog: 'catalog',
+    provisionScopeUsersCatalog: '{group} catalog access',
     medallion: {
       schemaLabel: 'Schema names',
       goldLabel: 'Gold',

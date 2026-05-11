@@ -41,6 +41,7 @@ export const ProvisionResultSchema = z.object({
   schemasEnsured: z.record(z.enum(MEDALLION_SCHEMAS), SchemaEnsureStatus),
   grants: z.object({
     catalog: GrantStatusSchema,
+    usersCatalog: GrantStatusSchema,
     bronze: GrantStatusSchema,
     silver: GrantStatusSchema,
     gold: GrantStatusSchema,

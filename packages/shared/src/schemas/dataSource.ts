@@ -4,6 +4,10 @@ import { IDENT_RE, type MedallionSchema } from '../sql/focusView.sql.js';
 /** `app_settings` key holding the default Unity Catalog name. */
 export const CATALOG_SETTING_KEY = 'catalog_name';
 
+/** `app_settings` key holding the group that can read configured catalog data. */
+export const CATALOG_USER_GROUP_SETTING_KEY = 'catalog_user_group';
+export const CATALOG_USER_GROUP_DEFAULT = 'account users';
+
 /** `app_settings` keys holding Unity Catalog schema names by medallion layer. */
 export const MEDALLION_SCHEMA_SETTING_KEYS = {
   gold: 'gold_schema_name',
@@ -27,6 +31,10 @@ export function medallionSchemaNamesFromSettings(
       settings[MEDALLION_SCHEMA_SETTING_KEYS.silver]?.trim() || MEDALLION_SCHEMA_DEFAULTS.silver,
     gold: settings[MEDALLION_SCHEMA_SETTING_KEYS.gold]?.trim() || MEDALLION_SCHEMA_DEFAULTS.gold,
   };
+}
+
+export function catalogUserGroupFromSettings(settings: Record<string, string | undefined>): string {
+  return settings[CATALOG_USER_GROUP_SETTING_KEY]?.trim() || CATALOG_USER_GROUP_DEFAULT;
 }
 
 export const DataSourceIdentifierSchema = z

@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { settingsToRecord, type DatabaseClient } from '@finlake/db';
-import { CATALOG_SETTING_KEY, medallionSchemaNamesFromSettings, type Env } from '@finlake/shared';
+import {
+  CATALOG_SETTING_KEY,
+  catalogUserGroupFromSettings,
+  medallionSchemaNamesFromSettings,
+  type Env,
+} from '@finlake/shared';
 import { CatalogServiceError, provisionCatalog } from '../services/catalogs.js';
 import { logger } from '../config/logger.js';
 
@@ -79,6 +84,7 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
         const provision = await provisionCatalog(env, req.user?.accessToken, newCatalog, {
           createIfMissing: parsed.data.provision?.createIfMissing,
           schemaNames: medallionSchemaNamesFromSettings(settings),
+          catalogUserGroup: catalogUserGroupFromSettings(settings),
         });
         res.json({ settings, provision });
       } catch (err) {

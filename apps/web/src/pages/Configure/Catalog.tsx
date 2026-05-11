@@ -23,6 +23,8 @@ import {
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import {
   CATALOG_SETTING_KEY,
+  CATALOG_USER_GROUP_DEFAULT,
+  CATALOG_USER_GROUP_SETTING_KEY,
   IDENT_RE,
   MEDALLION_SCHEMA_DEFAULTS,
   MEDALLION_SCHEMAS,
@@ -85,6 +87,8 @@ export function Catalog() {
   const updateSettings = useUpdateAppSettings();
 
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
+  const remoteCatalogUserGroup =
+    settings.data?.settings[CATALOG_USER_GROUP_SETTING_KEY]?.trim() || CATALOG_USER_GROUP_DEFAULT;
   const remoteMedallionSchemas = useMemo(
     () => medallionSchemaValues(settings.data?.settings),
     [settings.data?.settings],
@@ -92,6 +96,7 @@ export function Catalog() {
   const [mode, setMode] = useState<CatalogMode>('create');
   const [selectedCatalog, setSelectedCatalog] = useState(remoteCatalog);
   const [newCatalogName, setNewCatalogName] = useState('');
+  const [catalogUserGroup, setCatalogUserGroup] = useState(remoteCatalogUserGroup);
   const [medallionSchemas, setMedallionSchemas] = useState(remoteMedallionSchemas);
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -103,6 +108,10 @@ export function Catalog() {
   useEffect(() => {
     setMedallionSchemas(remoteMedallionSchemas);
   }, [remoteMedallionSchemas]);
+
+  useEffect(() => {
+    setCatalogUserGroup(remoteCatalogUserGroup);
+  }, [remoteCatalogUserGroup]);
 
   const hasConfiguredCatalog = remoteCatalog.length > 0;
   const catalogName = hasConfiguredCatalog
@@ -128,10 +137,13 @@ export function Catalog() {
   const medallionValid = MEDALLION_SCHEMA_FIELDS.every(({ key }) =>
     IDENT_RE.test(medallionPayload[key]),
   );
-  const dirty = catalogDirty || medallionDirty;
+  const catalogUserGroupPayload = catalogUserGroup.trim();
+  const catalogUserGroupDirty = catalogUserGroupPayload !== remoteCatalogUserGroup;
+  const catalogUserGroupValid = catalogUserGroupPayload.length > 0;
+  const dirty = catalogDirty || medallionDirty || catalogUserGroupDirty;
   const submitDisabled = hasConfiguredCatalog
-    ? saving || !validName || !medallionValid
-    : !dirty || saving || !validName || !medallionValid;
+    ? saving || !validName || !medallionValid || !catalogUserGroupValid
+    : !dirty || saving || !validName || !medallionValid || !catalogUserGroupValid;
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -139,7 +151,11 @@ export function Catalog() {
     updateSettings.reset();
     updateSettings.mutate(
       {
-        settings: { [CATALOG_SETTING_KEY]: catalogName, ...medallionPayload },
+        settings: {
+          [CATALOG_SETTING_KEY]: catalogName,
+          [CATALOG_USER_GROUP_SETTING_KEY]: catalogUserGroupPayload,
+          ...medallionPayload,
+        },
         provision: { createIfMissing: isCreate },
       },
       {
@@ -153,8 +169,11 @@ export function Catalog() {
 
   const provision = updateSettings.data?.provision ?? null;
   const provisionMessages = useMemo(
-    () => (provision ? buildProvisionMessages(provision, t, medallionPayload) : null),
-    [medallionPayload, provision, t],
+    () =>
+      provision
+        ? buildProvisionMessages(provision, t, medallionPayload, catalogUserGroupPayload)
+        : null,
+    [catalogUserGroupPayload, medallionPayload, provision, t],
   );
 
   return (
@@ -210,6 +229,16 @@ export function Catalog() {
               </div>
             </div>
 
+            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
+              <FieldLabel>{t('settings.catalogUserGroupLabel')}</FieldLabel>
+              <Input
+                value={catalogUserGroup}
+                onChange={(e) => setCatalogUserGroup(e.target.value)}
+                placeholder={CATALOG_USER_GROUP_DEFAULT}
+                disabled={settings.isLoading || saving}
+              />
+            </div>
+
             <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
               <FieldLabel className="md:pt-2">{t('settings.medallion.schemaLabel')}</FieldLabel>
               <div className="grid gap-3 md:grid-cols-3">
@@ -245,6 +274,13 @@ export function Catalog() {
               </Alert>
             ) : null}
 
+            {!catalogUserGroupValid ? (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertDescription>{t('settings.catalogUserGroupInvalid')}</AlertDescription>
+              </Alert>
+            ) : null}
+
             <div className="flex items-center gap-3">
               <Button
                 type="submit"
@@ -256,7 +292,7 @@ export function Catalog() {
                     <Spinner /> {t('common.saving')}
                   </>
                 ) : hasConfiguredCatalog ? (
-                  medallionDirty ? (
+                  medallionDirty || catalogUserGroupDirty ? (
                     t('settings.save')
                   ) : (
                     t('settings.fixPermission')
@@ -340,6 +376,7 @@ function buildProvisionMessages(
   p: ProvisionResult,
   t: (key: string, params?: Record<string, string | number>) => string,
   schemaNames: Record<MedallionSchemaSettingKey, string>,
+  catalogUserGroup: string,
 ): ProvisionMessages {
   const lines: string[] = [];
   if (p.catalogCreated) {
@@ -353,6 +390,10 @@ function buildProvisionMessages(
 
   const grantEntries: Array<{ scope: string; status: string }> = [
     { scope: t('settings.provisionScopeCatalog'), status: p.grants.catalog },
+    {
+      scope: t('settings.provisionScopeUsersCatalog', { group: catalogUserGroup }),
+      status: p.grants.usersCatalog,
+    },
     ...MEDALLION_SCHEMAS.map((s) => ({ scope: s, status: p.grants[s] })),
   ];
   const grantFailures = grantEntries.filter((e) => e.status.startsWith('error:'));
@@ -386,8 +427,8 @@ function buildProvisionMessages(
   }
 
   const remediation =
-    grantFailures.length > 0 && p.servicePrincipalId
-      ? renderRemediationSql(p.catalog, p.servicePrincipalId, schemaNames)
+    grantFailures.length > 0
+      ? renderRemediationSql(p.catalog, p.servicePrincipalId, schemaNames, catalogUserGroup)
       : null;
 
   return { severity, lines, remediation };
@@ -395,19 +436,24 @@ function buildProvisionMessages(
 
 function renderRemediationSql(
   catalog: string,
-  sp: string,
+  sp: string | null,
   schemaNames: Record<MedallionSchemaSettingKey, string>,
+  catalogUserGroup: string,
 ): string {
   const cat = quoteIdent(catalog);
-  const principal = quotePrincipal(sp);
   const lines: string[] = [];
-  lines.push(`GRANT USE CATALOG ON CATALOG ${cat} TO ${principal};`);
-  for (const s of MEDALLION_SCHEMAS) {
-    lines.push(
-      `GRANT ${schemaGrantPrivileges(s)} ON SCHEMA ${cat}.${quoteIdent(
-        schemaNames[MEDALLION_SCHEMA_SETTING_KEYS[s]],
-      )} TO ${principal};`,
-    );
+  const accountUsers = quotePrincipal(catalogUserGroup);
+  lines.push(`GRANT BROWSE, USE CATALOG, USE SCHEMA, SELECT ON CATALOG ${cat} TO ${accountUsers};`);
+  if (sp) {
+    const principal = quotePrincipal(sp);
+    lines.push(`GRANT USE CATALOG ON CATALOG ${cat} TO ${principal};`);
+    for (const s of MEDALLION_SCHEMAS) {
+      lines.push(
+        `GRANT ${schemaGrantPrivileges(s)} ON SCHEMA ${cat}.${quoteIdent(
+          schemaNames[MEDALLION_SCHEMA_SETTING_KEYS[s]],
+        )} TO ${principal};`,
+      );
+    }
   }
   return lines.join('\n');
 }
