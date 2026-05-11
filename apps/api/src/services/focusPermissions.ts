@@ -296,7 +296,11 @@ function resolveSourceTables(accountPricesTable: string): FocusSourceTableRef[] 
   }
 }
 
-function grantStatements(mode: 'grant' | 'revoke', tables: FocusSourceTableRef[], sp: string) {
+export function grantStatements(
+  mode: 'grant' | 'revoke',
+  tables: FocusSourceTableRef[],
+  sp: string,
+) {
   const principal = quotePrincipal(sp);
   const catalogSeen = new Set<string>();
   const stmts: Array<{ label: string; sql: string }> = [];

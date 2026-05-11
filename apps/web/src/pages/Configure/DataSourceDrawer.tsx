@@ -1207,7 +1207,11 @@ function FocusViewSection({
       );
     } catch (err) {
       const message = (err as Error).message;
-      const failed = databricksErrorStep(message);
+      const serverStep = (err as { step?: string }).step;
+      const failed: DatabricksSetupStepId =
+        serverStep === 'systemGrants' || serverStep === 'lakeflowJob'
+          ? serverStep
+          : databricksErrorStep(message);
       setSetupSteps((steps) =>
         updateDatabricksSetupSteps(steps, {
           [failed]: { status: 'error', detail: message },

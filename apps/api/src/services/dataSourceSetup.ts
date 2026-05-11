@@ -12,7 +12,6 @@ import {
   medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   quoteIdent,
-  quotePrincipal,
   s3BucketFromUrl,
   s3ExportPath,
   tableLeafName,
@@ -21,7 +20,6 @@ import {
   type DataSourceSetupBody,
   type DataSourceSetupResult,
   type Env,
-  type FocusSourceTableRef,
 } from '@finlake/shared';
 import { z } from 'zod';
 import {
@@ -40,6 +38,7 @@ import {
   buildAwsFocusSilverPipelineSql,
 } from './awsFocusTransformPipelineSql.js';
 import { buildFocusSilverPipelineSql } from './databricksFocusTransformPipelineSql.js';
+import { grantStatements } from './focusPermissions.js';
 
 interface FocusConfig {
   accountPricesTable: string;
@@ -326,6 +325,7 @@ export async function setupFocusDataSource(
     throw new DataSourceSetupError(
       `Failed to provision shared pipeline/job for ${fqn}: ${(err as Error).message}`,
       500,
+      'lakeflowJob',
     );
   }
 
@@ -423,6 +423,7 @@ async function assertCanReadUsageTable(env: Env, userToken: string): Promise<voi
         (err as Error).message,
       ].join(' '),
       400,
+      'systemGrants',
     );
   }
 }
@@ -455,7 +456,8 @@ async function grantAppSystemTableAccess(
       400,
     );
   }
-  const statements = grantSystemTableStatements(
+  const statements = grantStatements(
+    'grant',
     focusSourceTables(accountPricesTable ?? ACCOUNT_PRICES_DEFAULT),
     sp,
   );
@@ -466,34 +468,10 @@ async function grantAppSystemTableAccess(
       throw new DataSourceSetupError(
         `Failed to grant ${stmt.label} to the app service principal before creating the shared FOCUS pipeline/job: ${(err as Error).message}`,
         400,
+        'systemGrants',
       );
     }
   }
-}
-
-function grantSystemTableStatements(tables: FocusSourceTableRef[], principalName: string) {
-  const principal = quotePrincipal(principalName);
-  const catalogSeen = new Set<string>();
-  const statements: Array<{ label: string; sql: string }> = [];
-
-  for (const table of tables) {
-    if (catalogSeen.has(table.catalog)) continue;
-    catalogSeen.add(table.catalog);
-    const catalog = quoteIdent(table.catalog);
-    statements.push({
-      label: `USE CATALOG ${table.catalog}`,
-      sql: `GRANT USE CATALOG ON CATALOG ${catalog} TO ${principal}`,
-    });
-    statements.push({
-      label: `USE SCHEMA on catalog ${table.catalog}`,
-      sql: `GRANT USE SCHEMA ON CATALOG ${catalog} TO ${principal}`,
-    });
-    statements.push({
-      label: `SELECT on catalog ${table.catalog}`,
-      sql: `GRANT SELECT ON CATALOG ${catalog} TO ${principal}`,
-    });
-  }
-  return statements;
 }
 
 async function assertAppCanReadSystemTables(
@@ -533,6 +511,7 @@ async function assertAppCanReadSystemTables(
         (err as Error).message,
       ].join(' '),
       400,
+      'systemGrants',
     );
   }
 }

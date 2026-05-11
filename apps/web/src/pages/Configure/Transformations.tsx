@@ -209,6 +209,8 @@ function ScheduleSection({
   const [cronExpression, setCronExpression] = useState(currentCronExpression);
   const [timezoneId, setTimezoneId] = useState(currentTimezoneId);
   const dirty = cronExpression !== currentCronExpression || timezoneId !== currentTimezoneId;
+  const cronParts = cronExpression.trim().split(/\s+/).length;
+  const cronValid = cronParts >= 6 && cronParts <= 7;
 
   useEffect(() => {
     setCronExpression(currentCronExpression);
@@ -241,7 +243,7 @@ function ScheduleSection({
         <Button
           type="button"
           variant="secondary"
-          disabled={saving || !dirty || !cronExpression.trim() || !timezoneId.trim()}
+          disabled={saving || !dirty || !cronValid || !timezoneId.trim()}
           onClick={() => onSave({ cronExpression, timezoneId })}
         >
           {t('transformations.schedule.save')}

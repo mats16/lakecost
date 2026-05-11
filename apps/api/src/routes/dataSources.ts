@@ -181,7 +181,9 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
       res.json(result);
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
-        res.status(err.statusCode).json({ error: { message: err.message } });
+        res
+          .status(err.statusCode)
+          .json({ error: { message: err.message, step: err.step ?? null } });
         return;
       }
       next(err);

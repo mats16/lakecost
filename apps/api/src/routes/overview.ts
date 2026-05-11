@@ -101,14 +101,12 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
             queryCoverage(executor, cte, params),
           ]);
         } catch (err) {
-          for (const source of sources) {
-            errors.push({
-              dataSourceId: source.id,
-              name: source.name,
-              tableName: resolved.display,
-              message: (err as Error).message,
-            });
-          }
+          errors.push({
+            dataSourceId: 0,
+            name: resolved.display,
+            tableName: resolved.display,
+            message: (err as Error).message,
+          });
         }
       }
 
@@ -154,7 +152,7 @@ function billingDailyTableName(
   return { display, sql: quoteTableName(display) };
 }
 
-function requestedSourcesSql(sources: DataSource[]): string {
+export function requestedSourcesSql(sources: DataSource[]): string {
   return sources
     .map(
       (_source, i) => `
@@ -166,7 +164,7 @@ function requestedSourcesSql(sources: DataSource[]): string {
     .join('\n  UNION ALL\n');
 }
 
-function baseParams(sources: DataSource[], range: UsageRange): SqlParam[] {
+export function baseParams(sources: DataSource[], range: UsageRange): SqlParam[] {
   return [
     { name: 'start_ts', value: range.start, type: 'TIMESTAMP' },
     { name: 'end_ts', value: range.end, type: 'TIMESTAMP' },
@@ -182,7 +180,7 @@ function baseParams(sources: DataSource[], range: UsageRange): SqlParam[] {
   ];
 }
 
-function joinedBillingRowsSql(sources: DataSource[], table: string): string {
+export function joinedBillingRowsSql(sources: DataSource[], table: string): string {
   return /* sql */ `
 WITH requested AS (
 ${requestedSourcesSql(sources)}

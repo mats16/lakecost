@@ -69,7 +69,20 @@ export function buildAwsFocusSilverPipelineSql(opts: {
     .replaceAll('${export_name}', sqlString(opts.exportName));
 }
 
+function hasUnsafeSqlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code < 0x20 || value[i] === '\\') return true;
+  }
+  return false;
+}
+
 function sqlString(value: string): string {
+  if (hasUnsafeSqlChars(value)) {
+    throw new Error(
+      `Unsafe characters in SQL string literal "${value}": control characters and backslashes are not allowed`,
+    );
+  }
   return value.replace(/'/g, "''");
 }
 
