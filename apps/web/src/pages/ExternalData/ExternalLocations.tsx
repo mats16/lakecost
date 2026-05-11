@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import type { ExternalLocationSummary, StorageCredentialSummary } from '@lakecost/shared';
+import type { ExternalLocationSummary, StorageCredentialSummary } from '@finlake/shared';
 import { AlertCircle, ExternalLink, MoreVertical, RefreshCcw, Trash2, X } from 'lucide-react';
 import {
   useCreateExternalLocation,

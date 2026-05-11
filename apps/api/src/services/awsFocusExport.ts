@@ -30,7 +30,7 @@ import {
   type ExternalLocationSummary,
   type ServiceCredentialSummary,
   type StorageCredentialSummary,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { sleep } from '../utils/sleep.js';
 import {

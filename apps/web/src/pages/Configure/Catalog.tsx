@@ -31,7 +31,7 @@ import {
   quotePrincipal,
   schemaGrantPrivileges,
   type ProvisionResult,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { useI18n } from '../../i18n';
 import { useAppSettings, useCatalogs, useUpdateAppSettings } from '../../api/hooks';
 import { CatalogCombobox } from '../../components/CatalogCombobox';

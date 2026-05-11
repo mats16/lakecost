@@ -3,7 +3,7 @@ import {
   tableLeafName,
   type DataSourceTemplate,
   type SetupStepId,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 
 export { DATA_SOURCE_TEMPLATES, type DataSourceTemplate };
 

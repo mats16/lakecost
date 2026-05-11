@@ -1,4 +1,4 @@
-import type { Env, ServiceCredentialCreateBody, ServiceCredentialSummary } from '@lakecost/shared';
+import type { Env, ServiceCredentialCreateBody, ServiceCredentialSummary } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import {
   isOwnedByCurrentServicePrincipal,

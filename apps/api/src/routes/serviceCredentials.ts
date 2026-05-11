@@ -5,7 +5,7 @@ import {
   StorageCredentialCreateBodySchema,
   AwsFocusExportCreateBodySchema,
   type Env,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import {
   AwsFocusExportServiceError,
   createAwsFocusExportResources,

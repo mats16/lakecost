@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ExternalLocationCreateBodySchema, type Env } from '@lakecost/shared';
+import { ExternalLocationCreateBodySchema, type Env } from '@finlake/shared';
 import {
   createExternalLocation,
   deleteExternalLocation,

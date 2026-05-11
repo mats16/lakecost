@@ -1,4 +1,4 @@
-import type { Env, StorageCredentialSummary } from '@lakecost/shared';
+import type { Env, StorageCredentialSummary } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { sleep } from '../utils/sleep.js';
 import { requireAppWorkspaceClient } from './servicePrincipalIdentity.js';

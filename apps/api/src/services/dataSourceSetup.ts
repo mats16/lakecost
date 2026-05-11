@@ -1,4 +1,4 @@
-import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   ACCOUNT_PRICES_DEFAULT,
   AWS_FOCUS_VERSION,
@@ -16,7 +16,7 @@ import {
   type DataSourceSetupBody,
   type DataSourceSetupResult,
   type Env,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { z } from 'zod';
 import {
   buildAppWorkspaceClient,

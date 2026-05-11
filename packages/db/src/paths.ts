@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import type { Env } from '@lakecost/shared';
+import type { Env } from '@finlake/shared';
 
 export function resolveSqlitePath(env: Env): string {
   if (env.SQLITE_PATH) return env.SQLITE_PATH;

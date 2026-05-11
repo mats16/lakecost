@@ -1,7 +1,7 @@
 import { WorkspaceClient as SdkWorkspaceClient } from '@databricks/sdk-experimental';
 import { createHash } from 'node:crypto';
 import type { ZodType } from 'zod';
-import type { Env } from '@lakecost/shared';
+import type { Env } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { sleep } from '../utils/sleep.js';
 

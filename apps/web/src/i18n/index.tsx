@@ -13,7 +13,7 @@ import { ja } from './locales/ja';
 export type Locale = 'en' | 'ja';
 
 const DICTIONARIES: Record<Locale, Dictionary> = { en, ja };
-const STORAGE_KEY = 'lakecost.locale';
+const STORAGE_KEY = 'finlake.locale';
 
 export type TFunction = (key: string, params?: Record<string, string | number>) => string;
 

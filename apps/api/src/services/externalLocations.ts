@@ -1,4 +1,4 @@
-import type { Env, ExternalLocationCreateBody, ExternalLocationSummary } from '@lakecost/shared';
+import type { Env, ExternalLocationCreateBody, ExternalLocationSummary } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { buildUserWorkspaceClient } from './statementExecution.js';
 import {

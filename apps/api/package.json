@@ -1,5 +1,5 @@
 {
-  "name": "@lakecost/api",
+  "name": "@finlake/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,8 +17,8 @@
     "@aws-sdk/client-iam": "3.1035.0",
     "@aws-sdk/client-s3": "3.1035.0",
     "@databricks/sdk-experimental": "^0.16.0",
-    "@lakecost/db": "*",
-    "@lakecost/shared": "*",
+    "@finlake/db": "*",
+    "@finlake/shared": "*",
     "express": "^4.21.2",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",

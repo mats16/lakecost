@@ -5,6 +5,6 @@ export default defineConfig({
   schema: './src/schema/pg.ts',
   out: './migrations/pg',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgresql://localhost/lakecost',
+    url: process.env.DATABASE_URL ?? 'postgresql://localhost/finlake',
   },
 });

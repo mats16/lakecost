@@ -1,4 +1,4 @@
-import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
   focusSourceTables,
@@ -15,7 +15,7 @@ import {
   type DataSourceSystemTableGrantsResult,
   type Env,
   type FocusSourceTableRef,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import {
   buildAppExecutor,
   buildAppWorkspaceClient,

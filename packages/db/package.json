@@ -1,5 +1,5 @@
 {
-  "name": "@lakecost/db",
+  "name": "@finlake/db",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -23,7 +23,7 @@
     "db:studio": "drizzle-kit studio --config=drizzle.sqlite.config.ts"
   },
   "dependencies": {
-    "@lakecost/shared": "*",
+    "@finlake/shared": "*",
     "@libsql/client": "^0.17.3",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.13.1",

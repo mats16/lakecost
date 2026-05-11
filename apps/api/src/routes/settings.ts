@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
-import { CATALOG_SETTING_KEY, medallionSchemaNamesFromSettings, type Env } from '@lakecost/shared';
+import { settingsToRecord, type DatabaseClient } from '@finlake/db';
+import { CATALOG_SETTING_KEY, medallionSchemaNamesFromSettings, type Env } from '@finlake/shared';
 import { CatalogServiceError, provisionCatalog } from '../services/catalogs.js';
 import { logger } from '../config/logger.js';
 

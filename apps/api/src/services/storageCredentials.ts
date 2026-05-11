@@ -1,4 +1,4 @@
-import type { Env, StorageCredentialCreateBody, StorageCredentialSummary } from '@lakecost/shared';
+import type { Env, StorageCredentialCreateBody, StorageCredentialSummary } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { buildUserWorkspaceClient } from './statementExecution.js';
 import {

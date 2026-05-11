@@ -1,4 +1,4 @@
-import type { Env } from '@lakecost/shared';
+import type { Env } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { buildAppWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
 import { type WorkspaceServiceError, isPermissionDenied } from './workspaceClientErrors.js';

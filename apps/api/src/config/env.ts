@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { EnvSchema, type Env } from '@lakecost/shared';
+import { EnvSchema, type Env } from '@finlake/shared';
 
 let cached: Env | undefined;
 

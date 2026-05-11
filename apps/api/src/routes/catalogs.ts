@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { Env } from '@lakecost/shared';
+import type { Env } from '@finlake/shared';
 import { CatalogServiceError, listAccessibleCatalogs } from '../services/catalogs.js';
 
 export function catalogsRouter(env: Env): Router {

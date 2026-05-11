@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { tableLeafName, type DataSource } from '@lakecost/shared';
+import { tableLeafName, type DataSource } from '@finlake/shared';
 import { Input, Separator } from '@databricks/appkit-ui/react';
 import { useCreateDataSource, useDataSources, useDataSourceTemplates } from '../../api/hooks';
 import { DataSourceTile, type TileBadge } from './DataSourceTile';

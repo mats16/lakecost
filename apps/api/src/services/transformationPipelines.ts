@@ -1,10 +1,10 @@
-import type { DatabaseClient } from '@lakecost/db';
+import type { DatabaseClient } from '@finlake/db';
 import { z } from 'zod';
 import {
   type Env,
   type TransformationPipelineRow,
   type TransformationPipelinesResponse,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { buildUserExecutor, type SqlParam } from './statementExecution.js';
 import { normalizeHost } from './normalizeHost.js';
 import { WorkspaceServiceError } from './workspaceClientErrors.js';

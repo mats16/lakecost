@@ -29,7 +29,7 @@ import type {
   UsageBySkuRow,
   UsageDailyResponse,
   UsageTopWorkloadRow,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { apiFetch } from './client';
 
 interface RangeParams {

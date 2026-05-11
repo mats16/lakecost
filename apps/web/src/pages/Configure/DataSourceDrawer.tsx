@@ -44,7 +44,7 @@ import {
   type DataSource,
   type DataSourceSetupResult,
   type ExternalLocationSummary,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { useI18n } from '../../i18n';
 import { displayNameForRow, findTemplateById, findTemplateForRow } from './dataSourceCatalog';
 import { type AwsFocusDraft, useAwsFocusForm } from './useAwsFocusForm';

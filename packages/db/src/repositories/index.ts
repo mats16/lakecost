@@ -1,4 +1,4 @@
-import type { Budget, CreateBudgetInput, SetupCheckResult } from '@lakecost/shared';
+import type { Budget, CreateBudgetInput, SetupCheckResult } from '@finlake/shared';
 
 export interface BudgetsRepo {
   list(workspaceId: string | null): Promise<Budget[]>;

@@ -35,7 +35,7 @@ import {
   type DataSourceSetupResult,
   type ExternalLocationSummary,
   type StorageCredentialSummary,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { messageOf } from './utils';
 
 const AWS_FOCUS_12_QUERY_STATEMENT =

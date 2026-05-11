@@ -14,7 +14,7 @@ import {
   cn,
 } from '@databricks/appkit-ui/react';
 import { Check, ChevronsUpDown, Plus } from 'lucide-react';
-import { IDENT_RE, type CatalogSummary } from '@lakecost/shared';
+import { IDENT_RE, type CatalogSummary } from '@finlake/shared';
 
 export type CatalogSelection = { name: string; create: boolean };
 

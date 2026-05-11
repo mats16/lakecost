@@ -6,7 +6,7 @@ import {
   storageCredentialNameForBucket,
   externalLocationNameForBucket,
   isValidS3BucketName,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 
 // --- roleNameFromArn ---
 

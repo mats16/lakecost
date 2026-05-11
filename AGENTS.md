@@ -23,7 +23,7 @@ npm run db:migrate                    # see packages/db (currently bootstraps sc
 # Per-workspace work
 npm run dev   --workspace=apps/api
 npm run build --workspace=apps/web
-npm run typecheck --workspace=@lakecost/db
+npm run typecheck --workspace=@finlake/db
 
 # Deploying to Databricks Apps (after build)
 databricks bundle validate -t prod
@@ -43,7 +43,7 @@ A few non-obvious quirks:
 - `apps/web` — Vite + React 19 SPA. Uses `@databricks/appkit-ui` (optional) and `recharts` for charts. TanStack Query for data fetching.
 - `apps/api` — Express + AppKit. Hosts `/api/*` routes and serves the SPA in production.
 - `packages/shared` — zod schemas (env, usage, budget, setup, health) and the SQL templates for `system.billing.*`. Single source of truth for request/response types — both apps consume this.
-- `packages/db` — `DatabaseClient` abstraction with two backends. **`@lakecost/api` never reaches into Drizzle directly**; it goes through `db.repos.*`.
+- `packages/db` — `DatabaseClient` abstraction with two backends. **`@finlake/api` never reaches into Drizzle directly**; it goes through `db.repos.*`.
 
 ### Database backend abstraction (load-bearing)
 
@@ -67,7 +67,7 @@ The DB layer is the most-edited area and the easiest to break. Three things to k
 
    `:memory:` is supported for tests. The SQLite client runs idempotent `CREATE TABLE IF NOT EXISTS` at construction; richer migrations would go through drizzle-kit.
 
-The `DatabaseClient` interface exposes `repos` (BudgetsRepo, UserPreferencesRepo, CachedAggregationsRepo, SetupStateRepo). Drizzle's pgTable / sqliteTable APIs differ, so each backend has its own schema file (`schema/pg.ts`, `schema/sqlite.ts`) and its own repo implementations. Type contracts are kept identical via the zod schemas in `@lakecost/shared`.
+The `DatabaseClient` interface exposes `repos` (BudgetsRepo, UserPreferencesRepo, CachedAggregationsRepo, SetupStateRepo). Drizzle's pgTable / sqliteTable APIs differ, so each backend has its own schema file (`schema/pg.ts`, `schema/sqlite.ts`) and its own repo implementations. Type contracts are kept identical via the zod schemas in `@finlake/shared`.
 
 ### Reading Databricks system tables
 
@@ -98,4 +98,4 @@ When adding a new data source: add an entry to `dataSourceCatalog.ts`, add a ste
 
 ### Naming
 
-The app name is **FinLake** (capital F and L) in any user-visible surface — page titles, sidebar, README. The package/identifier `lakecost` (all lowercase) stays in code: workspace names (`@lakecost/*`), Databricks Apps `name:`, Terraform resource names, the SQLite filename, etc. Don't capitalize identifiers.
+The app name is **FinLake** (capital F and L) in any user-visible surface — page titles, sidebar, README. The package/identifier `finlake` (all lowercase) stays in code: workspace names (`@finlake/*`), Databricks Apps `name:`, Terraform resource names, the SQLite filename, etc. Don't capitalize identifiers.

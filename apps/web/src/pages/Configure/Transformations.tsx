@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import type { TransformationPipelineRow, TransformationPipelineStatusDay } from '@lakecost/shared';
+import type { TransformationPipelineRow, TransformationPipelineStatusDay } from '@finlake/shared';
 import {
   AlertCircle,
   CheckCircle2,

@@ -8,7 +8,7 @@ import {
   type MedallionSchema,
   type ProvisionResult,
   type SchemaEnsureStatus,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import {
   buildUserExecutor,

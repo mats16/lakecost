@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { IDENT_RE } from '@lakecost/shared';
+import { IDENT_RE } from '@finlake/shared';
 
 export const AWS_FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const AWS_FOCUS_S3_BUCKET_PARAMETER = 's3_bucket';

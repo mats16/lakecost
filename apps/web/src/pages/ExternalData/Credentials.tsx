@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import { roleNameFromArn, type ServiceCredentialSummary } from '@lakecost/shared';
+import { roleNameFromArn, type ServiceCredentialSummary } from '@finlake/shared';
 import { AlertCircle, ExternalLink, MoreVertical, RefreshCcw, Trash2, X } from 'lucide-react';
 import {
   useCreateServiceCredential,
