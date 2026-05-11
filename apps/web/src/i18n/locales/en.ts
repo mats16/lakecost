@@ -241,6 +241,7 @@ export const en = {
     catalogTypeLabel: 'Catalog type',
     catalogNameLabel: 'Catalog name',
     catalogUserGroupLabel: 'Reader group',
+    catalogUserGroupHelp: 'This group is granted read access to the catalog.',
     catalogUserGroupInvalid: 'Reader group is required.',
     catalogModeExisting: 'Use an existing catalog',
     catalogModeCreate: 'Create a new catalog',

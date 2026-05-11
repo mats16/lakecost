@@ -246,6 +246,7 @@ export const ja: Dictionary = {
     catalogTypeLabel: 'カタログのタイプ',
     catalogNameLabel: 'カタログの名前',
     catalogUserGroupLabel: '読み取りグループ',
+    catalogUserGroupHelp: 'このグループにカタログへの参照権限が付与されます。',
     catalogUserGroupInvalid: '読み取りグループを入力してください。',
     catalogModeExisting: '既存のカタログを利用する',
     catalogModeCreate: '新規にカタログを作成する',

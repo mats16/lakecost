@@ -19,6 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@databricks/appkit-ui/react';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import {
@@ -229,16 +232,6 @@ export function Catalog() {
               </div>
             </div>
 
-            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
-              <FieldLabel>{t('settings.catalogUserGroupLabel')}</FieldLabel>
-              <Input
-                value={catalogUserGroup}
-                onChange={(e) => setCatalogUserGroup(e.target.value)}
-                placeholder={CATALOG_USER_GROUP_DEFAULT}
-                disabled={settings.isLoading || saving}
-              />
-            </div>
-
             <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
               <FieldLabel className="md:pt-2">{t('settings.medallion.schemaLabel')}</FieldLabel>
               <div className="grid gap-3 md:grid-cols-3">
@@ -257,6 +250,27 @@ export function Catalog() {
                   </Field>
                 ))}
               </div>
+            </div>
+
+            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
+              <FieldLabel className="inline-flex items-center gap-1.5">
+                {t('settings.catalogUserGroupLabel')}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info
+                      className="text-muted-foreground size-3.5 cursor-help"
+                      aria-label={t('settings.catalogUserGroupHelp')}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent>{t('settings.catalogUserGroupHelp')}</TooltipContent>
+                </Tooltip>
+              </FieldLabel>
+              <Input
+                value={catalogUserGroup}
+                onChange={(e) => setCatalogUserGroup(e.target.value)}
+                placeholder={CATALOG_USER_GROUP_DEFAULT}
+                disabled={settings.isLoading || saving}
+              />
             </div>
 
             {!hasConfiguredCatalog && catalogsError ? (
