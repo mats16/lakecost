@@ -3,6 +3,79 @@ export interface AwsResourceTag {
   Value: string;
 }
 
+export const AWS_FOCUS_12_STANDARD_COLUMNS = [
+  'AvailabilityZone',
+  'BilledCost',
+  'BillingAccountId',
+  'BillingAccountName',
+  'BillingAccountType',
+  'BillingCurrency',
+  'BillingPeriodEnd',
+  'BillingPeriodStart',
+  'CapacityReservationId',
+  'CapacityReservationStatus',
+  'ChargeCategory',
+  'ChargeClass',
+  'ChargeDescription',
+  'ChargeFrequency',
+  'ChargePeriodEnd',
+  'ChargePeriodStart',
+  'CommitmentDiscountCategory',
+  'CommitmentDiscountId',
+  'CommitmentDiscountName',
+  'CommitmentDiscountQuantity',
+  'CommitmentDiscountStatus',
+  'CommitmentDiscountType',
+  'CommitmentDiscountUnit',
+  'ConsumedQuantity',
+  'ConsumedUnit',
+  'ContractedCost',
+  'ContractedUnitPrice',
+  'EffectiveCost',
+  'InvoiceId',
+  'InvoiceIssuerName',
+  'ListCost',
+  'ListUnitPrice',
+  'PricingCategory',
+  'PricingCurrency',
+  'PricingCurrencyContractedUnitPrice',
+  'PricingCurrencyEffectiveCost',
+  'PricingCurrencyListUnitPrice',
+  'PricingQuantity',
+  'PricingUnit',
+  'ProviderName',
+  'PublisherName',
+  'RegionId',
+  'RegionName',
+  'ResourceId',
+  'ResourceName',
+  'ResourceType',
+  'ServiceCategory',
+  'ServiceName',
+  'ServiceSubcategory',
+  'SkuId',
+  'SkuMeter',
+  'SkuPriceDetails',
+  'SkuPriceId',
+  'SubAccountId',
+  'SubAccountName',
+  'SubAccountType',
+  'Tags',
+] as const;
+
+export const AWS_FOCUS_12_AWS_EXTENSION_COLUMNS = [
+  'x_Discounts',
+  'x_Operation',
+  'x_ServiceCode',
+] as const;
+
+export const AWS_FOCUS_12_WITH_AWS_COLUMNS = [
+  ...AWS_FOCUS_12_STANDARD_COLUMNS,
+  ...AWS_FOCUS_12_AWS_EXTENSION_COLUMNS,
+] as const;
+
+export const AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT = `SELECT ${AWS_FOCUS_12_WITH_AWS_COLUMNS.join(', ')} FROM FOCUS_1_2_AWS`;
+
 export const FINLAKE_AWS_RESOURCE_TAGS: readonly AwsResourceTag[] = Object.freeze([
   { Key: 'CostCenter', Value: 'finlake' },
   { Key: 'Project', Value: 'finops' },

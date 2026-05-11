@@ -6,7 +6,11 @@ import {
 } from '../src/services/awsFocusTransformPipelineSql.js';
 import { buildDailyUsageGoldSql } from '../src/services/dataSourceSetup.js';
 import { buildFocusSilverPipelineSql } from '../src/services/databricksFocusTransformPipelineSql.js';
-import { MEDALLION_SCHEMA_DEFAULTS, medallionSchemaNamesFromSettings } from '@finlake/shared';
+import {
+  AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT,
+  MEDALLION_SCHEMA_DEFAULTS,
+  medallionSchemaNamesFromSettings,
+} from '@finlake/shared';
 
 test('medallion schema defaults use FinLake schema names', () => {
   assert.deepEqual(MEDALLION_SCHEMA_DEFAULTS, {
@@ -39,8 +43,22 @@ test('buildAwsFocusSilverPipelineSql embeds source-specific values without gold 
     sql,
     /FROM read_files\(\s*'s3:\/\/finlake-billing-123456789012\/exports\/focus\/finlake-focus-1-2\/data\/\*\*\/\*\.parquet'/,
   );
+  assert.match(
+    sql,
+    /`x_Discounts` MAP<STRING, DOUBLE> COMMENT 'AWS extension containing discount key-value pairs that apply to the line item\.'/,
+  );
+  assert.match(sql, /`x_Operation`,/);
+  assert.match(sql, /`x_ServiceCode`/);
   assert.doesNotMatch(sql, /daily_usage/);
   assert.doesNotMatch(sql, /gold_schema_name/);
+});
+
+test('AWS FOCUS data export query includes AWS extension columns', () => {
+  assert.match(AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT, /^SELECT /);
+  assert.match(AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT, /x_Discounts/);
+  assert.match(AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT, /x_Operation/);
+  assert.match(AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT, /x_ServiceCode/);
+  assert.match(AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT, / FROM FOCUS_1_2_AWS$/);
 });
 
 test('buildFocusSilverPipelineSql keeps Databricks SkuPriceDetails as a map', () => {
