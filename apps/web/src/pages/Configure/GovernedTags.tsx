@@ -303,30 +303,83 @@ function AwsAccountStatus({
 
 function SyncResult({ result }: { result: GovernedTagSyncResult }) {
   const { t } = useI18n();
-  const failedCount =
-    result.tags.filter((tag) => tag.status === 'failed').length +
-    result.awsAccounts.filter((account) => account.status === 'failed').length;
+  const tagCounts = countStatuses(result.tags);
+  const accountCounts = countStatuses(result.awsAccounts);
+  const failedItems = [
+    ...result.tags
+      .filter((tag) => tag.status === 'failed')
+      .map((tag) =>
+        t('governedTags.syncFailedTagDetail', {
+          tag: tag.key,
+          message: tag.message ?? t('governedTags.syncUnknownError'),
+        }),
+      ),
+    ...result.awsAccounts
+      .filter((account) => account.status === 'failed')
+      .map((account) =>
+        t('governedTags.syncFailedAccountDetail', {
+          account: account.awsAccountId,
+          message: account.message ?? t('governedTags.syncUnknownError'),
+        }),
+      ),
+  ];
+  const failedCount = tagCounts.failed + accountCounts.failed;
+  const successCount = tagCounts.synced + accountCounts.synced;
+  const isFailure = failedCount > 0;
+  const isPartialFailure = isFailure && successCount > 0;
+  const platformKey = result.platform === 'aws' ? 'Aws' : 'Databricks';
+  const titleKey = isFailure
+    ? `governedTags.sync${platformKey}${isPartialFailure ? 'Partial' : 'ResultFailed'}`
+    : `governedTags.sync${platformKey}Complete`;
+
   return (
-    <Alert variant={failedCount > 0 ? 'destructive' : 'default'} className="mb-4">
-      {failedCount > 0 ? <AlertCircle /> : <CheckCircle2 />}
-      <AlertTitle>
-        {failedCount > 0
-          ? t('governedTags.syncPartial')
-          : t(
-              result.platform === 'aws'
-                ? 'governedTags.syncAwsComplete'
-                : 'governedTags.syncDatabricksComplete',
-            )}
-      </AlertTitle>
+    <Alert variant={isFailure ? 'destructive' : 'default'} className="mb-4">
+      {isFailure ? <AlertCircle /> : <CheckCircle2 />}
+      <AlertTitle>{t(titleKey)}</AlertTitle>
       <AlertDescription>
-        {result.platform === 'aws'
-          ? t('governedTags.syncedAwsAccount', {
-              account: result.awsAccounts.map((account) => account.awsAccountId).join(', '),
-            })
-          : t('governedTags.syncedDatabricks')}
+        <div className="space-y-2">
+          <p>
+            {result.platform === 'aws'
+              ? t('governedTags.syncAwsSummary', {
+                  syncedTags: tagCounts.synced,
+                  failedTags: tagCounts.failed,
+                  syncedAccounts: accountCounts.synced,
+                  failedAccounts: accountCounts.failed,
+                })
+              : t('governedTags.syncDatabricksSummary', {
+                  syncedTags: tagCounts.synced,
+                  failedTags: tagCounts.failed,
+                })}
+          </p>
+          {failedItems.length > 0 ? (
+            <div>
+              <p className="font-medium">{t('governedTags.syncFailureDetails')}</p>
+              <ul className="m-0 list-disc pl-4">
+                {failedItems.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p>
+              {result.platform === 'aws'
+                ? t('governedTags.syncedAwsAccount', {
+                    account: result.awsAccounts.map((account) => account.awsAccountId).join(', '),
+                  })
+                : t('governedTags.syncedDatabricks')}
+            </p>
+          )}
+        </div>
       </AlertDescription>
     </Alert>
   );
+}
+
+function countStatuses<T extends { status: string }>(items: T[]) {
+  return {
+    synced: items.filter((item) => item.status === 'synced').length,
+    failed: items.filter((item) => item.status === 'failed').length,
+  };
 }
 
 function formatDate(value: string, locale: 'en' | 'ja'): string {
