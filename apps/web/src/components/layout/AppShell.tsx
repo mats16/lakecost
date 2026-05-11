@@ -48,7 +48,7 @@ const INFORM: NavGroup = {
   matchPrefix: '/overview',
   items: [
     { to: '/overview', labelKey: 'nav.overview', end: true },
-    { to: '/overview/budgets', labelKey: 'nav.budgets' },
+    { to: '/budgets', labelKey: 'nav.budgets' },
   ],
 };
 
@@ -93,7 +93,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const appSettings = useAppSettings();
   const catalogName = appSettings.data?.settings.catalog_name?.trim() || null;
   const databricksItems = buildDatabricksItems(catalogName);
-  const onInformRoute = location.pathname.startsWith(INFORM.matchPrefix);
+  const onInformRoute = INFORM.items.some((item) =>
+    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
+  );
   const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname.startsWith(item.to));
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
