@@ -4,6 +4,7 @@ import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
   DataSourceTableNameSchema,
+  MEDALLION_SCHEMA_DEFAULTS,
   UsageRangeSchema,
   medallionSchemaNamesFromSettings,
   quoteIdent,
@@ -143,7 +144,7 @@ function quoteTableName(value: string): string {
 
 function billingDailyTableName(
   catalog?: string,
-  goldSchema = 'gold',
+  goldSchema: string = MEDALLION_SCHEMA_DEFAULTS.gold,
 ): { display: string; sql: string } {
   const dailyParts = catalog
     ? [catalog, goldSchema, 'billing_daily']

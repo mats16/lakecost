@@ -3,21 +3,20 @@
  * Source: https://github.com/databricks-solutions/cloud-infra-costs/blob/main/aws/focus/focus_query.sql
  *
  * The FOCUS table is exposed as a Unity Catalog Materialized View at
- * `<catalog>.silver.<table>` (the schema is fixed at `silver`). The shared
- * FinLake pipeline publishes curated rollups under `<catalog>.gold`.
+ * `<catalog>.focus.<table>` by default. The shared FinLake pipeline publishes
+ * curated rollups under `<catalog>.analytics` by default.
  * Identifier parts and the `accountPricesTable` (1- to 3-part identifier) are
  * validated before being used in generated SQL.
  */
 
-export const FOCUS_VIEW_SCHEMA_DEFAULT = 'silver';
+export const FOCUS_VIEW_SCHEMA_DEFAULT = 'focus';
 export const FOCUS_VIEW_TABLE_DEFAULT = 'databricks_billing';
 export const ACCOUNT_PRICES_DEFAULT = 'system.billing.list_prices';
 
 /**
- * Medallion schemas auto-provisioned alongside the catalog. `silver` houses the
- * FOCUS materialized view (see `FOCUS_VIEW_SCHEMA_DEFAULT`); `bronze` is
- * reserved for raw provider exports (CUR, Cost Mgmt) and `gold` for curated
- * cost facts.
+ * Medallion schemas auto-provisioned alongside the catalog. The layer keys stay
+ * `bronze` / `silver` / `gold`, while the default schema names are
+ * `ingest` / `focus` / `analytics`.
  */
 export const MEDALLION_SCHEMAS = ['bronze', 'silver', 'gold'] as const;
 export type MedallionSchema = (typeof MEDALLION_SCHEMAS)[number];

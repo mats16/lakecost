@@ -264,7 +264,7 @@ export const ja: Dictionary = {
     provisionWarning: '一部の処理がスキップされました',
     provisionFailed: 'プロビジョニングでエラーが発生しました',
     provisionAllOk:
-      'カタログ「{name}」には bronze/silver/gold スキーマ、サービスプリンシパル権限、読み取りグループのカタログ/スキーマ権限が既に揃っています。',
+      'カタログ「{name}」には設定済みのスキーマ、サービスプリンシパル権限、読み取りグループのカタログ/スキーマ権限が既に揃っています。',
     provisionAwsCredentialNote:
       'AWS Storage Credential と IAM trust policy の検証は、このカタログ権限修復ではなく AWS data source のセットアップで実行されます。',
     provisionCatalogCreated: 'カタログ「{name}」を作成しました。',
@@ -273,6 +273,13 @@ export const ja: Dictionary = {
     provisionGrantFailed: '{scope} への GRANT に失敗しました: {message}',
     provisionScopeCatalog: 'catalog',
     provisionScopeUsersCatalog: '{group} のカタログアクセス',
+    pipelineChangedTitle: 'パイプラインを更新しました',
+    pipelineChangedDesc:
+      '共有 Lakeflow パイプラインは、変更後のカタログとスキーマ設定を参照するようになりました。',
+    pipelineChangedNotice:
+      '既存テーブルはジョブを再実行するまで再生成されません。新しい配置先でテーブルを作成・更新するにはジョブを実行してください。',
+    runPipelineJob: 'ジョブを実行',
+    pipelineRunStarted: 'Job #{jobId} の Run #{runId} を開始しました。',
     medallion: {
       schemaLabel: 'スキーマ名',
       goldLabel: 'Gold',

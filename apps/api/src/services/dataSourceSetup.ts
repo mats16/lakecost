@@ -554,6 +554,40 @@ export async function runDataSourceJob(
   return { dataSourceId: source.id, jobId, runId: run.run_id };
 }
 
+export async function runSharedFocusJob(
+  env: Env,
+  db: DatabaseClient,
+): Promise<{ jobId: number; runId: number }> {
+  if (!env.DATABRICKS_HOST) {
+    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
+  }
+
+  const appSettings = settingsToRecord(await db.repos.appSettings.list());
+  const jobId = sharedJobIdSetting(appSettings);
+  if (jobId === null) {
+    throw new DataSourceSetupError('No shared Databricks job has been created.', 400);
+  }
+  const wc = buildAppWorkspaceClient(env);
+  if (!wc) {
+    throw new DataSourceSetupError(
+      'Failed to build Databricks app service principal workspace client',
+      500,
+    );
+  }
+
+  let run;
+  try {
+    run = await wc.jobs.runNow({ job_id: jobId });
+  } catch (err) {
+    throw new DataSourceSetupError(`Failed to run job #${jobId}: ${(err as Error).message}`, 500);
+  }
+  if (typeof run.run_id !== 'number') {
+    throw new DataSourceSetupError(`Databricks Jobs API returned no run_id`, 500);
+  }
+
+  return { jobId, runId: run.run_id };
+}
+
 export async function syncSharedFocusPipeline(
   env: Env,
   db: DatabaseClient,

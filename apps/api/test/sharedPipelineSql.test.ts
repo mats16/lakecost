@@ -6,6 +6,16 @@ import {
 } from '../src/services/awsFocusTransformPipelineSql.js';
 import { buildBillingDailyGoldSql } from '../src/services/dataSourceSetup.js';
 import { buildFocusSilverPipelineSql } from '../src/services/databricksFocusTransformPipelineSql.js';
+import { MEDALLION_SCHEMA_DEFAULTS, medallionSchemaNamesFromSettings } from '@finlake/shared';
+
+test('medallion schema defaults use FinLake schema names', () => {
+  assert.deepEqual(MEDALLION_SCHEMA_DEFAULTS, {
+    bronze: 'ingest',
+    silver: 'focus',
+    gold: 'analytics',
+  });
+  assert.deepEqual(medallionSchemaNamesFromSettings({}), MEDALLION_SCHEMA_DEFAULTS);
+});
 
 test('awsBillingTableName derives canonical AWS silver table name', () => {
   assert.equal(awsBillingTableName('123456789012'), 'aws_billing_123456789012');

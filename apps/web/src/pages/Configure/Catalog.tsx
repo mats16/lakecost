@@ -23,7 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@databricks/appkit-ui/react';
-import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, Play, X } from 'lucide-react';
 import {
   CATALOG_SETTING_KEY,
   CATALOG_USER_GROUP_DEFAULT,
@@ -38,7 +38,12 @@ import {
   type ProvisionResult,
 } from '@finlake/shared';
 import { useI18n } from '../../i18n';
-import { useAppSettings, useCatalogs, useUpdateAppSettings } from '../../api/hooks';
+import {
+  useAppSettings,
+  useCatalogs,
+  useRunSharedTransformationJob,
+  useUpdateAppSettings,
+} from '../../api/hooks';
 import { CatalogCombobox } from '../../components/CatalogCombobox';
 import { messageOf } from './utils';
 
@@ -88,6 +93,7 @@ export function Catalog() {
   const settings = useAppSettings();
   const catalogs = useCatalogs();
   const updateSettings = useUpdateAppSettings();
+  const runSharedJob = useRunSharedTransformationJob();
 
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
   const remoteCatalogUserGroup =
@@ -102,9 +108,11 @@ export function Catalog() {
   const [catalogUserGroup, setCatalogUserGroup] = useState(remoteCatalogUserGroup);
   const [medallionSchemas, setMedallionSchemas] = useState(remoteMedallionSchemas);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [pipelineRunModalOpen, setPipelineRunModalOpen] = useState(false);
 
   useEffect(() => {
     setSelectedCatalog(remoteCatalog);
+    setNewCatalogName('');
     if (remoteCatalog) setMode('existing');
   }, [remoteCatalog]);
 
@@ -117,16 +125,10 @@ export function Catalog() {
   }, [remoteCatalogUserGroup]);
 
   const hasConfiguredCatalog = remoteCatalog.length > 0;
-  const catalogName = hasConfiguredCatalog
-    ? remoteCatalog
-    : mode === 'existing'
-      ? selectedCatalog.trim()
-      : newCatalogName.trim();
-  const isCreate = !hasConfiguredCatalog && mode === 'create';
-  const catalogDirty = !hasConfiguredCatalog && catalogName !== remoteCatalog;
-  const validName =
-    catalogName.length > 0 &&
-    (hasConfiguredCatalog || mode === 'existing' || IDENT_RE.test(catalogName));
+  const catalogName = mode === 'existing' ? selectedCatalog.trim() : newCatalogName.trim();
+  const isCreate = mode === 'create';
+  const catalogDirty = catalogName !== remoteCatalog;
+  const validName = catalogName.length > 0 && (mode === 'existing' || IDENT_RE.test(catalogName));
   const saving = updateSettings.isPending;
   const medallionPayload = useMemo(
     () => trimMedallionSchemaValues(medallionSchemas),
@@ -151,6 +153,8 @@ export function Catalog() {
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!validName) return;
+    const shouldPromptPipelineRun = hasConfiguredCatalog && (catalogDirty || medallionDirty);
+    runSharedJob.reset();
     updateSettings.reset();
     updateSettings.mutate(
       {
@@ -162,7 +166,10 @@ export function Catalog() {
         provision: { createIfMissing: isCreate },
       },
       {
-        onSuccess: () => setSavedAt(Date.now()),
+        onSuccess: (data) => {
+          setSavedAt(Date.now());
+          if (shouldPromptPipelineRun && data.pipelineSynced) setPipelineRunModalOpen(true);
+        },
       },
     );
   };
@@ -180,18 +187,22 @@ export function Catalog() {
   );
 
   return (
-    <form onSubmit={onSubmit}>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('settings.mainCatalogHeading')}</CardTitle>
-          <CardDescription>{t('settings.mainCatalogDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            {!hasConfiguredCatalog ? (
+    <>
+      <form onSubmit={onSubmit}>
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('settings.mainCatalogHeading')}</CardTitle>
+            <CardDescription>{t('settings.mainCatalogDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
               <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
                 <FieldLabel>{t('settings.catalogTypeLabel')}</FieldLabel>
-                <Select value={mode} onValueChange={(v: string) => setMode(v as CatalogMode)}>
+                <Select
+                  value={mode}
+                  onValueChange={(v: string) => setMode(v as CatalogMode)}
+                  disabled={settings.isLoading || saving}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -201,14 +212,10 @@ export function Catalog() {
                   </SelectContent>
                 </Select>
               </div>
-            ) : null}
 
-            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
-              <FieldLabel>{t('settings.catalogNameLabel')}</FieldLabel>
-              <div>
-                {hasConfiguredCatalog ? (
-                  <Input value={remoteCatalog} disabled readOnly />
-                ) : mode === 'existing' ? (
+              <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
+                <FieldLabel>{t('settings.catalogNameLabel')}</FieldLabel>
+                {mode === 'existing' ? (
                   <CatalogCombobox
                     value={selectedCatalog}
                     onChange={(sel) => setSelectedCatalog(sel.name)}
@@ -230,130 +237,232 @@ export function Catalog() {
                   />
                 )}
               </div>
-            </div>
 
-            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
-              <FieldLabel className="md:pt-2">{t('settings.medallion.schemaLabel')}</FieldLabel>
-              <div className="grid gap-3 md:grid-cols-3">
-                {MEDALLION_SCHEMA_FIELDS.map(({ key, defaultValue, labelKey }) => (
-                  <Field key={key}>
-                    <FieldLabel>{t(labelKey)}</FieldLabel>
-                    <Input
-                      value={medallionSchemas[key]}
-                      onChange={(e) =>
-                        setMedallionSchemas((cur) => ({ ...cur, [key]: e.target.value }))
-                      }
-                      placeholder={defaultValue}
-                      disabled={settings.isLoading || saving || hasConfiguredCatalog}
-                      readOnly={hasConfiguredCatalog}
-                    />
-                  </Field>
-                ))}
+              <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
+                <FieldLabel className="md:pt-2">{t('settings.medallion.schemaLabel')}</FieldLabel>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {MEDALLION_SCHEMA_FIELDS.map(({ key, defaultValue, labelKey }) => (
+                    <Field key={key}>
+                      <FieldLabel>{t(labelKey)}</FieldLabel>
+                      <Input
+                        value={medallionSchemas[key]}
+                        onChange={(e) =>
+                          setMedallionSchemas((cur) => ({ ...cur, [key]: e.target.value }))
+                        }
+                        placeholder={defaultValue}
+                        disabled={settings.isLoading || saving}
+                      />
+                    </Field>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
-              <FieldLabel className="inline-flex items-center gap-1.5">
-                {t('settings.catalogUserGroupLabel')}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info
-                      className="text-muted-foreground size-3.5 cursor-help"
-                      aria-label={t('settings.catalogUserGroupHelp')}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>{t('settings.catalogUserGroupHelp')}</TooltipContent>
-                </Tooltip>
-              </FieldLabel>
-              <Input
-                value={catalogUserGroup}
-                onChange={(e) => setCatalogUserGroup(e.target.value)}
-                placeholder={CATALOG_USER_GROUP_DEFAULT}
-                disabled={settings.isLoading || saving}
-              />
-            </div>
+              <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)] md:items-center">
+                <FieldLabel className="inline-flex items-center gap-1.5">
+                  {t('settings.catalogUserGroupLabel')}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info
+                        className="text-muted-foreground size-3.5 cursor-help"
+                        aria-label={t('settings.catalogUserGroupHelp')}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent>{t('settings.catalogUserGroupHelp')}</TooltipContent>
+                  </Tooltip>
+                </FieldLabel>
+                <Input
+                  value={catalogUserGroup}
+                  onChange={(e) => setCatalogUserGroup(e.target.value)}
+                  placeholder={CATALOG_USER_GROUP_DEFAULT}
+                  disabled={settings.isLoading || saving}
+                />
+              </div>
 
-            {!hasConfiguredCatalog && catalogsError ? (
-              <Alert variant="destructive">
-                <AlertCircle />
-                <AlertTitle>{t('settings.catalogLoadFailed')}</AlertTitle>
-                <AlertDescription>{catalogsError}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            {!medallionValid ? (
-              <Alert variant="destructive">
-                <AlertCircle />
-                <AlertDescription>{t('settings.medallion.invalid')}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            {!catalogUserGroupValid ? (
-              <Alert variant="destructive">
-                <AlertCircle />
-                <AlertDescription>{t('settings.catalogUserGroupInvalid')}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <div className="flex items-center gap-3">
-              <Button
-                type="submit"
-                disabled={submitDisabled}
-                className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-              >
-                {saving ? (
-                  <>
-                    <Spinner /> {t('common.saving')}
-                  </>
-                ) : hasConfiguredCatalog ? (
-                  medallionDirty || catalogUserGroupDirty ? (
-                    t('settings.save')
-                  ) : (
-                    t('settings.fixPermission')
-                  )
-                ) : isCreate ? (
-                  t('settings.saveAndCreate')
-                ) : (
-                  t('settings.save')
-                )}
-              </Button>
-              {savedAt && !dirty && !saving ? (
-                <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
-                  <CheckCircle2 className="size-3.5 text-(--success)" />
-                  {t('settings.saved')}
-                </span>
+              {mode === 'existing' && catalogsError ? (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertTitle>{t('settings.catalogLoadFailed')}</AlertTitle>
+                  <AlertDescription>{catalogsError}</AlertDescription>
+                </Alert>
               ) : null}
-            </div>
 
-            {errorMessage ? (
-              <Alert variant="destructive">
-                <AlertCircle />
-                <AlertDescription>{errorMessage}</AlertDescription>
-              </Alert>
-            ) : null}
+              {!medallionValid ? (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{t('settings.medallion.invalid')}</AlertDescription>
+                </Alert>
+              ) : null}
 
-            {provisionMessages ? (
-              <Alert variant={SEVERITY_VARIANT[provisionMessages.severity]}>
-                {SEVERITY_ICON[provisionMessages.severity]()}
-                <AlertTitle>{t(SEVERITY_TITLE_KEY[provisionMessages.severity])}</AlertTitle>
-                <AlertDescription>
-                  <ul className="list-disc pl-4 text-xs">
-                    {provisionMessages.lines.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                  {provisionMessages.remediation ? (
-                    <pre className="bg-muted text-muted-foreground mt-2 overflow-auto rounded p-2 text-xs">
-                      {provisionMessages.remediation}
-                    </pre>
-                  ) : null}
-                </AlertDescription>
-              </Alert>
-            ) : null}
-          </FieldGroup>
-        </CardContent>
-      </Card>
-    </form>
+              {!catalogUserGroupValid ? (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{t('settings.catalogUserGroupInvalid')}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              <div className="flex items-center gap-3">
+                <Button
+                  type="submit"
+                  disabled={submitDisabled}
+                  className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
+                >
+                  {saving ? (
+                    <>
+                      <Spinner /> {t('common.saving')}
+                    </>
+                  ) : hasConfiguredCatalog ? (
+                    dirty ? (
+                      t('settings.save')
+                    ) : (
+                      t('settings.fixPermission')
+                    )
+                  ) : isCreate ? (
+                    t('settings.saveAndCreate')
+                  ) : (
+                    t('settings.save')
+                  )}
+                </Button>
+                {savedAt && !dirty && !saving ? (
+                  <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
+                    <CheckCircle2 className="size-3.5 text-(--success)" />
+                    {t('settings.saved')}
+                  </span>
+                ) : null}
+              </div>
+
+              {errorMessage ? (
+                <Alert variant="destructive">
+                  <AlertCircle />
+                  <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              ) : null}
+
+              {provisionMessages ? (
+                <Alert variant={SEVERITY_VARIANT[provisionMessages.severity]}>
+                  {SEVERITY_ICON[provisionMessages.severity]()}
+                  <AlertTitle>{t(SEVERITY_TITLE_KEY[provisionMessages.severity])}</AlertTitle>
+                  <AlertDescription>
+                    <ul className="list-disc pl-4 text-xs">
+                      {provisionMessages.lines.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                    {provisionMessages.remediation ? (
+                      <pre className="bg-muted text-muted-foreground mt-2 overflow-auto rounded p-2 text-xs">
+                        {provisionMessages.remediation}
+                      </pre>
+                    ) : null}
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </FieldGroup>
+          </CardContent>
+        </Card>
+      </form>
+      <PipelineRunPromptModal
+        open={pipelineRunModalOpen}
+        runJob={runSharedJob}
+        onClose={() => {
+          setPipelineRunModalOpen(false);
+          runSharedJob.reset();
+        }}
+      />
+    </>
+  );
+}
+
+function PipelineRunPromptModal({
+  open,
+  runJob,
+  onClose,
+}: {
+  open: boolean;
+  runJob: ReturnType<typeof useRunSharedTransformationJob>;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !runJob.isPending) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, open, runJob.isPending]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
+      role="presentation"
+      onMouseDown={() => {
+        if (!runJob.isPending) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pipeline-run-prompt-title"
+        className="bg-background border-border grid w-full max-w-xl gap-4 rounded-lg border p-5 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 id="pipeline-run-prompt-title" className="text-base font-semibold">
+              {t('settings.pipelineChangedTitle')}
+            </h3>
+            <p className="text-muted-foreground mt-1 mb-0 text-sm">
+              {t('settings.pipelineChangedDesc')}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors disabled:opacity-50"
+            aria-label={t('common.close')}
+            onClick={onClose}
+            disabled={runJob.isPending}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <Alert>
+          <Info />
+          <AlertDescription>{t('settings.pipelineChangedNotice')}</AlertDescription>
+        </Alert>
+
+        {runJob.data ? (
+          <Alert>
+            <CheckCircle2 />
+            <AlertDescription>
+              {t('settings.pipelineRunStarted', {
+                jobId: String(runJob.data.jobId),
+                runId: String(runJob.data.runId),
+              })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {runJob.error ? (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{messageOf(runJob.error)}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose} disabled={runJob.isPending}>
+            {t('common.close')}
+          </Button>
+          <Button type="button" onClick={() => runJob.mutate()} disabled={runJob.isPending}>
+            {runJob.isPending ? <Spinner /> : <Play />}
+            {t('settings.runPipelineJob')}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -398,7 +507,11 @@ function buildProvisionMessages(
   }
   for (const s of MEDALLION_SCHEMAS) {
     if (p.schemasEnsured[s] === 'error') {
-      lines.push(t('settings.provisionSchemaFailed', { schema: s }));
+      lines.push(
+        t('settings.provisionSchemaFailed', {
+          schema: schemaNames[MEDALLION_SCHEMA_SETTING_KEYS[s]],
+        }),
+      );
     }
   }
 
@@ -408,7 +521,10 @@ function buildProvisionMessages(
       scope: t('settings.provisionScopeUsersCatalog', { group: catalogUserGroup }),
       status: p.grants.usersCatalog,
     },
-    ...MEDALLION_SCHEMAS.map((s) => ({ scope: s, status: p.grants[s] })),
+    ...MEDALLION_SCHEMAS.map((s) => ({
+      scope: schemaNames[MEDALLION_SCHEMA_SETTING_KEYS[s]],
+      status: p.grants[s],
+    })),
   ];
   const grantFailures = grantEntries.filter((e) => e.status.startsWith('error:'));
   const grantSkips = grantEntries.filter((e) => e.status.startsWith('skipped:'));

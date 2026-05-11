@@ -5,10 +5,13 @@ import {
   CATALOG_SETTING_KEY,
   catalogUserGroupFromSettings,
   medallionSchemaNamesFromSettings,
+  MEDALLION_SCHEMAS,
   type Env,
 } from '@finlake/shared';
 import { CatalogServiceError, provisionCatalog } from '../services/catalogs.js';
 import { logger } from '../config/logger.js';
+import { syncSharedFocusPipeline } from '../services/dataSourceSetup.js';
+import { DataSourceSetupError } from '../services/dataSourceErrors.js';
 
 const PrefsBodySchema = z.object({
   currency: z.string().min(3).max(8).optional(),
@@ -58,11 +61,10 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
         return;
       }
 
+      const previousSettings = settingsToRecord(await db.repos.appSettings.list());
       const newCatalog = parsed.data.settings[CATALOG_SETTING_KEY]?.trim();
-      const previousCatalog =
-        newCatalog !== undefined
-          ? ((await db.repos.appSettings.get(CATALOG_SETTING_KEY))?.value?.trim() ?? '')
-          : '';
+      const previousCatalog = previousSettings[CATALOG_SETTING_KEY]?.trim() ?? '';
+      const previousSchemas = medallionSchemaNamesFromSettings(previousSettings);
 
       // Persist settings before provisioning. If provisionCatalog fails below,
       // the catalog name stays saved so the user can retry via "Fix permission"
@@ -70,28 +72,56 @@ export function appSettingsRouter(db: DatabaseClient, env: Env): Router {
       for (const [key, value] of Object.entries(parsed.data.settings)) {
         await db.repos.appSettings.upsert(key, value);
       }
-      const settings = settingsToRecord(await db.repos.appSettings.list());
+      const settings = { ...previousSettings, ...parsed.data.settings };
+      const catalog = (settings[CATALOG_SETTING_KEY] ?? '').trim();
+      const medallionSchemas = medallionSchemaNamesFromSettings(settings);
 
-      const hasCatalog = newCatalog !== undefined && newCatalog.length > 0;
+      const hasCatalog = catalog.length > 0;
       const shouldProvision = hasCatalog && parsed.data.provision !== undefined;
-      const catalogChanged = hasCatalog && newCatalog !== previousCatalog;
-      if (!catalogChanged && !shouldProvision) {
+      const catalogChanged = newCatalog !== undefined && catalog !== previousCatalog;
+      const schemaChanged = MEDALLION_SCHEMAS.some(
+        (layer) => medallionSchemas[layer] !== previousSchemas[layer],
+      );
+      if (!hasCatalog || (!catalogChanged && !schemaChanged && !shouldProvision)) {
         res.json({ settings });
         return;
       }
 
       try {
-        const provision = await provisionCatalog(env, req.user?.accessToken, newCatalog, {
-          createIfMissing: parsed.data.provision?.createIfMissing,
-          schemaNames: medallionSchemaNamesFromSettings(settings),
-          catalogUserGroup: catalogUserGroupFromSettings(settings),
-        });
-        res.json({ settings, provision });
+        const needPipelineSync = catalogChanged || schemaChanged;
+        const [provision, enabledSources] = await Promise.all([
+          provisionCatalog(env, req.user?.accessToken, catalog, {
+            createIfMissing: parsed.data.provision?.createIfMissing,
+            schemaNames: medallionSchemas,
+            catalogUserGroup: catalogUserGroupFromSettings(settings),
+          }),
+          needPipelineSync
+            ? db.repos.dataSources.list().then((s) => s.filter((src) => src.enabled))
+            : Promise.resolve([]),
+        ]);
+        let pipelineSynced = false;
+        if (needPipelineSync && enabledSources.length > 0) {
+          await syncSharedFocusPipeline(env, db, enabledSources, {
+            catalog,
+            silverSchema: medallionSchemas.silver,
+            goldSchema: medallionSchemas.gold,
+          });
+          pipelineSynced = true;
+        }
+        res.json({ settings, provision, pipelineSynced });
       } catch (err) {
         if (err instanceof CatalogServiceError) {
           logger.warn(
-            { err, catalog: newCatalog, status: err.statusCode },
+            { err, catalog, status: err.statusCode },
             'provisionCatalog precondition failed; settings persisted without provisioning',
+          );
+          res.status(err.statusCode).json({ error: { message: err.message }, settings });
+          return;
+        }
+        if (err instanceof DataSourceSetupError) {
+          logger.warn(
+            { err, catalog, status: err.statusCode },
+            'settings persisted and catalog provisioned but shared pipeline refresh failed',
           );
           res.status(err.statusCode).json({ error: { message: err.message }, settings });
           return;

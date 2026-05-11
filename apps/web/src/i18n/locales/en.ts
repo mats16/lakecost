@@ -259,7 +259,7 @@ export const en = {
     provisionWarning: 'Saved with warnings',
     provisionFailed: 'Provisioning had errors',
     provisionAllOk:
-      'Catalog "{name}" already had bronze/silver/gold, service principal grants, and reader group catalog/schema grants in place.',
+      'Catalog "{name}" already had the configured schemas, service principal grants, and reader group catalog/schema grants in place.',
     provisionAwsCredentialNote:
       'AWS Storage Credential and IAM trust policy validation runs from the AWS data source setup, not this catalog permission action.',
     provisionCatalogCreated: 'Created catalog "{name}".',
@@ -267,6 +267,13 @@ export const en = {
     provisionGrantFailed: 'GRANT for {scope} failed: {message}',
     provisionScopeCatalog: 'catalog',
     provisionScopeUsersCatalog: '{group} catalog access',
+    pipelineChangedTitle: 'Pipeline updated',
+    pipelineChangedDesc:
+      'The shared Lakeflow pipeline now points at the updated catalog and schema settings.',
+    pipelineChangedNotice:
+      'Existing tables are not regenerated until the job runs again. Run the job now to create or refresh tables in the new location.',
+    runPipelineJob: 'Run job',
+    pipelineRunStarted: 'Run #{runId} started for job #{jobId}.',
     medallion: {
       schemaLabel: 'Schema names',
       goldLabel: 'Gold',

@@ -50,6 +50,12 @@ export const TransformationPipelineSharedSchema = z.object({
 });
 export type TransformationPipelineShared = z.infer<typeof TransformationPipelineSharedSchema>;
 
+export const TransformationSharedRunResultSchema = z.object({
+  jobId: z.number().int().positive(),
+  runId: z.number().int().positive(),
+});
+export type TransformationSharedRunResult = z.infer<typeof TransformationSharedRunResultSchema>;
+
 export const TransformationResourceSchema = z.object({
   resourceType: z.enum(['job', 'pipeline']),
   resourceId: z.string(),

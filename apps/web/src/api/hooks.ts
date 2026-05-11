@@ -30,6 +30,7 @@ import type {
   StorageCredentialListResponse,
   TransformationPipelineShared,
   TransformationPipelinesResponse,
+  TransformationSharedRunResult,
   UsageBySkuRow,
   UsageDailyResponse,
   UsageTopWorkloadRow,
@@ -186,6 +187,7 @@ export interface AppSettingsResponse {
 
 export interface AppSettingsUpdateResponse extends AppSettingsResponse {
   provision?: ProvisionResult;
+  pipelineSynced?: boolean;
 }
 
 export interface UpdateAppSettingsArgs {
@@ -213,6 +215,10 @@ export function useUpdateAppSettings() {
       qc.setQueryData(['appSettings'], { settings: data.settings });
       if (data.provision?.catalogCreated) {
         qc.invalidateQueries({ queryKey: ['catalogs'] });
+      }
+      if (data.pipelineSynced) {
+        qc.invalidateQueries({ queryKey: ['transformations'] });
+        qc.invalidateQueries({ queryKey: ['overview'] });
       }
     },
   });
@@ -481,6 +487,20 @@ export function useUpdateTransformationSchedule() {
       apiFetch<TransformationPipelineShared>('/api/transformations/shared-schedule', {
         method: 'PATCH',
         body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['transformations'] });
+    },
+  });
+}
+
+export function useRunSharedTransformationJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<TransformationSharedRunResult>('/api/transformations/shared-run', {
+        method: 'POST',
+        body: JSON.stringify({}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transformations'] });

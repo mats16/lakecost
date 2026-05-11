@@ -8,6 +8,7 @@ import {
   updateSharedTransformationSchedule,
 } from '../services/transformationPipelines.js';
 import { DataSourceSetupError } from '../services/dataSourceErrors.js';
+import { runSharedFocusJob } from '../services/dataSourceSetup.js';
 
 const ScheduleBodySchema = z.object({
   cronExpression: z.string().min(1).max(120),
@@ -37,6 +38,18 @@ export function transformationsRouter(db: DatabaseClient, env: Env): Router {
         return;
       }
       res.json(await updateSharedTransformationSchedule(db, env, parsed.data));
+    } catch (err) {
+      if (err instanceof DataSourceSetupError) {
+        res.status(err.statusCode).json({ error: { message: err.message } });
+        return;
+      }
+      next(err);
+    }
+  });
+
+  router.post('/shared-run', async (_req, res, next) => {
+    try {
+      res.json(await runSharedFocusJob(env, db));
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
         res.status(err.statusCode).json({ error: { message: err.message } });

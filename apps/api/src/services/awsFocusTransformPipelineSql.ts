@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { IDENT_RE, quoteIdent } from '@finlake/shared';
+import { IDENT_RE, MEDALLION_SCHEMA_DEFAULTS, quoteIdent } from '@finlake/shared';
 
 export const AWS_FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const AWS_FOCUS_S3_BUCKET_PARAMETER = 's3_bucket';
@@ -60,7 +60,7 @@ export function buildAwsFocusSilverPipelineSql(opts: {
     opts.s3Bucket,
     opts.s3Prefix,
     opts.exportName,
-    'gold',
+    MEDALLION_SCHEMA_DEFAULTS.gold,
   );
   return silverTemplate
     .replaceAll('${table_name}', quoteIdent(opts.tableName))
