@@ -23,7 +23,7 @@ import type {
 } from './repositories/index.js';
 import { ensureParentDir } from './paths.js';
 import { logger } from './logger.js';
-import type { Budget, CreateBudgetInput, SetupCheckResult } from '@lakecost/shared';
+import type { Budget, CreateBudgetInput, SetupCheckResult } from '@finlake/shared';
 
 type Db = LibSQLDatabase<typeof s>;
 

@@ -1,4 +1,4 @@
-import type { SetupCheckResult } from '@lakecost/shared';
+import type { SetupCheckResult } from '@finlake/shared';
 import { Alert, AlertDescription, AlertTitle } from '@databricks/appkit-ui/react';
 import { CheckCircle2, AlertCircle, AlertTriangle, HelpCircle } from 'lucide-react';
 import { CodeBlock } from '../../components/CodeBlock';

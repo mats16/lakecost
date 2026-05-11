@@ -1,6 +1,6 @@
 import { loadEnv } from './config/env.js';
 import { logger } from './config/logger.js';
-import { createDatabaseClient } from '@lakecost/db';
+import { createDatabaseClient } from '@finlake/db';
 import { buildApp } from './app.js';
 
 async function main() {
@@ -12,7 +12,7 @@ async function main() {
   const app = await buildApp({ env, db });
   const port = env.DATABRICKS_APP_PORT ?? env.PORT;
   app.listen(port, '0.0.0.0', () => {
-    logger.info({ port, backend: db.backend, nodeEnv: env.NODE_ENV }, 'lakecost api listening');
+    logger.info({ port, backend: db.backend, nodeEnv: env.NODE_ENV }, 'finlake api listening');
   });
 }
 

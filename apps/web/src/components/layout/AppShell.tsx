@@ -55,11 +55,12 @@ const INFORM: NavGroup = {
 const CONFIGURE: NavGroup = {
   labelKey: 'nav.configure',
   icon: Bolt,
-  matchPrefix: '/configure',
+  matchPrefix: '/data-sources',
   items: [
-    { to: '/configure/data-sources', labelKey: 'nav.dataSources' },
-    { to: '/configure/transformations', labelKey: 'nav.transformations' },
-    { to: '/configure/catalog', labelKey: 'nav.configureCatalog' },
+    { to: '/data-sources', labelKey: 'nav.dataSources' },
+    { to: '/transformations', labelKey: 'nav.transformations' },
+    { to: '/credentials', labelKey: 'nav.credentials' },
+    { to: '/catalog', labelKey: 'nav.configureCatalog' },
   ],
 };
 
@@ -92,7 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const catalogName = appSettings.data?.settings.catalog_name?.trim() || null;
   const databricksItems = buildDatabricksItems(catalogName);
   const onInformRoute = location.pathname.startsWith(INFORM.matchPrefix);
-  const onConfigureRoute = location.pathname.startsWith(CONFIGURE.matchPrefix);
+  const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname.startsWith(item.to));
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
 
@@ -165,7 +166,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <div className="nav-group-row">
               <NavLink
-                to={CONFIGURE.items[0]?.to ?? '/configure/data-sources'}
+                to={CONFIGURE.items[0]?.to ?? '/data-sources'}
                 className={() => (onConfigureRoute ? 'group-head active' : 'group-head')}
               >
                 <CONFIGURE.icon className="nav-icon" aria-hidden="true" />

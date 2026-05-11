@@ -1,4 +1,5 @@
 import {
+  CATALOG_USER_GROUP_DEFAULT,
   MEDALLION_SCHEMAS,
   quoteIdent,
   quotePrincipal,
@@ -8,7 +9,7 @@ import {
   type MedallionSchema,
   type ProvisionResult,
   type SchemaEnsureStatus,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import {
   buildUserExecutor,
@@ -77,13 +78,15 @@ export class CatalogServiceError extends WorkspaceServiceError {}
 interface ProvisionOptions {
   createIfMissing?: boolean;
   schemaNames?: Partial<Record<MedallionSchema, string>>;
+  catalogUserGroup?: string;
 }
 
 /**
  * Provisions the medallion layout (`bronze` / `silver` / `gold`) under
  * `catalog`, optionally creating the catalog itself, and grants the App
  * Service Principal the access it needs to run the FOCUS pipeline:
- * USE/SELECT on medallion schemas and CREATE TABLE on silver/gold outputs.
+ * USE/SELECT on medallion schemas and CREATE TABLE / CREATE MATERIALIZED VIEW
+ * on silver/gold outputs.
  *
  * All DDL/GRANT statements are run **as the calling user** (OBO) so the SP
  * does not need any prior privileges. Schema creates and GRANTs are
@@ -150,10 +153,19 @@ export async function provisionCatalog(
   // Grants: catalog-level + per-schema all independent — issue concurrently.
   const grants: ProvisionResult['grants'] = {
     catalog: 'skipped:sp_id_not_configured',
+    usersCatalog: 'skipped:not_attempted',
     bronze: 'skipped:sp_id_not_configured',
     silver: 'skipped:sp_id_not_configured',
     gold: 'skipped:sp_id_not_configured',
   };
+  const catalogUserGroup = opts.catalogUserGroup?.trim() || CATALOG_USER_GROUP_DEFAULT;
+  const catalogUserGroupIdent = quotePrincipal(catalogUserGroup);
+  const userGrantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
+    {
+      key: 'usersCatalog',
+      sql: `GRANT BROWSE, USE CATALOG, USE SCHEMA, SELECT ON CATALOG ${catalogIdent} TO ${catalogUserGroupIdent}`,
+    },
+  ];
   if (sp.length > 0) {
     const spIdent = quotePrincipal(sp);
     const grantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
@@ -162,6 +174,7 @@ export async function provisionCatalog(
         key: layer,
         sql: `GRANT ${schemaGrantPrivileges(layer)} ON SCHEMA ${catalogIdent}.${ident} TO ${spIdent}`,
       })),
+      ...userGrantStmts,
     ];
     const grantResults = await Promise.all(grantStmts.map((g) => grant(executor, g.sql)));
     grantStmts.forEach((g, i) => {
@@ -173,6 +186,14 @@ export async function provisionCatalog(
     }
   } else {
     warnings.push('DATABRICKS_CLIENT_ID is not set — App Service Principal grants were skipped.');
+    const grantResults = await Promise.all(userGrantStmts.map((g) => grant(executor, g.sql)));
+    userGrantStmts.forEach((g, i) => {
+      grants[g.key] = grantResults[i]!
+        .status as ProvisionResult['grants'][keyof ProvisionResult['grants']];
+    });
+    for (const r of grantResults) {
+      if (r.warning) warnings.push(r.warning);
+    }
   }
 
   return {

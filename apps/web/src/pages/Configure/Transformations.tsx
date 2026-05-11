@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import type { TransformationPipelineRow, TransformationPipelineStatusDay } from '@lakecost/shared';
+import type { TransformationPipelineRow, TransformationPipelineStatusDay } from '@finlake/shared';
 import {
   AlertCircle,
   CheckCircle2,
@@ -84,7 +84,7 @@ export function Transformations() {
               <EmptyDescription>{t('transformations.emptyDesc')}</EmptyDescription>
             </EmptyHeader>
             <Button asChild variant="secondary">
-              <Link to="/configure/data-sources">{t('transformations.configureSources')}</Link>
+              <Link to="/data-sources">{t('transformations.configureSources')}</Link>
             </Button>
           </Empty>
         ) : (

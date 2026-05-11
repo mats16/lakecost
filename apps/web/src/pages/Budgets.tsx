@@ -29,11 +29,7 @@ import {
 import { AlertCircle, Plus, X } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { useBudgets, useCreateBudget } from '../api/hooks';
-import {
-  BudgetScopeTypeSchema,
-  BudgetPeriodSchema,
-  type CreateBudgetInput,
-} from '@lakecost/shared';
+import { BudgetScopeTypeSchema, BudgetPeriodSchema, type CreateBudgetInput } from '@finlake/shared';
 import { useCurrencyUsd, useI18n } from '../i18n';
 
 const SCOPE_OPTIONS = BudgetScopeTypeSchema.options;

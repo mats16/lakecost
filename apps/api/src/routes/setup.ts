@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import type { DatabaseClient } from '@lakecost/db';
-import type { Env, SetupCheckResult, SetupStateResponse, SetupStepId } from '@lakecost/shared';
+import type { DatabaseClient } from '@finlake/db';
+import type { Env, SetupCheckResult, SetupStateResponse, SetupStepId } from '@finlake/shared';
 import { runSetupCheck } from '../services/setupChecks.js';
 
 export function setupRouter(db: DatabaseClient, env: Env): Router {

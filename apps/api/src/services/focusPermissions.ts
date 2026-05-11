@@ -1,4 +1,4 @@
-import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
   focusSourceTables,
@@ -15,7 +15,7 @@ import {
   type DataSourceSystemTableGrantsResult,
   type Env,
   type FocusSourceTableRef,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import {
   buildAppExecutor,
   buildAppWorkspaceClient,
@@ -167,7 +167,7 @@ export async function preflightFocusDataSource(
     steps.push({
       label: 'Target catalog',
       status: 'error',
-      message: 'Main catalog is not configured in Configure -> Catalog.',
+      message: 'Main catalog is not configured in Catalog.',
     });
   }
   if (steps.some((s) => s.status === 'error')) {
@@ -385,7 +385,7 @@ async function assertSchemaPrivileges(
       .map(extractPrivilege)
       .filter((p): p is string => p !== null),
   );
-  const missing = ['USE SCHEMA', 'SELECT', 'CREATE TABLE'].filter(
+  const missing = ['USE SCHEMA', 'SELECT', 'CREATE TABLE', 'CREATE MATERIALIZED VIEW'].filter(
     (p) => !privileges.has(p) && !privileges.has('ALL PRIVILEGES'),
   );
   if (missing.length > 0) {

@@ -1,8 +1,8 @@
 import { Router, type Request, type RequestHandler } from 'express';
 import { createHash } from 'node:crypto';
-import type { DatabaseClient } from '@lakecost/db';
-import type { Env, UsageRange } from '@lakecost/shared';
-import { UsageRangeSchema } from '@lakecost/shared';
+import type { DatabaseClient } from '@finlake/db';
+import type { Env, UsageRange } from '@finlake/shared';
+import { UsageRangeSchema } from '@finlake/shared';
 import { buildUserExecutor } from '../services/statementExecution.js';
 import { UsageQueries } from '../services/usageQueries.js';
 

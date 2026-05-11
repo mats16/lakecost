@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import type { DatabaseClient } from '@lakecost/db';
-import type { Env } from '@lakecost/shared';
+import type { DatabaseClient } from '@finlake/db';
+import type { Env } from '@finlake/shared';
 
 export function healthRouter(db: DatabaseClient, env: Env): Router {
   const startedAt = Date.now();

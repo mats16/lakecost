@@ -1,5 +1,5 @@
 {
-  "name": "lakecost",
+  "name": "finlake",
   "version": "0.1.0",
   "private": true,
   "description": "Databricks Apps FinOps web app",
@@ -21,8 +21,8 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
-    "db:migrate": "npm run db:migrate --workspace=@lakecost/db",
-    "db:studio": "npm run db:studio --workspace=@lakecost/db"
+    "db:migrate": "npm run db:migrate --workspace=@finlake/db",
+    "db:studio": "npm run db:studio --workspace=@finlake/db"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.2",

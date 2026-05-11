@@ -1,4 +1,4 @@
-import type { Env, SetupCheckResult, SetupStepId } from '@lakecost/shared';
+import type { Env, SetupCheckResult, SetupStepId } from '@finlake/shared';
 import { buildUserExecutor } from './statementExecution.js';
 import { z } from 'zod';
 
@@ -103,7 +103,7 @@ async function checkPermissions(
   const warehouseGrantCli = `# Workspace-level: SQL Warehouse "Can use" permission
 databricks permissions set sql/warehouses ${warehouseId} \\
   --json '{"access_control_list":[{"user_name":"<your-user-or-group>","permission_level":"CAN_USE"}]}'`;
-  const warehouseTerraform = `resource "databricks_permissions" "lakecost_warehouse" {
+  const warehouseTerraform = `resource "databricks_permissions" "finlake_warehouse" {
   sql_endpoint_id = "${warehouseId}"
   access_control {
     user_name        = "<your-user-or-group>"
@@ -150,15 +150,15 @@ function checkAwsCur(input: Record<string, unknown>, checkedAt: string): SetupCh
       status: 'warning',
       message: 'AWS CUR bucket not provided yet',
       remediation: {
-        terraform: `resource "aws_cur_report_definition" "lakecost" {
-  report_name                = "lakecost-cur"
+        terraform: `resource "aws_cur_report_definition" "finlake" {
+  report_name                = "finlake-cur"
   time_unit                  = "DAILY"
   format                     = "Parquet"
   compression                = "Parquet"
   additional_schema_elements = ["RESOURCES"]
   s3_bucket                  = "<your-bucket>"
   s3_region                  = "us-east-1"
-  s3_prefix                  = "cur/lakecost"
+  s3_prefix                  = "cur/finlake"
   refresh_closed_reports     = true
   report_versioning          = "OVERWRITE_REPORT"
 }`,
@@ -170,7 +170,7 @@ function checkAwsCur(input: Record<string, unknown>, checkedAt: string): SetupCh
   return {
     step: 'awsCur',
     status: 'ok',
-    message: `Marked CUR bucket: ${bucket}. Validate the manifest exists in s3://${bucket}/cur/lakecost/`,
+    message: `Marked CUR bucket: ${bucket}. Validate the manifest exists in s3://${bucket}/cur/finlake/`,
     details: { bucket },
     checkedAt,
   };
@@ -185,7 +185,7 @@ function checkAzureExport(input: Record<string, unknown>, checkedAt: string): Se
       status: 'warning',
       message: 'Azure Cost Management Export not configured',
       remediation: {
-        cli: 'az costmanagement export create --name lakecost-export --scope <subscription> --storage-account <name> --container <container> --root-folder-path <path>',
+        cli: 'az costmanagement export create --name finlake-export --scope <subscription> --storage-account <name> --container <container> --root-folder-path <path>',
       },
       checkedAt,
     };

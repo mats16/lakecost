@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
-import { settingsToRecord, type DatabaseClient } from '@lakecost/db';
+import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
   DataSourceTableNameSchema,
@@ -10,7 +10,7 @@ import {
   type DataSource,
   type Env,
   type UsageRange,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import {
   buildUserExecutor,
   type SqlParam,

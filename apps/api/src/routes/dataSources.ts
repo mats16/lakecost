@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { DatabaseClient } from '@lakecost/db';
+import type { DatabaseClient } from '@finlake/db';
 import {
   DATA_SOURCE_TEMPLATES,
   DataSourceCreateBodySchema,
   DataSourceSetupBodySchema,
   DataSourceUpdateBodySchema,
   type Env,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import {
   runDataSourceJob,
   setupFocusDataSource,

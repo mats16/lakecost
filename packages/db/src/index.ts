@@ -1,4 +1,4 @@
-import type { Env } from '@lakecost/shared';
+import type { Env } from '@finlake/shared';
 import { logger } from './logger.js';
 import type { DatabaseClient } from './DatabaseClient.js';
 import { SqliteClient } from './SqliteClient.js';

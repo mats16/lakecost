@@ -1,5 +1,5 @@
 bundle:
-  name: lakecost
+  name: finlake
 
 include:
   - resources/*.yml

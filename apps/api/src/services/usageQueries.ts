@@ -9,7 +9,7 @@ import {
   type UsageDailyRow,
   type UsageRange,
   type UsageTopWorkloadRow,
-} from '@lakecost/shared';
+} from '@finlake/shared';
 import type { StatementExecutor } from './statementExecution.js';
 
 export class UsageQueries {

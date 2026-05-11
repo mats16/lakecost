@@ -1,4 +1,4 @@
-import type { Env } from '@lakecost/shared';
+import type { Env } from '@finlake/shared';
 import type { DatabaseClient } from './DatabaseClient.js';
 import type { Repositories } from './repositories/index.js';
 import { logger } from './logger.js';

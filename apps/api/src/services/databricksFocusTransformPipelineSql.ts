@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ACCOUNT_PRICES_DEFAULT, IDENT_RE, validateAccountPricesTable } from '@lakecost/shared';
+import { ACCOUNT_PRICES_DEFAULT, IDENT_RE, validateAccountPricesTable } from '@finlake/shared';
 
 export const FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const FOCUS_ACCOUNT_PRICES_PARAMETER = 'account_prices';

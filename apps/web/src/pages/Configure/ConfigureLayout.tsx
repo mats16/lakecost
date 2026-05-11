@@ -3,9 +3,10 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useI18n } from '../../i18n';
 
 const TABS = [
-  { to: '/configure/data-sources', labelKey: 'nav.dataSources' },
-  { to: '/configure/transformations', labelKey: 'nav.transformations' },
-  { to: '/configure/catalog', labelKey: 'nav.configureCatalog' },
+  { to: '/data-sources', labelKey: 'nav.dataSources' },
+  { to: '/transformations', labelKey: 'nav.transformations' },
+  { to: '/credentials', labelKey: 'nav.credentials' },
+  { to: '/catalog', labelKey: 'nav.configureCatalog' },
 ];
 
 export function ConfigureLayout({ children }: { children?: ReactNode }) {

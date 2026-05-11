@@ -2,8 +2,8 @@ import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import { pinoHttp } from 'pino-http';
-import type { Env } from '@lakecost/shared';
-import type { DatabaseClient } from '@lakecost/db';
+import type { Env } from '@finlake/shared';
+import type { DatabaseClient } from '@finlake/db';
 import { logger } from './config/logger.js';
 import { errorHandler } from './middlewares/error.js';
 import { oboMiddleware } from './middlewares/obo.js';
@@ -18,6 +18,7 @@ import { dataSourcesRouter } from './routes/dataSources.js';
 import { catalogsRouter } from './routes/catalogs.js';
 import { externalLocationsRouter } from './routes/externalLocations.js';
 import { storageCredentialsRouter } from './routes/storageCredentials.js';
+import { serviceCredentialsRouter } from './routes/serviceCredentials.js';
 import { transformationsRouter } from './routes/transformations.js';
 
 export interface AppDeps {
@@ -46,8 +47,9 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/data-sources', dataSourcesRouter(db, env));
   app.use('/api/transformations', transformationsRouter(db, env));
   app.use('/api/catalogs', catalogsRouter(env));
-  app.use('/api/external-locations', externalLocationsRouter(env));
   app.use('/api/storage-credentials', storageCredentialsRouter(env));
+  app.use('/api/unity-catalog/external-locations', externalLocationsRouter(env));
+  app.use('/api/unity-catalog/credentials', serviceCredentialsRouter(env));
 
   if (env.NODE_ENV === 'production') {
     const distDir = resolveWebDistDir(env);
