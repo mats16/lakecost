@@ -1,6 +1,8 @@
 import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
+  FOCUS_REFRESH_CRON_DEFAULT,
+  FOCUS_REFRESH_TIMEZONE_DEFAULT,
   focusSourceTables,
   focusViewFqn,
   medallionSchemaNamesFromSettings,
@@ -29,10 +31,7 @@ import {
 } from './databricksJobs.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import { readFocusConfig, resourceLabelBase, workspacePathFor } from './dataSourceSetup.js';
-import {
-  buildFocusPipelineConfiguration,
-  buildFocusPipelineSql,
-} from './databricksFocusTransformPipelineSql.js';
+import { buildFocusSilverPipelineSql } from './databricksFocusTransformPipelineSql.js';
 import { z } from 'zod';
 
 const RowSchema = z.record(z.unknown());
@@ -144,8 +143,6 @@ export async function preflightFocusDataSource(
   const accountPricesTable = body.accountPricesTable ?? existing.accountPricesTable;
   const tables = resolveSourceTables(accountPricesTable);
   const tableName = body.tableName ?? tableLeafName(source.tableName);
-  const cronExpression = (body.cronExpression ?? existing.cronExpression).trim();
-  const timezoneId = (body.timezoneId ?? existing.timezoneId).trim();
   const sp = (env.DATABRICKS_CLIENT_ID ?? '').trim();
   const steps: DataSourcePermissionStep[] = [];
   const warnings: string[] = [];
@@ -214,10 +211,8 @@ export async function preflightFocusDataSource(
   }
 
   try {
-    const pipelineSql = buildFocusPipelineSql({
-      catalog,
+    const pipelineSql = buildFocusSilverPipelineSql({
       table: tableName,
-      goldSchema: medallionSchemas.gold,
       accountPricesTable,
     });
     focusViewFqn({ catalog, schema: medallionSchemas.silver, table: tableName });
@@ -230,17 +225,11 @@ export async function preflightFocusDataSource(
     const scheduleParams: PipelineScheduleParams = {
       pipelineName: `${labelBase}-pipeline`,
       jobName: `${labelBase}-job`,
-      pipelineSql,
-      workspacePath,
+      files: [{ workspacePath, pipelineSql }],
       catalog,
       schema: medallionSchemas.silver,
-      configuration: buildFocusPipelineConfiguration(
-        tableName,
-        accountPricesTable,
-        medallionSchemas.gold,
-      ),
-      cronExpression,
-      timezoneId,
+      cronExpression: FOCUS_REFRESH_CRON_DEFAULT,
+      timezoneId: FOCUS_REFRESH_TIMEZONE_DEFAULT,
       servicePrincipalId: sp,
     };
     await pushStep(steps, 'Pipeline API dry run', async () => {
@@ -307,40 +296,39 @@ function resolveSourceTables(accountPricesTable: string): FocusSourceTableRef[] 
   }
 }
 
-function grantStatements(mode: 'grant' | 'revoke', tables: FocusSourceTableRef[], sp: string) {
+export function grantStatements(
+  mode: 'grant' | 'revoke',
+  tables: FocusSourceTableRef[],
+  sp: string,
+) {
   const principal = quotePrincipal(sp);
   const catalogSeen = new Set<string>();
-  const schemaSeen = new Set<string>();
   const stmts: Array<{ label: string; sql: string }> = [];
 
   for (const table of tables) {
-    if (!catalogSeen.has(table.catalog)) {
-      catalogSeen.add(table.catalog);
-      stmts.push({
-        label: `${mode.toUpperCase()} USE CATALOG ${table.catalog}`,
-        sql:
-          mode === 'grant'
-            ? `GRANT USE CATALOG ON CATALOG ${quoteIdent(table.catalog)} TO ${principal}`
-            : `REVOKE USE CATALOG ON CATALOG ${quoteIdent(table.catalog)} FROM ${principal}`,
-      });
-    }
-    const schemaKey = `${table.catalog}.${table.schema}`;
-    if (!schemaSeen.has(schemaKey)) {
-      schemaSeen.add(schemaKey);
-      stmts.push({
-        label: `${mode.toUpperCase()} USE SCHEMA ${schemaKey}`,
-        sql:
-          mode === 'grant'
-            ? `GRANT USE SCHEMA ON SCHEMA ${quoteIdent(table.catalog)}.${quoteIdent(table.schema)} TO ${principal}`
-            : `REVOKE USE SCHEMA ON SCHEMA ${quoteIdent(table.catalog)}.${quoteIdent(table.schema)} FROM ${principal}`,
-      });
-    }
+    if (catalogSeen.has(table.catalog)) continue;
+    catalogSeen.add(table.catalog);
+    const catalog = quoteIdent(table.catalog);
     stmts.push({
-      label: `${mode.toUpperCase()} SELECT ${table.fqn}`,
+      label: `${mode.toUpperCase()} USE CATALOG ${table.catalog}`,
       sql:
         mode === 'grant'
-          ? `GRANT SELECT ON TABLE ${focusViewFqn(table)} TO ${principal}`
-          : `REVOKE SELECT ON TABLE ${focusViewFqn(table)} FROM ${principal}`,
+          ? `GRANT USE CATALOG ON CATALOG ${catalog} TO ${principal}`
+          : `REVOKE USE CATALOG ON CATALOG ${catalog} FROM ${principal}`,
+    });
+    stmts.push({
+      label: `${mode.toUpperCase()} USE SCHEMA on catalog ${table.catalog}`,
+      sql:
+        mode === 'grant'
+          ? `GRANT USE SCHEMA ON CATALOG ${catalog} TO ${principal}`
+          : `REVOKE USE SCHEMA ON CATALOG ${catalog} FROM ${principal}`,
+    });
+    stmts.push({
+      label: `${mode.toUpperCase()} SELECT on catalog ${table.catalog}`,
+      sql:
+        mode === 'grant'
+          ? `GRANT SELECT ON CATALOG ${catalog} TO ${principal}`
+          : `REVOKE SELECT ON CATALOG ${catalog} FROM ${principal}`,
     });
   }
   return mode === 'grant' ? stmts : stmts.reverse();

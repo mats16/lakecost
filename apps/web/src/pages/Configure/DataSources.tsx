@@ -16,6 +16,13 @@ import {
 import { useI18n } from '../../i18n';
 import type { AwsFocusDraft } from './useAwsFocusForm';
 
+export interface DatabricksFocusDraft {
+  templateId: string;
+  name: string;
+  providerName: string;
+  tableName: string;
+}
+
 const FALLBACK_TEMPLATE: DataSourceTemplate = {
   id: 'custom',
   name: 'Custom data source',
@@ -56,6 +63,9 @@ export function DataSources() {
   const [filter, setFilter] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [draftAwsSource, setDraftAwsSource] = useState<AwsFocusDraft | null>(null);
+  const [draftDatabricksSource, setDraftDatabricksSource] = useState<DatabricksFocusDraft | null>(
+    null,
+  );
   const dataSources = useDataSources();
   const templates = useDataSourceTemplates();
   const createDs = useCreateDataSource();
@@ -86,16 +96,10 @@ export function DataSources() {
   }, [availableTemplates, filter, rows]);
 
   const badgesFor = (row: DataSource): TileBadge[] => {
-    if (row.jobId !== null) {
-      return [
-        row.enabled
-          ? { label: t('dataSources.badges.enabled'), variant: 'enabled' }
-          : { label: t('dataSources.badges.disabled'), variant: 'disabled' },
-      ];
-    }
     return [
-      { label: t('dataSources.badges.added'), variant: 'unknown' },
-      { label: t('dataSources.badges.setupRequired'), variant: 'unknown' },
+      row.enabled
+        ? { label: t('dataSources.badges.enabled'), variant: 'enabled' }
+        : { label: t('dataSources.badges.setupRequired'), variant: 'unknown' },
     ];
   };
 
@@ -114,7 +118,19 @@ export function DataSources() {
       : input.defaultTableName;
     if (tpl.id === 'aws') {
       setOpenId(null);
+      setDraftDatabricksSource(null);
       setDraftAwsSource({
+        templateId: tpl.id,
+        name: tpl.name,
+        providerName: input.providerName,
+        tableName,
+      });
+      return;
+    }
+    if (tpl.id === 'databricks_focus13') {
+      setOpenId(null);
+      setDraftAwsSource(null);
+      setDraftDatabricksSource({
         templateId: tpl.id,
         name: tpl.name,
         providerName: input.providerName,
@@ -130,6 +146,7 @@ export function DataSources() {
       enabled: false,
     });
     setDraftAwsSource(null);
+    setDraftDatabricksSource(null);
     setOpenId(created.id);
   };
 
@@ -201,12 +218,15 @@ export function DataSources() {
       <DataSourceDrawer
         dataSourceId={openId}
         draftAwsSource={draftAwsSource}
+        draftDatabricksSource={draftDatabricksSource}
         onClose={() => {
           setOpenId(null);
           setDraftAwsSource(null);
+          setDraftDatabricksSource(null);
         }}
         onCreated={(row) => {
           setDraftAwsSource(null);
+          setDraftDatabricksSource(null);
           setOpenId(row.id);
         }}
       />

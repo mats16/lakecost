@@ -5,10 +5,8 @@ export interface PipelineScheduleParams {
   pipelineName: string;
   /** Display name for the Databricks Job (e.g. `finops-databricks-focus-job`). */
   jobName: string;
-  /** DLT SQL body — must use `CREATE OR REFRESH` syntax (no catalog/schema). */
-  pipelineSql: string;
-  /** Absolute workspace path for the uploaded pipeline SQL source. */
-  workspacePath: string;
+  /** Pipeline SQL source files uploaded into the workspace. */
+  files: PipelineSourceFile[];
   /** Unity Catalog target catalog. */
   catalog: string;
   /** Unity Catalog target schema (e.g. `silver`). */
@@ -23,10 +21,17 @@ export interface PipelineScheduleParams {
   servicePrincipalId?: string;
 }
 
+export interface PipelineSourceFile {
+  /** Absolute workspace path for the uploaded pipeline SQL source. */
+  workspacePath: string;
+  /** DLT SQL body — must use `CREATE OR REFRESH` syntax. */
+  pipelineSql: string;
+}
+
 export interface UpsertPipelineScheduleResult {
   jobId: number;
   pipelineId: string;
-  workspacePath: string;
+  workspacePaths: string[];
   createdJob: boolean;
 }
 
@@ -77,7 +82,7 @@ async function upsertPipeline(
     development: false,
     continuous: false,
     channel: 'CURRENT',
-    libraries: [{ file: { path: params.workspacePath } }],
+    libraries: params.files.map((file) => ({ file: { path: file.workspacePath } })),
     ...(params.configuration ? { configuration: params.configuration } : {}),
     ...(params.servicePrincipalId
       ? { run_as: { service_principal_name: params.servicePrincipalId } }
@@ -115,7 +120,7 @@ export async function dryRunPipelineCreate(
     development: false,
     continuous: false,
     channel: 'CURRENT',
-    libraries: [{ file: { path: params.workspacePath } }],
+    libraries: params.files.map((file) => ({ file: { path: file.workspacePath } })),
     ...(params.configuration ? { configuration: params.configuration } : {}),
     ...(params.servicePrincipalId
       ? { run_as: { service_principal_name: params.servicePrincipalId } }
@@ -135,7 +140,9 @@ export async function upsertPipelineSchedule(
   params: PipelineScheduleParams,
   existing: { jobId: number | null; pipelineId: string | null },
 ): Promise<UpsertPipelineScheduleResult> {
-  await uploadPipelineFile(wc, params.workspacePath, params.pipelineSql);
+  await Promise.all(
+    params.files.map((file) => uploadPipelineFile(wc, file.workspacePath, file.pipelineSql)),
+  );
   const pipelineId = await upsertPipeline(wc, params, existing.pipelineId);
 
   const jobSettings = {
@@ -161,7 +168,7 @@ export async function upsertPipelineSchedule(
       return {
         jobId: existing.jobId,
         pipelineId,
-        workspacePath: params.workspacePath,
+        workspacePaths: params.files.map((file) => file.workspacePath),
         createdJob: false,
       };
     } catch (err) {
@@ -178,7 +185,7 @@ export async function upsertPipelineSchedule(
   return {
     jobId: created.job_id,
     pipelineId,
-    workspacePath: params.workspacePath,
+    workspacePaths: params.files.map((file) => file.workspacePath),
     createdJob: true,
   };
 }

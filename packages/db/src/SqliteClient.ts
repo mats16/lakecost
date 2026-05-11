@@ -114,8 +114,6 @@ export class SqliteClient implements DatabaseClient {
         provider_name TEXT NOT NULL,
         billing_account_id TEXT,
         table_name TEXT NOT NULL,
-        job_id INTEGER,
-        pipeline_id TEXT,
         focus_version TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
         config_json TEXT NOT NULL DEFAULT '{}',
@@ -136,7 +134,38 @@ export class SqliteClient implements DatabaseClient {
       statements.map((sql) => ({ sql, args: [] })),
       'write',
     );
+    await this.dropColumnIfExists('data_sources', 'job_id');
+    await this.dropColumnIfExists('data_sources', 'pipeline_id');
+    await this.migrateAppSettingKey('focus_pipeline_job_id', 'lakeflow_pipeline_job_id');
+    await this.migrateAppSettingKey('focus_pipeline_id', 'lakeflow_pipeline_id');
     logger.debug('SQLite schema bootstrap complete');
+  }
+
+  private async migrateAppSettingKey(oldKey: string, newKey: string): Promise<void> {
+    await this.raw.execute({
+      sql: `UPDATE app_settings
+        SET key = ?
+        WHERE key = ?
+          AND NOT EXISTS (SELECT 1 FROM app_settings WHERE key = ?)`,
+      args: [newKey, oldKey, newKey],
+    });
+    await this.raw.execute({
+      sql: 'DELETE FROM app_settings WHERE key = ?',
+      args: [oldKey],
+    });
+  }
+
+  private async dropColumnIfExists(table: string, column: string): Promise<void> {
+    try {
+      await this.raw.execute(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/no such column|unknown column/i.test(message)) return;
+      // Older SQLite/libSQL builds may not support DROP COLUMN. Existing
+      // columns are harmless because the repo no longer reads or writes them.
+      if (/syntax error|near "DROP"/i.test(message)) return;
+      throw err;
+    }
   }
 
   async healthCheck(): Promise<{ ok: true; backend: 'sqlite' }> {
@@ -405,8 +434,6 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
         providerName: input.providerName,
         billingAccountId: input.billingAccountId ?? null,
         tableName: input.tableName,
-        jobId: input.jobId ?? null,
-        pipelineId: input.pipelineId ?? null,
         focusVersion: input.focusVersion ?? null,
         enabled: input.enabled,
         configJson: JSON.stringify(input.config ?? {}),
@@ -426,8 +453,6 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     if (patch.providerName !== undefined) set.providerName = patch.providerName;
     if (patch.billingAccountId !== undefined) set.billingAccountId = patch.billingAccountId;
     if (patch.tableName !== undefined) set.tableName = patch.tableName;
-    if (patch.jobId !== undefined) set.jobId = patch.jobId;
-    if (patch.pipelineId !== undefined) set.pipelineId = patch.pipelineId;
     if (patch.focusVersion !== undefined) set.focusVersion = patch.focusVersion;
     if (patch.enabled !== undefined) set.enabled = patch.enabled;
     if (patch.config !== undefined) set.configJson = JSON.stringify(patch.config);
@@ -455,8 +480,6 @@ function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
     providerName: row.providerName,
     billingAccountId: row.billingAccountId,
     tableName: row.tableName,
-    jobId: row.jobId,
-    pipelineId: row.pipelineId,
     focusVersion: row.focusVersion,
     enabled: row.enabled,
     config: JSON.parse(row.configJson) as Record<string, unknown>,

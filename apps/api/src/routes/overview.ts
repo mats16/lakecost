@@ -79,41 +79,36 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
       const appSettings = settingsToRecord(await db.repos.appSettings.list());
       const catalog = (appSettings[CATALOG_SETTING_KEY] ?? '').trim();
       const goldSchema = medallionSchemaNamesFromSettings(appSettings).gold;
-      const daily: FocusDailyRow[] = [];
-      const services: FocusServiceRow[] = [];
-      const skus: FocusSkuRow[] = [];
-      const coverage: FocusCoverageRow[] = [];
       const errors: Array<{
         dataSourceId: number;
         name: string;
         tableName: string;
         message: string;
       }> = [];
-
-      await Promise.all(
-        sources.map(async (source) => {
-          const resolved = focusDailyTableName(source.tableName, catalog, goldSchema);
-          try {
-            const [d, svc, sk, cov] = await Promise.all([
-              queryDaily(executor, source, range, resolved.sql),
-              queryServices(executor, source, range, resolved.sql),
-              querySkus(executor, source, range, resolved.sql),
-              queryCoverage(executor, source, range, resolved.sql),
-            ]);
-            daily.push(...d);
-            services.push(...svc);
-            skus.push(...sk);
-            coverage.push(...cov);
-          } catch (err) {
-            errors.push({
-              dataSourceId: source.id,
-              name: source.name,
-              tableName: resolved.display,
-              message: (err as Error).message,
-            });
-          }
-        }),
-      );
+      const resolved = billingDailyTableName(catalog, goldSchema);
+      let daily: FocusDailyRow[] = [];
+      let services: FocusServiceRow[] = [];
+      let skus: FocusSkuRow[] = [];
+      let coverage: FocusCoverageRow[] = [];
+      if (sources.length > 0) {
+        const cte = joinedBillingRowsSql(sources, resolved.sql);
+        const params = baseParams(sources, range);
+        try {
+          [daily, services, skus, coverage] = await Promise.all([
+            queryDaily(executor, cte, params),
+            queryServices(executor, cte, params),
+            querySkus(executor, cte, params),
+            queryCoverage(executor, cte, params),
+          ]);
+        } catch (err) {
+          errors.push({
+            dataSourceId: 0,
+            name: resolved.display,
+            tableName: resolved.display,
+            message: (err as Error).message,
+          });
+        }
+      }
 
       res.json({
         sources: sources.map((source) => sourceSummary(source, catalog, goldSchema)),
@@ -146,131 +141,164 @@ function quoteTableName(value: string): string {
     .join('.');
 }
 
-function focusDailyTableName(
-  value: string,
+function billingDailyTableName(
   catalog?: string,
   goldSchema = 'gold',
 ): { display: string; sql: string } {
-  const parsed = DataSourceTableNameSchema.parse(value);
-  const parts = parsed.split('.');
-  const table = parts[parts.length - 1]!;
-  const dailyTable = table.endsWith('_daily') ? table : `${table}_daily`;
-  const dailyParts =
-    parts.length === 3
-      ? [parts[0]!, goldSchema, dailyTable]
-      : parts.length === 2
-        ? [goldSchema, dailyTable]
-        : catalog
-          ? [catalog, goldSchema, dailyTable]
-          : [dailyTable];
+  const dailyParts = catalog
+    ? [catalog, goldSchema, 'billing_daily']
+    : [goldSchema, 'billing_daily'];
   const display = dailyParts.join('.');
   return { display, sql: quoteTableName(display) };
 }
 
-function baseParams(source: DataSource, range: UsageRange): SqlParam[] {
+export function requestedSourcesSql(sources: DataSource[]): string {
+  return sources
+    .map(
+      (_source, i) => `
+  SELECT
+    CAST(:data_source_id_${i} AS BIGINT) AS data_source_id,
+    :provider_name_${i} AS provider_name,
+    :billing_account_id_${i} AS billing_account_id`,
+    )
+    .join('\n  UNION ALL\n');
+}
+
+export function baseParams(sources: DataSource[], range: UsageRange): SqlParam[] {
   return [
-    { name: 'data_source_id', value: source.id, type: 'INT' },
-    { name: 'provider_name', value: source.providerName, type: 'STRING' },
     { name: 'start_ts', value: range.start, type: 'TIMESTAMP' },
     { name: 'end_ts', value: range.end, type: 'TIMESTAMP' },
+    ...sources.flatMap((source, i) => [
+      { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
+      { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
+      {
+        name: `billing_account_id_${i}`,
+        value: source.billingAccountId,
+        type: 'STRING' as const,
+      },
+    ]),
   ];
+}
+
+export function joinedBillingRowsSql(sources: DataSource[], table: string): string {
+  return /* sql */ `
+WITH requested AS (
+${requestedSourcesSql(sources)}
+),
+matched AS (
+  SELECT
+    r.data_source_id,
+    r.provider_name AS source_provider_name,
+    b.*
+  FROM ${table} b
+  JOIN requested r
+    ON (
+      r.billing_account_id IS NOT NULL
+      AND b.BillingAccountId = r.billing_account_id
+    )
+    OR (
+      r.billing_account_id IS NULL
+      AND COALESCE(b.ProviderName, r.provider_name) = r.provider_name
+    )
+)
+`;
 }
 
 async function queryDaily(
   executor: StatementExecutor,
-  source: DataSource,
-  range: UsageRange,
-  table: string,
+  cte: string,
+  params: SqlParam[],
 ): Promise<FocusDailyRow[]> {
   return executor.run(
     /* sql */ `
+${cte}
 SELECT
-  :data_source_id AS data_source_id,
+  data_source_id,
   date_format(x_ChargeDate, 'yyyy-MM-dd') AS usage_date,
-  COALESCE(ProviderName, :provider_name) AS provider_name,
+  COALESCE(ProviderName, source_provider_name) AS provider_name,
   CAST(SUM(COALESCE(EffectiveCost, 0)) AS DOUBLE) AS cost_usd
-FROM ${table}
+FROM matched
 WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
   AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
 GROUP BY 1, 2, 3
 ORDER BY 2
 `,
-    baseParams(source, range),
+    params,
     FocusDailyRowSchema,
   );
 }
 
 async function queryServices(
   executor: StatementExecutor,
-  source: DataSource,
-  range: UsageRange,
-  table: string,
+  cte: string,
+  params: SqlParam[],
 ): Promise<FocusServiceRow[]> {
   return executor.run(
     /* sql */ `
+${cte}
 SELECT
-  :data_source_id AS data_source_id,
-  COALESCE(ProviderName, :provider_name) AS provider_name,
+  data_source_id,
+  COALESCE(ProviderName, source_provider_name) AS provider_name,
   COALESCE(ServiceName, ServiceCategory, 'Unknown') AS service_name,
   CAST(SUM(COALESCE(EffectiveCost, 0)) AS DOUBLE) AS cost_usd
-FROM ${table}
+FROM matched
 WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
   AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
 GROUP BY 1, 2, 3
 ORDER BY 4 DESC
 LIMIT 20
 `,
-    baseParams(source, range),
+    params,
     FocusServiceRowSchema,
   );
 }
 
 async function querySkus(
   executor: StatementExecutor,
-  source: DataSource,
-  range: UsageRange,
-  table: string,
+  cte: string,
+  params: SqlParam[],
 ): Promise<FocusSkuRow[]> {
   return executor.run(
     /* sql */ `
+${cte}
 SELECT
-  :data_source_id AS data_source_id,
-  COALESCE(ProviderName, :provider_name) AS provider_name,
+  data_source_id,
+  COALESCE(ProviderName, source_provider_name) AS provider_name,
   COALESCE(SkuId, SkuMeter, ServiceName, 'Unknown') AS sku_name,
   CAST(SUM(COALESCE(EffectiveCost, 0)) AS DOUBLE) AS cost_usd
-FROM ${table}
+FROM matched
 WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
   AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
 GROUP BY 1, 2, 3
 ORDER BY 4 DESC
 LIMIT 50
 `,
-    baseParams(source, range),
+    params,
     FocusSkuRowSchema,
   );
 }
 
 async function queryCoverage(
   executor: StatementExecutor,
-  source: DataSource,
-  range: UsageRange,
-  table: string,
+  cte: string,
+  params: SqlParam[],
 ): Promise<FocusCoverageRow[]> {
   return executor.run(
     /* sql */ `
+${cte}
 SELECT
-  :data_source_id AS data_source_id,
-  COALESCE(ProviderName, :provider_name) AS provider_name,
+  data_source_id,
+  COALESCE(ProviderName, source_provider_name) AS provider_name,
   CAST(COUNT(*) AS DOUBLE) AS row_count,
   CAST(0 AS DOUBLE) AS tagged_rows,
   CAST(0 AS DOUBLE) AS tag_coverage_pct,
   CAST(MAX(x_ChargeDate) AS STRING) AS last_charge_at
-FROM ${table}
+FROM matched
 WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
   AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
 GROUP BY 1, 2
 `,
-    baseParams(source, range),
+    params,
     FocusCoverageRowSchema,
   );
 }
@@ -281,7 +309,7 @@ function sourceSummary(source: DataSource, catalog?: string, goldSchema?: string
     templateId: source.templateId,
     name: source.name,
     providerName: source.providerName,
-    tableName: focusDailyTableName(source.tableName, catalog, goldSchema).display,
+    tableName: billingDailyTableName(catalog, goldSchema).display,
     focusVersion: source.focusVersion,
     updatedAt: source.updatedAt,
   };

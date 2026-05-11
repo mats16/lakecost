@@ -64,8 +64,6 @@ export const dataSources = sqliteTable(
     providerName: text('provider_name').notNull(),
     billingAccountId: text('billing_account_id'),
     tableName: text('table_name').notNull(),
-    jobId: integer('job_id'),
-    pipelineId: text('pipeline_id'),
     focusVersion: text('focus_version'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     configJson: text('config_json').notNull().default('{}'),

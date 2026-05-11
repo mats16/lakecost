@@ -11,7 +11,7 @@ import {
 import {
   runDataSourceJob,
   setupFocusDataSource,
-  teardownFocusDataSource,
+  syncSharedFocusPipeline,
 } from '../services/dataSourceSetup.js';
 import { DataSourceSetupError } from '../services/dataSourceErrors.js';
 
@@ -143,17 +143,15 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
         res.status(404).json({ error: { message: 'Not found' } });
         return;
       }
-      const { skippedTeardown } = await teardownFocusDataSource(
-        env,
-        req.user?.accessToken,
-        existing,
-      );
       await db.repos.dataSources.delete(idParse.data);
-      if (skippedTeardown) {
-        console.warn(
-          `[dataSources] Deleted DB row ${idParse.data} but skipped Databricks resource teardown (missing OBO token or DATABRICKS_HOST). ` +
-            `jobId=${existing.jobId}, pipelineId=${existing.pipelineId}`,
-        );
+      if (existing.enabled) {
+        try {
+          await syncSharedFocusPipeline(env, db);
+        } catch (err) {
+          console.warn(
+            `[dataSources] Deleted DB row ${idParse.data} but failed to refresh the shared pipeline: ${(err as Error).message}`,
+          );
+        }
       }
       res.status(204).end();
     } catch (err) {
@@ -183,7 +181,9 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
       res.json(result);
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
-        res.status(err.statusCode).json({ error: { message: err.message } });
+        res
+          .status(err.statusCode)
+          .json({ error: { message: err.message, step: err.step ?? null } });
         return;
       }
       next(err);

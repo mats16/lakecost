@@ -12,6 +12,7 @@ import {
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
+  Input,
   Skeleton,
   Table,
   TableBody,
@@ -20,7 +21,13 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import type { TransformationPipelineRow, TransformationPipelineStatusDay } from '@finlake/shared';
+import {
+  FOCUS_REFRESH_CRON_DEFAULT,
+  FOCUS_REFRESH_TIMEZONE_DEFAULT,
+  type TransformationResource,
+  type TransformationPipelineShared,
+  type TransformationPipelineStatusDay,
+} from '@finlake/shared';
 import {
   AlertCircle,
   CheckCircle2,
@@ -28,18 +35,19 @@ import {
   ExternalLink,
   Play,
   RefreshCcw,
-  UserRound,
   XCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useTransformationPipelines } from '../../api/hooks';
+import { useEffect, useState } from 'react';
+import { useTransformationPipelines, useUpdateTransformationSchedule } from '../../api/hooks';
 import { useI18n } from '../../i18n';
 import { messageOf } from './utils';
 
 export function Transformations() {
   const { t, locale } = useI18n();
   const pipelines = useTransformationPipelines();
-  const rows = pipelines.data?.rows ?? [];
+  const updateSchedule = useUpdateTransformationSchedule();
+  const resources = pipelines.data?.resources ?? [];
   const error = messageOf(pipelines.error);
 
   return (
@@ -77,7 +85,7 @@ export function Transformations() {
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
           </div>
-        ) : rows.length === 0 ? (
+        ) : resources.length === 0 ? (
           <Empty>
             <EmptyHeader>
               <EmptyTitle>{t('transformations.emptyTitle')}</EmptyTitle>
@@ -88,25 +96,43 @@ export function Transformations() {
             </Button>
           </Empty>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('transformations.columns.name')}</TableHead>
-                  <TableHead>{t('transformations.columns.source')}</TableHead>
-                  <TableHead>{t('transformations.columns.owner')}</TableHead>
-                  <TableHead>{t('transformations.columns.lastUpdate')}</TableHead>
-                  <TableHead className="text-right">
-                    {t('transformations.columns.status')}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <PipelineRow key={row.dataSourceId} row={row} locale={locale} />
-                ))}
-              </TableBody>
-            </Table>
+          <div className="grid gap-4">
+            {messageOf(updateSchedule.error) ? (
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertDescription>{messageOf(updateSchedule.error)}</AlertDescription>
+              </Alert>
+            ) : null}
+            {pipelines.data?.shared.jobId ? (
+              <ScheduleSection
+                shared={pipelines.data.shared}
+                onSave={(body) => updateSchedule.mutateAsync(body)}
+                saving={updateSchedule.isPending}
+              />
+            ) : null}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('transformations.columns.name')}</TableHead>
+                    <TableHead>{t('transformations.columns.type')}</TableHead>
+                    <TableHead>{t('transformations.columns.lastUpdate')}</TableHead>
+                    <TableHead className="text-right">
+                      {t('transformations.columns.status')}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {resources.map((resource) => (
+                    <ResourceRow
+                      key={`${resource.resourceType}:${resource.resourceId}`}
+                      resource={resource}
+                      locale={locale}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
       </CardContent>
@@ -114,52 +140,116 @@ export function Transformations() {
   );
 }
 
-function PipelineRow({ row, locale }: { row: TransformationPipelineRow; locale: 'en' | 'ja' }) {
+function ResourceRow({
+  resource,
+  locale,
+}: {
+  resource: TransformationResource;
+  locale: 'en' | 'ja';
+}) {
   const { t } = useI18n();
-  const owner = row.runAsUserName ?? row.runAs ?? row.createdBy;
-  const displayName = row.pipelineName ?? row.dataSourceName;
-  const lastUpdateTime = row.periodEndTime ?? row.periodStartTime ?? row.changeTime;
+  const lastUpdateTime = resource.periodEndTime ?? resource.periodStartTime ?? resource.changeTime;
 
   return (
     <TableRow>
       <TableCell>
         <div className="min-w-64">
-          {row.pipelineUrl ? (
+          {resource.url ? (
             <a
-              href={row.pipelineUrl}
+              href={resource.url}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1 font-medium text-sky-400 hover:text-sky-300"
             >
-              {displayName}
+              {resource.name}
               <ExternalLink className="h-3.5 w-3.5" />
             </a>
           ) : (
-            <span className="font-medium">{displayName}</span>
+            <span className="font-medium">{resource.name}</span>
           )}
+          <div className="text-muted-foreground mt-1 font-mono text-xs">{resource.resourceId}</div>
         </div>
       </TableCell>
       <TableCell>
-        <span className="text-muted-foreground text-sm">{row.tableName}</span>
-      </TableCell>
-      <TableCell>
-        <div className="flex min-w-44 items-center gap-2">
-          <UserRound className="text-muted-foreground h-4 w-4" />
-          <span className="truncate">{owner ?? t('transformations.unknown')}</span>
-        </div>
+        <span className="text-sm">
+          {resource.resourceType === 'job'
+            ? t('transformations.resourceTypes.job')
+            : t('transformations.resourceTypes.pipeline')}
+        </span>
       </TableCell>
       <TableCell>
         <div className="min-w-44">
           <div>{lastUpdateTime ? formatDateTime(lastUpdateTime, locale) : '-'}</div>
           <div className="text-muted-foreground mt-1 text-xs">
-            {row.durationSeconds !== null ? formatDuration(row.durationSeconds, locale) : '-'}
+            {resource.durationSeconds !== null
+              ? formatDuration(resource.durationSeconds, locale)
+              : '-'}
           </div>
         </div>
       </TableCell>
       <TableCell className="text-right">
-        <StatusDays days={row.statusDays} />
+        <StatusDays days={resource.statusDays} />
       </TableCell>
     </TableRow>
+  );
+}
+
+function ScheduleSection({
+  shared,
+  onSave,
+  saving,
+}: {
+  shared: TransformationPipelineShared;
+  onSave: (body: { cronExpression: string; timezoneId: string }) => Promise<unknown>;
+  saving: boolean;
+}) {
+  const { t } = useI18n();
+  const currentCronExpression = shared.cronExpression ?? '';
+  const currentTimezoneId = shared.timezoneId ?? '';
+  const [cronExpression, setCronExpression] = useState(currentCronExpression);
+  const [timezoneId, setTimezoneId] = useState(currentTimezoneId);
+  const dirty = cronExpression !== currentCronExpression || timezoneId !== currentTimezoneId;
+  const cronParts = cronExpression.trim().split(/\s+/).length;
+  const cronValid = cronParts >= 6 && cronParts <= 7;
+
+  useEffect(() => {
+    setCronExpression(currentCronExpression);
+    setTimezoneId(currentTimezoneId);
+  }, [currentCronExpression, currentTimezoneId]);
+
+  return (
+    <div className="border-border bg-background/35 grid gap-3 rounded-md border p-4">
+      <div>
+        <div className="text-sm font-medium">{t('transformations.schedule.title')}</div>
+        <div className="text-muted-foreground text-xs">{t('transformations.schedule.desc')}</div>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,1fr)_minmax(8rem,16rem)_auto] sm:items-end">
+        <label className="grid gap-1 text-xs">
+          <span className="text-muted-foreground">{t('transformations.schedule.cron')}</span>
+          <Input
+            value={cronExpression}
+            onChange={(event) => setCronExpression(event.target.value)}
+            placeholder={FOCUS_REFRESH_CRON_DEFAULT}
+          />
+        </label>
+        <label className="grid gap-1 text-xs">
+          <span className="text-muted-foreground">{t('transformations.schedule.timezone')}</span>
+          <Input
+            value={timezoneId}
+            onChange={(event) => setTimezoneId(event.target.value)}
+            placeholder={FOCUS_REFRESH_TIMEZONE_DEFAULT}
+          />
+        </label>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={saving || !dirty || !cronValid || !timezoneId.trim()}
+          onClick={() => onSave({ cronExpression, timezoneId })}
+        >
+          {t('transformations.schedule.save')}
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -57,20 +57,13 @@ export interface DataSourceValue {
   providerName: string;
   billingAccountId: string | null;
   tableName: string;
-  jobId: number | null;
-  pipelineId: string | null;
   focusVersion: string | null;
   enabled: boolean;
   config: Record<string, unknown>;
   updatedAt: string;
 }
 
-export type DataSourceCreateInput = Omit<
-  DataSourceValue,
-  'id' | 'updatedAt' | 'jobId' | 'pipelineId' | 'focusVersion'
-> & {
-  jobId?: number | null;
-  pipelineId?: string | null;
+export type DataSourceCreateInput = Omit<DataSourceValue, 'id' | 'updatedAt' | 'focusVersion'> & {
   focusVersion?: string | null;
 };
 

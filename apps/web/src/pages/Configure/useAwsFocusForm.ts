@@ -17,8 +17,7 @@ import {
 } from '../../api/hooks';
 import {
   CATALOG_SETTING_KEY,
-  FOCUS_REFRESH_CRON_DEFAULT,
-  FOCUS_REFRESH_TIMEZONE_DEFAULT,
+  LAKEFLOW_PIPELINE_SETTING_KEYS,
   externalLocationNameForBucket,
   finlakeAwsResourceTags,
   isValidS3BucketName,
@@ -28,7 +27,6 @@ import {
   s3BucketFromUrl,
   s3ExportPath,
   storageCredentialNameForBucket,
-  tableLeafName,
   ucNameSuffixFromBucket,
   unquotedFqn,
   type DataSource,
@@ -37,10 +35,10 @@ import {
   type ExternalLocationSummary,
   type StorageCredentialSummary,
 } from '@finlake/shared';
-import { messageOf } from './utils';
+import { messageOf, numberSetting } from './utils';
 
 const AWS_FOCUS_12_QUERY_STATEMENT =
-  'SELECT AvailabilityZone, BilledCost, BillingAccountId, BillingAccountName, BillingAccountType, BillingCurrency, BillingPeriodEnd, BillingPeriodStart, CapacityReservationId, CapacityReservationStatus, ChargeCategory, ChargeClass, ChargeDescription, ChargeFrequency, ChargePeriodEnd, ChargePeriodStart, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountQuantity, CommitmentDiscountStatus, CommitmentDiscountType, CommitmentDiscountUnit, ConsumedQuantity, ConsumedUnit, ContractedCost, ContractedUnitPrice, EffectiveCost, InvoiceId, InvoiceIssuerName, ListCost, ListUnitPrice, PricingCategory, PricingCurrency, PricingCurrencyContractedUnitPrice, PricingCurrencyEffectiveCost, PricingCurrencyListUnitPrice, PricingQuantity, PricingUnit, ProviderName, PublisherName, RegionId, RegionName, ResourceId, ResourceName, ResourceType, ServiceCategory, ServiceName, ServiceSubcategory, SkuId, SkuMeter, SkuPriceDetails, SkuPriceId, SubAccountId, SubAccountName, SubAccountType, Tags, x_Discounts, x_Operation, x_ServiceCode FROM FOCUS_1_2_AWS';
+  'SELECT AvailabilityZone, BilledCost, BillingAccountId, BillingAccountName, BillingAccountType, BillingCurrency, BillingPeriodEnd, BillingPeriodStart, CapacityReservationId, CapacityReservationStatus, ChargeCategory, ChargeClass, ChargeDescription, ChargeFrequency, ChargePeriodEnd, ChargePeriodStart, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountQuantity, CommitmentDiscountStatus, CommitmentDiscountType, CommitmentDiscountUnit, ConsumedQuantity, ConsumedUnit, ContractedCost, ContractedUnitPrice, EffectiveCost, InvoiceId, InvoiceIssuerName, ListCost, ListUnitPrice, PricingCategory, PricingCurrency, PricingCurrencyContractedUnitPrice, PricingCurrencyEffectiveCost, PricingCurrencyListUnitPrice, PricingQuantity, PricingUnit, ProviderName, PublisherName, RegionId, RegionName, ResourceId, ResourceName, ResourceType, ServiceCategory, ServiceName, ServiceSubcategory, SkuId, SkuMeter, SkuPriceDetails, SkuPriceId, SubAccountId, SubAccountName, SubAccountType, Tags FROM FOCUS_1_2_AWS';
 const AWS_BCM_REGION = 'us-east-1';
 const AWS_EXPORT_NAME_DEFAULT = 'finlake-focus-1-2';
 const AWS_EXPORT_PREFIX_DEFAULT = 'bcm-data-export';
@@ -209,6 +207,10 @@ function databricksJobUrl(workspaceUrl: string | null, jobId: number): string | 
   return workspaceUrl ? `${workspaceUrl}/jobs/${jobId}` : null;
 }
 
+function awsBillingTableName(accountId: string | null | undefined): string {
+  return accountId && /^\d{12}$/.test(accountId) ? `aws_billing_${accountId}` : 'aws_billing';
+}
+
 function awsDataExportBucketPolicyStatement(bucket: string, accountId: string) {
   return {
     Sid: AWS_EXPORT_BUCKET_POLICY_SID,
@@ -316,9 +318,6 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   const remoteS3Prefix = configString(remoteConfig, 's3Prefix');
   const remoteCatalog = settings.data?.settings[CATALOG_SETTING_KEY] ?? '';
   const silverSchema = medallionSchemaNamesFromSettings(settings.data?.settings ?? {}).silver;
-  const remoteCron = configString(remoteConfig, 'cronExpression') || FOCUS_REFRESH_CRON_DEFAULT;
-  const remoteTz = configString(remoteConfig, 'timezoneId') || FOCUS_REFRESH_TIMEZONE_DEFAULT;
-
   // --- Local form state ---
   const [awsAccountId, setAwsAccountId] = useState(remoteAwsAccountId);
   const [externalLocationName, setExternalLocationName] = useState(remoteExternalLocationName);
@@ -331,11 +330,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   );
   const [createBucketIfMissing, setCreateBucketIfMissing] = useState(true);
   const [s3Prefix, setS3Prefix] = useState(normalizeS3Prefix(remoteS3Prefix));
-  const [tableName, setTableName] = useState(
-    tableLeafName(row?.tableName ?? options.draft?.tableName ?? 'aws_billing'),
-  );
-  const [cron, setCron] = useState(remoteCron);
-  const [timezone, setTimezone] = useState(remoteTz);
+  const [tableName, setTableName] = useState(awsBillingTableName(remoteAwsAccountId));
   const [result, setResult] = useState<DataSourceSetupResult | null>(null);
   const [exportArn, setExportArn] = useState(configString(remoteConfig, 'exportArn'));
   const [exportError, setExportError] = useState<string | null>(null);
@@ -363,12 +358,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
       ),
     [remoteAwsAccountId, remoteS3Bucket],
   );
-  useEffect(
-    () => setTableName(tableLeafName(row?.tableName ?? options.draft?.tableName ?? 'aws_billing')),
-    [options.draft?.tableName, row?.tableName],
-  );
-  useEffect(() => setCron(remoteCron), [remoteCron]);
-  useEffect(() => setTimezone(remoteTz), [remoteTz]);
+  useEffect(() => setTableName(awsBillingTableName(remoteAwsAccountId)), [remoteAwsAccountId]);
 
   // --- Derived credential / location lists ---
   const awsCredentials = useMemo(
@@ -470,6 +460,10 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     Boolean(remoteS3Prefix);
 
   useEffect(() => {
+    if (!registered) setTableName(awsBillingTableName(awsAccountId));
+  }, [awsAccountId, registered]);
+
+  useEffect(() => {
     if (registered) return;
     if (awsAccountId && accountOptions.includes(awsAccountId)) return;
     const nextAccountId = accountOptions[0] ?? '';
@@ -528,21 +522,18 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     !effectiveS3Prefix ||
     !selectedS3Bucket ||
     !dirty;
-  const jobId = result?.jobId ?? row?.jobId ?? null;
-  const pipelineId = result?.pipelineId ?? row?.pipelineId ?? null;
+  const sharedJobId = numberSetting(settings.data?.settings[LAKEFLOW_PIPELINE_SETTING_KEYS.jobId]);
+  const sharedPipelineId =
+    settings.data?.settings[LAKEFLOW_PIPELINE_SETTING_KEYS.pipelineId] || null;
+  const jobId = result?.jobId ?? sharedJobId;
+  const pipelineId = result?.pipelineId ?? sharedPipelineId;
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const fqn = remoteCatalog
     ? unquotedFqn(remoteCatalog, silverSchema, tableName)
     : `${silverSchema}.${tableName}`;
-  const hadScheduleBeforeSetup = row?.jobId !== null && row?.jobId !== undefined;
-  const setupDisabled =
-    !row ||
-    setupDs.isPending ||
-    !remoteCatalog ||
-    !selectedS3Url ||
-    !tableName ||
-    !cron ||
-    !timezone;
+  const sourceSetup = Boolean(row?.enabled || result);
+  const hadScheduleBeforeSetup = sourceSetup;
+  const setupDisabled = !row || setupDs.isPending || !remoteCatalog || !selectedS3Url || !tableName;
   const createExportDisabled =
     creatingExport ||
     createAwsFocusExport.isPending ||
@@ -715,11 +706,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   const setupDataSourceJob = async (dataSourceId: number) => {
     const r = await setupDs.mutateAsync({
       id: dataSourceId,
-      body: {
-        tableName,
-        cronExpression: cron,
-        timezoneId: timezone,
-      },
+      body: {},
     });
     setResult(r);
     return r;
@@ -1047,14 +1034,11 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     remoteCatalog,
     tableName,
     setTableName,
-    cron,
-    setCron,
-    timezone,
-    setTimezone,
     jobId,
     pipelineId,
     workspaceUrl,
     fqn,
+    sourceSetup,
     hadScheduleBeforeSetup,
     setupDisabled,
     result,

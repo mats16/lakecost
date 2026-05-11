@@ -3,12 +3,10 @@
  * Source: https://github.com/databricks-solutions/cloud-infra-costs/blob/main/aws/focus/focus_query.sql
  *
  * The FOCUS table is exposed as a Unity Catalog Materialized View at
- * `<catalog>.silver.<table>` (the schema is fixed at `silver`). The same
- * pipeline also publishes curated rollups under `<catalog>.gold`. A periodic
- * refresh job is created via the Jobs API and stamped onto the data source
- * row's `job_id` column. Identifier parts and the `accountPricesTable` (1- to
- * 3-part identifier) are validated before being used in generated SQL or
- * pipeline parameters.
+ * `<catalog>.silver.<table>` (the schema is fixed at `silver`). The shared
+ * FinLake pipeline publishes curated rollups under `<catalog>.gold`.
+ * Identifier parts and the `accountPricesTable` (1- to 3-part identifier) are
+ * validated before being used in generated SQL.
  */
 
 export const FOCUS_VIEW_SCHEMA_DEFAULT = 'silver';
@@ -92,7 +90,23 @@ function sourceTableRef(value: string): FocusSourceTableRef {
 
 export function focusSourceTables(accountPricesTable: string): FocusSourceTableRef[] {
   validateAccountPricesTable(accountPricesTable);
-  return [sourceTableRef('system.billing.usage'), sourceTableRef(accountPricesTable)];
+  const seen = new Set<string>();
+  return [
+    'system.billing.usage',
+    'system.billing.list_prices',
+    'system.access.workspaces_latest',
+    'system.lakeflow.pipelines',
+    'system.compute.clusters',
+    'system.compute.warehouses',
+    accountPricesTable,
+  ]
+    .filter((table) => {
+      const ref = sourceTableRef(table).fqn;
+      if (seen.has(ref)) return false;
+      seen.add(ref);
+      return true;
+    })
+    .map(sourceTableRef);
 }
 
 function quoteQualified(value: string): string {

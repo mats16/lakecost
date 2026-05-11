@@ -50,7 +50,7 @@ export const en = {
     noEnabledSources:
       'No enabled data sources yet. Overview sections stay available, but cost charts will populate after a Databricks or cloud source is enabled in Data Sources.',
     focusLoadFailed:
-      'Failed to load FOCUS daily rollup tables through the OBO token. Check SQL warehouse configuration and SELECT permissions on each gold *_daily table.',
+      'Failed to load the FOCUS billing_daily rollup through the OBO token. Check SQL warehouse configuration and SELECT permissions on the gold billing_daily table.',
     someSourcesFailed: 'Some data sources could not be queried:',
     sections: {
       costSummary: 'Cost Summary',
@@ -166,7 +166,7 @@ export const en = {
     footer: {
       dataSources: 'Data sources:',
       lastUpdated:
-        'Last updated: {time}. Cost source: enabled gold *_daily tables queried with the user OBO token. TCO joins should account for shared cluster mappings.',
+        'Last updated: {time}. Cost source: gold billing_daily queried with the user OBO token. TCO joins should account for shared cluster mappings.',
     },
     totalSpend: 'Total spend (30d)',
     distinctSkus: 'Distinct SKUs',
@@ -411,6 +411,17 @@ export const en = {
     scheduled: 'Scheduled',
     unknown: 'Unknown',
     noPipelineId: 'No pipeline created',
+    resourceTypes: {
+      job: 'Job',
+      pipeline: 'Pipeline',
+    },
+    schedule: {
+      title: 'Schedule',
+      desc: 'Schedule values are read from the Databricks Job settings.',
+      cron: 'Cron schedule (Quartz)',
+      timezone: 'Timezone',
+      save: 'Save schedule',
+    },
     columns: {
       name: 'Name',
       type: 'Type',
@@ -538,8 +549,8 @@ export const en = {
       timezone: 'Timezone',
       focusViewTarget: 'View target',
       createView: 'Create FOCUS view',
-      setupAndSchedule: 'Create job',
-      updateSchedule: 'Update job',
+      setupAndSchedule: 'Setup',
+      updateSchedule: 'Update',
       runJob: 'Run job',
       runOk: 'Run #{runId} started for job #{jobId}.',
       jobScheduled: 'Scheduled job: #{id}',
@@ -547,8 +558,20 @@ export const en = {
       pipelineLink: 'Pipeline #{id}',
       resourcesTitle: 'Databricks resources',
       jobResource: 'Job',
-      pipelineResource: 'Pipeline',
+      pipelineResource: 'Lakeflow Spark Declarative Pipeline',
       tableResource: 'Table',
+      resourceProgress: 'Creation progress',
+      resourceSteps: {
+        systemGrants: 'System catalog grants',
+        lakeflowJob: 'Lakeflow Spark Declarative Pipelines',
+      },
+      resourceStepStatus: {
+        idle: 'Waiting',
+        pending: 'Creating',
+        done: 'Created',
+        skipped: 'Skipped',
+        error: 'Failed',
+      },
       setupOk:
         'Job #{jobId} scheduled. The next run will create or refresh {fqn} on the SQL warehouse.',
       updateOk:
@@ -564,7 +587,7 @@ export const en = {
       setupMode: 'Setup method',
       useExistingExternalLocation: 'Use existing External Location',
       createExternalLocationAndExport: 'Create External Location and Data Export',
-      createExternalLocationAndExportAction: 'Create and save',
+      createExternalLocationAndExportAction: 'Setup',
       awsAccountId: 'AWS account ID',
       from: 'from',
       storageCredentialSource: 'Storage Credential',
@@ -597,7 +620,7 @@ export const en = {
       registeredReadOnly:
         'This AWS data source is registered. Bucket, prefix, and export name cannot be changed.',
       exportCreateSection: 'Create export',
-      createExport: 'Create',
+      createExport: 'Setup',
       exportCreated: 'Export configured: {exportArn}',
       exportDestination: 'URL',
       selectedS3Url: 'Selected S3 URL: {url}',
@@ -613,12 +636,12 @@ export const en = {
         'If S3 bucket {bucket} does not exist, FinLake will create it, then create the External Location and AWS Data Export.',
       resourceProgress: 'Creation progress',
       resourceSteps: {
-        bucket: 'S3 Bucket (AWS)',
-        storageCredential: 'Storage Credential (Databricks)',
-        storageRole: 'FinLakeStorageRole (AWS)',
-        externalLocation: 'External Location (Databricks)',
-        dataExport: 'BCM Data Export (AWS)',
-        lakeflowJob: 'Lakeflow Job (Databricks)',
+        bucket: 'Amazon S3 - Bucket',
+        storageCredential: 'Storage Credential',
+        storageRole: 'AWS IAM - Role',
+        externalLocation: 'External Location',
+        dataExport: 'AWS Billing and Cost Management - Data Exports',
+        lakeflowJob: 'Lakeflow Spark Declarative Pipelines',
       },
       resourceStepStatus: {
         idle: 'Waiting',

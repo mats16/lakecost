@@ -52,7 +52,7 @@ export const ja: Dictionary = {
     noEnabledSources:
       '有効なデータソースがまだありません。概要セクションは表示されますが、コストチャートは Databricks またはクラウドのデータソースを「データソース」で有効化した後に表示されます。',
     focusLoadFailed:
-      'OBO トークン経由で FOCUS 日次ロールアップテーブルを読み込めませんでした。SQL ウェアハウス設定と各 Gold *_daily テーブルへの SELECT 権限を確認してください。',
+      'OBO トークン経由で FOCUS billing_daily ロールアップを読み込めませんでした。SQL ウェアハウス設定と Gold billing_daily テーブルへの SELECT 権限を確認してください。',
     someSourcesFailed: '一部のデータソースをクエリできませんでした:',
     sections: {
       costSummary: 'コストサマリー',
@@ -169,7 +169,7 @@ export const ja: Dictionary = {
     footer: {
       dataSources: 'データソース:',
       lastUpdated:
-        '最終更新: {time}。コストソース: 有効な Gold *_daily テーブルをユーザー OBO トークンでクエリしています。TCO 結合では共有クラスターのマッピングを考慮してください。',
+        '最終更新: {time}。コストソース: Gold billing_daily をユーザー OBO トークンでクエリしています。TCO 結合では共有クラスターのマッピングを考慮してください。',
     },
     totalSpend: '総コスト (30日)',
     distinctSkus: 'SKU 数',
@@ -418,6 +418,17 @@ export const ja: Dictionary = {
     scheduled: 'Scheduled',
     unknown: '不明',
     noPipelineId: 'パイプライン未作成',
+    resourceTypes: {
+      job: 'Job',
+      pipeline: 'Pipeline',
+    },
+    schedule: {
+      title: 'スケジュール',
+      desc: 'Databricks Job に設定されているスケジュール値を表示します。',
+      cron: 'Cron スケジュール (Quartz)',
+      timezone: 'タイムゾーン',
+      save: 'スケジュールを保存',
+    },
     columns: {
       name: '名前',
       type: '種類',
@@ -546,8 +557,8 @@ export const ja: Dictionary = {
       timezone: 'タイムゾーン',
       focusViewTarget: 'ビューの配置先',
       createView: 'FOCUS ビューを作成',
-      setupAndSchedule: 'ジョブを作成',
-      updateSchedule: 'ジョブを更新',
+      setupAndSchedule: 'セットアップ',
+      updateSchedule: '更新',
       runJob: 'ジョブを実行',
       runOk: 'Job #{jobId} の Run #{runId} を開始しました。',
       jobScheduled: 'スケジュール済ジョブ: #{id}',
@@ -555,8 +566,20 @@ export const ja: Dictionary = {
       pipelineLink: 'Pipeline #{id}',
       resourcesTitle: 'Databricks リソース',
       jobResource: 'Job',
-      pipelineResource: 'Pipeline',
+      pipelineResource: 'Lakeflow Spark 宣言型パイプライン',
       tableResource: 'Table',
+      resourceProgress: '作成状況',
+      resourceSteps: {
+        systemGrants: 'System カタログ権限',
+        lakeflowJob: 'Lakeflow Spark 宣言型パイプライン',
+      },
+      resourceStepStatus: {
+        idle: '待機中',
+        pending: '作成中',
+        done: '作成済み',
+        skipped: 'スキップ',
+        error: '失敗',
+      },
       setupOk:
         'ジョブ #{jobId} をスケジュールしました。次回実行時に SQL ウェアハウスで {fqn} が作成・更新されます。',
       updateOk:
@@ -572,7 +595,7 @@ export const ja: Dictionary = {
       setupMode: 'セットアップ方法',
       useExistingExternalLocation: '既存の External Location を使う',
       createExternalLocationAndExport: 'External Location と Data Export を新規作成',
-      createExternalLocationAndExportAction: '作成して保存',
+      createExternalLocationAndExportAction: 'セットアップ',
       awsAccountId: 'AWS アカウント ID',
       from: 'from',
       storageCredentialSource: 'Storage Credential',
@@ -604,7 +627,7 @@ export const ja: Dictionary = {
       registeredReadOnly:
         'この AWS データソースは登録済みです。バケット、プレフィックス、エクスポート名は変更できません。',
       exportCreateSection: 'エクスポートを作成',
-      createExport: '作成',
+      createExport: 'セットアップ',
       exportCreated: 'エクスポートを設定しました: {exportArn}',
       exportDestination: 'URL',
       selectedS3Url: '選択中の S3 URL: {url}',
@@ -620,12 +643,12 @@ export const ja: Dictionary = {
         'S3 バケット {bucket} が存在しない場合は作成し、External Location と AWS Data Export を作成します。',
       resourceProgress: '作成状況',
       resourceSteps: {
-        bucket: 'S3 Bucket (AWS)',
-        storageCredential: 'Storage Credential (Databricks)',
-        storageRole: 'FinLakeStorageRole (AWS)',
-        externalLocation: 'External Location (Databricks)',
-        dataExport: 'BCM Data Export (AWS)',
-        lakeflowJob: 'Lakeflow Job (Databricks)',
+        bucket: 'Amazon S3 - Bucket',
+        storageCredential: 'Storage Credential',
+        storageRole: 'AWS IAM - Role',
+        externalLocation: 'External Location',
+        dataExport: 'AWS Billing and Cost Management - Data Exports',
+        lakeflowJob: 'Lakeflow Spark 宣言型パイプライン',
       },
       resourceStepStatus: {
         idle: '待機中',

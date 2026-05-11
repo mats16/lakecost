@@ -85,7 +85,65 @@ FROM system.billing.usage u
     AND u.workspace_id = wh.workspace_id
     AND u.usage_metadata.warehouse_id = wh.warehouse_id;
 
-CREATE OR REFRESH MATERIALIZED VIEW `${table_name}` AS
+CREATE OR REFRESH MATERIALIZED VIEW `${table_name}` (
+  `AvailabilityZone` STRING COMMENT 'Provider-assigned availability zone where the usage ran. Null when availability-zone granularity is not available.',
+  `BilledCost` DECIMAL(30, 15) COMMENT 'Cost billed for the charge after provider reductions and negotiated rates, denominated in BillingCurrency.',
+  `BillingAccountId` STRING COMMENT 'Provider-assigned identifier of the billing account where the charge is invoiced.',
+  `BillingAccountName` STRING COMMENT 'Display name of the billing account where the charge is invoiced.',
+  `BillingAccountType` STRING COMMENT 'Provider-assigned type of billing account, used to map provider account constructs.',
+  `BillingCurrency` STRING COMMENT 'Currency that the charge was billed in, expressed using the provider currency code.',
+  `BillingPeriodEnd` TIMESTAMP COMMENT 'Exclusive end timestamp of the billing period containing the charge.',
+  `BillingPeriodStart` TIMESTAMP COMMENT 'Inclusive start timestamp of the billing period containing the charge.',
+  `CapacityReservationId` STRING COMMENT 'Provider-assigned identifier of the capacity reservation associated with the charge.',
+  `CapacityReservationStatus` STRING COMMENT 'Whether the charge represents used or unused capacity reservation commitment.',
+  `ChargeCategory` STRING COMMENT 'Highest-level classification of the charge, such as usage, purchase, credit, adjustment, or tax.',
+  `ChargeClass` STRING COMMENT 'Whether the row is a correction to a previously invoiced billing period.',
+  `ChargeDescription` STRING COMMENT 'Provider-supplied description that summarizes the purpose and pricing context of the charge.',
+  `ChargeFrequency` STRING COMMENT 'How often the charge occurs, such as one-time, recurring, or usage-based.',
+  `ChargePeriodEnd` TIMESTAMP COMMENT 'Exclusive end timestamp of the effective charge period.',
+  `ChargePeriodStart` TIMESTAMP COMMENT 'Inclusive start timestamp of the effective charge period.',
+  `CommitmentDiscountCategory` STRING COMMENT 'Whether the commitment discount is usage-based or spend-based.',
+  `CommitmentDiscountId` STRING COMMENT 'Provider-assigned identifier of the commitment discount applied to the charge.',
+  `CommitmentDiscountName` STRING COMMENT 'Display name of the commitment discount applied to the charge.',
+  `CommitmentDiscountQuantity` DECIMAL(30, 15) COMMENT 'Amount of commitment discount purchased or applied, measured in CommitmentDiscountUnit.',
+  `CommitmentDiscountStatus` STRING COMMENT 'Whether the row represents used or unused commitment discount.',
+  `CommitmentDiscountType` STRING COMMENT 'Provider-assigned type of the commitment discount.',
+  `CommitmentDiscountUnit` STRING COMMENT 'Unit used to measure CommitmentDiscountQuantity.',
+  `ConsumedQuantity` DECIMAL(30, 15) COMMENT 'Measured usage volume for the resource or service, expressed in ConsumedUnit.',
+  `ConsumedUnit` STRING COMMENT 'Provider-specified unit used to measure consumed usage.',
+  `ContractedCost` DECIMAL(30, 15) COMMENT 'Cost calculated from ContractedUnitPrice and PricingQuantity in BillingCurrency.',
+  `ContractedUnitPrice` DECIMAL(30, 15) COMMENT 'Negotiated unit price for one PricingUnit before applicable commitment discounts.',
+  `EffectiveCost` DECIMAL(30, 15) COMMENT 'Amortized cost after rates, discounts, and applicable prepaid purchases in BillingCurrency.',
+  `InvoiceId` STRING COMMENT 'Provider-assigned identifier of the invoice associated with the charge.',
+  `InvoiceIssuerName` STRING COMMENT 'Entity responsible for issuing the invoice for the consumed resources or services.',
+  `ListCost` DECIMAL(30, 15) COMMENT 'Cost calculated from ListUnitPrice and PricingQuantity in BillingCurrency.',
+  `ListUnitPrice` DECIMAL(30, 15) COMMENT 'Provider-published unit price for one PricingUnit before negotiated discounts.',
+  `PricingCategory` STRING COMMENT 'Pricing model used for the charge, such as standard, committed, dynamic, or free.',
+  `PricingCurrency` STRING COMMENT 'Currency used to price the resource or service before billing conversion.',
+  `PricingCurrencyContractedUnitPrice` DECIMAL(30, 15) COMMENT 'Contracted unit price expressed in PricingCurrency.',
+  `PricingCurrencyEffectiveCost` DECIMAL(30, 15) COMMENT 'Effective cost expressed in PricingCurrency.',
+  `PricingCurrencyListUnitPrice` DECIMAL(30, 15) COMMENT 'List unit price expressed in PricingCurrency.',
+  `PricingQuantity` DECIMAL(30, 15) COMMENT 'Usage or purchase quantity rated by the PricingUnit.',
+  `PricingUnit` STRING COMMENT 'Provider-specified unit used to rate measured usage or purchases.',
+  `ProviderName` STRING COMMENT 'Entity that made the resource or service available for purchase.',
+  `PublisherName` STRING COMMENT 'Entity that produced the purchased resource or service.',
+  `RegionId` STRING COMMENT 'Provider-assigned identifier of the region where the resource or service was provided.',
+  `RegionName` STRING COMMENT 'Display name of the region where the resource or service was provided.',
+  `ResourceId` STRING COMMENT 'Provider-assigned identifier of the resource associated with the charge.',
+  `ResourceName` STRING COMMENT 'Display name of the resource associated with the charge.',
+  `ResourceType` STRING COMMENT 'Kind of resource associated with the charge, such as job, cluster, warehouse, endpoint, or storage.',
+  `ServiceCategory` STRING COMMENT 'Highest-level functional category of the service based on its primary purpose.',
+  `ServiceName` STRING COMMENT 'Display name of the purchased service or offering.',
+  `ServiceSubcategory` STRING COMMENT 'Secondary functional category of the service.',
+  `SkuId` STRING COMMENT 'Provider-assigned identifier of the SKU used for pricing and usage reporting.',
+  `SkuMeter` STRING COMMENT 'Metered function or usage dimension measured by the SKU.',
+  `SkuPriceDetails` MAP<STRING, STRING> COMMENT 'Properties of the SkuPriceId that are meaningful and common to that price identifier.',
+  `SkuPriceId` STRING COMMENT 'Provider-assigned identifier for the SKU price used to rate the charge.',
+  `SubAccountId` STRING COMMENT 'Provider-assigned identifier of the sub account, project, workspace, or equivalent grouping.',
+  `SubAccountName` STRING COMMENT 'Display name of the sub account, project, workspace, or equivalent grouping.',
+  `SubAccountType` STRING COMMENT 'Provider-assigned type of the sub account grouping.',
+  `Tags` MAP<STRING, STRING> COMMENT 'Provider-defined and user-defined key-value tags evaluated for the charge.'
+) AS
 SELECT
   CAST(NULL AS STRING) AS AvailabilityZone,
   CAST(COALESCE(usage_quantity * account_unit_price, 0) AS DECIMAL(30, 15)) AS BilledCost,
@@ -115,12 +173,6 @@ SELECT
   CAST(COALESCE(usage_quantity * account_unit_price, 0) AS DECIMAL(30, 15)) AS ContractedCost,
   CAST(u.account_unit_price AS DECIMAL(30, 15)) AS ContractedUnitPrice,
   CAST(COALESCE(usage_quantity * account_unit_price, 0) AS DECIMAL(30, 15)) AS EffectiveCost,
-  CASE u.cloud
-    WHEN 'AWS' THEN 'Amazon Web Services'
-    WHEN 'AZURE' THEN 'Microsoft Azure'
-    WHEN 'GCP' THEN 'Google Cloud Platform'
-    ELSE u.cloud
-  END AS HostProviderName,
   CAST(NULL AS STRING) AS InvoiceId,
   'Databricks' AS InvoiceIssuerName,
   CAST(COALESCE(u.usage_quantity * u.list_unit_price, 0) AS DECIMAL(30, 15)) AS ListCost,
@@ -279,7 +331,6 @@ SELECT
     ELSE 'Other'
   END AS ServiceCategory,
   u.billing_origin_product AS ServiceName,
-  'Databricks' AS ServiceProviderName,
   CASE
     WHEN u.billing_origin_product = 'ALL_PURPOSE' THEN 'Virtual Machines'
     WHEN u.billing_origin_product = 'INTERACTIVE'
@@ -311,15 +362,13 @@ SELECT
   END AS ServiceSubcategory,
   u.sku_name AS SkuId,
   u.usage_type AS SkuMeter,
-  to_json(
-    map_from_entries(
-      filter(
-        transform(
-          map_entries(from_json(to_json(u.product_features), 'map<string, string>')),
-          e -> named_struct('key', concat('x_', e.key), 'value', e.value)
-        ),
-        kv -> kv.value IS NOT NULL
-      )
+  map_from_entries(
+    filter(
+      transform(
+        map_entries(from_json(to_json(u.product_features), 'map<string, string>')),
+        e -> named_struct('key', concat('x_', e.key), 'value', e.value)
+      ),
+      kv -> kv.value IS NOT NULL
     )
   ) AS SkuPriceDetails,
   u.sku_name AS SkuPriceId,

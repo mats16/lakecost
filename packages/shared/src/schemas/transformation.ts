@@ -40,7 +40,39 @@ export const TransformationPipelineRowSchema = z.object({
 
 export type TransformationPipelineRow = z.infer<typeof TransformationPipelineRowSchema>;
 
+export const TransformationPipelineSharedSchema = z.object({
+  jobId: z.number().int().positive().nullable(),
+  jobUrl: z.string().nullable(),
+  pipelineId: z.string().nullable(),
+  pipelineUrl: z.string().nullable(),
+  cronExpression: z.string().nullable(),
+  timezoneId: z.string().nullable(),
+});
+export type TransformationPipelineShared = z.infer<typeof TransformationPipelineSharedSchema>;
+
+export const TransformationResourceSchema = z.object({
+  resourceType: z.enum(['job', 'pipeline']),
+  resourceId: z.string(),
+  name: z.string(),
+  url: z.string().nullable(),
+  owner: z.string().nullable(),
+  cronExpression: z.string().nullable(),
+  timezoneId: z.string().nullable(),
+  createTime: z.string().nullable(),
+  changeTime: z.string().nullable(),
+  updateId: z.string().nullable(),
+  resultState: z.string().nullable(),
+  periodStartTime: z.string().nullable(),
+  periodEndTime: z.string().nullable(),
+  durationSeconds: z.number().nullable(),
+  statusDays: z.array(TransformationPipelineStatusDaySchema),
+});
+
+export type TransformationResource = z.infer<typeof TransformationResourceSchema>;
+
 export const TransformationPipelinesResponseSchema = z.object({
+  shared: TransformationPipelineSharedSchema,
+  resources: z.array(TransformationResourceSchema),
   rows: z.array(TransformationPipelineRowSchema),
   generatedAt: z.string().datetime(),
 });
