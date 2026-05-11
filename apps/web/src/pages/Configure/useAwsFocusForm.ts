@@ -20,6 +20,7 @@ import {
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
   externalLocationNameForBucket,
+  finlakeAwsResourceTags,
   isValidS3BucketName,
   medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
@@ -929,7 +930,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
               Frequency: 'SYNCHRONOUS',
             },
           },
-          ResourceTags: [{ Key: 'Environment', Value: 'production' }],
+          ResourceTags: finlakeAwsResourceTags(),
         }),
       );
       const nextExportArn = res.ExportArn ?? '';
