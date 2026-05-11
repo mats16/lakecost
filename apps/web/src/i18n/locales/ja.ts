@@ -52,7 +52,7 @@ export const ja: Dictionary = {
     noEnabledSources:
       '有効なデータソースがまだありません。概要セクションは表示されますが、コストチャートは Databricks またはクラウドのデータソースを「データソース」で有効化した後に表示されます。',
     focusLoadFailed:
-      'OBO トークン経由で FOCUS billing_daily ロールアップを読み込めませんでした。SQL ウェアハウス設定と Gold billing_daily テーブルへの SELECT 権限を確認してください。',
+      'OBO トークン経由で FOCUS daily_usage ロールアップを読み込めませんでした。SQL ウェアハウス設定と Gold daily_usage テーブルへの SELECT 権限を確認してください。',
     someSourcesFailed: '一部のデータソースをクエリできませんでした:',
     sections: {
       costSummary: 'コストサマリー',
@@ -169,7 +169,7 @@ export const ja: Dictionary = {
     footer: {
       dataSources: 'データソース:',
       lastUpdated:
-        '最終更新: {time}。コストソース: Gold billing_daily をユーザー OBO トークンでクエリしています。TCO 結合では共有クラスターのマッピングを考慮してください。',
+        '最終更新: {time}。コストソース: Gold daily_usage をユーザー OBO トークンでクエリしています。TCO 結合では共有クラスターのマッピングを考慮してください。',
     },
     totalSpend: '総コスト (30日)',
     distinctSkus: 'SKU 数',

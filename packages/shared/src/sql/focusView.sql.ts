@@ -10,7 +10,7 @@
  */
 
 export const FOCUS_VIEW_SCHEMA_DEFAULT = 'focus';
-export const FOCUS_VIEW_TABLE_DEFAULT = 'databricks_billing';
+export const FOCUS_VIEW_TABLE_DEFAULT = 'databricks_usage';
 export const ACCOUNT_PRICES_DEFAULT = 'system.billing.list_prices';
 
 /**

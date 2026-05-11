@@ -42,11 +42,11 @@ export function buildAwsFocusPipelineSql(): string {
   return pipelineTemplate;
 }
 
-export function awsBillingTableName(billingAccountId: string): string {
-  if (!/^\d{12}$/.test(billingAccountId)) {
-    throw new Error(`Invalid AWS billing account id "${billingAccountId}": expected 12 digits`);
+export function awsUsageTableName(accountId: string): string {
+  if (!/^\d{12}$/.test(accountId)) {
+    throw new Error(`Invalid AWS billing account id "${accountId}": expected 12 digits`);
   }
-  return `aws_billing_${billingAccountId}`;
+  return `aws_${accountId}_usage`;
 }
 
 export function buildAwsFocusSilverPipelineSql(opts: {

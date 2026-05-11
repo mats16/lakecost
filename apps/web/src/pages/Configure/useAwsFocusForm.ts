@@ -207,8 +207,8 @@ function databricksJobUrl(workspaceUrl: string | null, jobId: number): string | 
   return workspaceUrl ? `${workspaceUrl}/jobs/${jobId}` : null;
 }
 
-function awsBillingTableName(accountId: string | null | undefined): string {
-  return accountId && /^\d{12}$/.test(accountId) ? `aws_billing_${accountId}` : 'aws_billing';
+function awsUsageTableName(accountId: string | null | undefined): string {
+  return accountId && /^\d{12}$/.test(accountId) ? `aws_${accountId}_usage` : 'aws_usage';
 }
 
 function awsDataExportBucketPolicyStatement(bucket: string, accountId: string) {
@@ -330,7 +330,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   );
   const [createBucketIfMissing, setCreateBucketIfMissing] = useState(true);
   const [s3Prefix, setS3Prefix] = useState(normalizeS3Prefix(remoteS3Prefix));
-  const [tableName, setTableName] = useState(awsBillingTableName(remoteAwsAccountId));
+  const [tableName, setTableName] = useState(awsUsageTableName(remoteAwsAccountId));
   const [result, setResult] = useState<DataSourceSetupResult | null>(null);
   const [exportArn, setExportArn] = useState(configString(remoteConfig, 'exportArn'));
   const [exportError, setExportError] = useState<string | null>(null);
@@ -358,7 +358,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
       ),
     [remoteAwsAccountId, remoteS3Bucket],
   );
-  useEffect(() => setTableName(awsBillingTableName(remoteAwsAccountId)), [remoteAwsAccountId]);
+  useEffect(() => setTableName(awsUsageTableName(remoteAwsAccountId)), [remoteAwsAccountId]);
 
   // --- Derived credential / location lists ---
   const awsCredentials = useMemo(
@@ -460,7 +460,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     Boolean(remoteS3Prefix);
 
   useEffect(() => {
-    if (!registered) setTableName(awsBillingTableName(awsAccountId));
+    if (!registered) setTableName(awsUsageTableName(awsAccountId));
   }, [awsAccountId, registered]);
 
   useEffect(() => {

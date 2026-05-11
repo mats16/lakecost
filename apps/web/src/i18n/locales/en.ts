@@ -50,7 +50,7 @@ export const en = {
     noEnabledSources:
       'No enabled data sources yet. Overview sections stay available, but cost charts will populate after a Databricks or cloud source is enabled in Data Sources.',
     focusLoadFailed:
-      'Failed to load the FOCUS billing_daily rollup through the OBO token. Check SQL warehouse configuration and SELECT permissions on the gold billing_daily table.',
+      'Failed to load the FOCUS daily_usage rollup through the OBO token. Check SQL warehouse configuration and SELECT permissions on the gold daily_usage table.',
     someSourcesFailed: 'Some data sources could not be queried:',
     sections: {
       costSummary: 'Cost Summary',
@@ -166,7 +166,7 @@ export const en = {
     footer: {
       dataSources: 'Data sources:',
       lastUpdated:
-        'Last updated: {time}. Cost source: gold billing_daily queried with the user OBO token. TCO joins should account for shared cluster mappings.',
+        'Last updated: {time}. Cost source: gold daily_usage queried with the user OBO token. TCO joins should account for shared cluster mappings.',
     },
     totalSpend: 'Total spend (30d)',
     distinctSkus: 'Distinct SKUs',

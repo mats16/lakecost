@@ -34,7 +34,7 @@ import {
 } from './databricksJobs.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import {
-  awsBillingTableName,
+  awsUsageTableName,
   buildAwsFocusSilverPipelineSql,
 } from './awsFocusTransformPipelineSql.js';
 import { buildFocusSilverPipelineSql } from './databricksFocusTransformPipelineSql.js';
@@ -62,7 +62,7 @@ export const LEGACY_SHARED_PIPELINE_SETTING_KEYS = {
   pipelineId: 'focus_pipeline_id',
 } as const;
 
-const SHARED_PIPELINE_FILENAME_GOLD = 'gold_billing_daily.sql';
+const SHARED_PIPELINE_FILENAME_GOLD = 'gold_daily_usage.sql';
 const FOCUS_12_BILLING_COLUMNS = [
   { name: 'AvailabilityZone', type: 'STRING' },
   { name: 'BilledCost', type: 'DOUBLE' },
@@ -122,7 +122,7 @@ const FOCUS_12_BILLING_COLUMNS = [
   { name: 'SubAccountType', type: 'STRING' },
   { name: 'Tags', type: 'MAP<STRING, STRING>' },
 ] as const;
-const BILLING_DAILY_SOURCE_COLUMNS = [
+const DAILY_USAGE_SOURCE_COLUMNS = [
   'ChargePeriodStart',
   'BillingPeriodStart',
   'BillingAccountId',
@@ -274,7 +274,7 @@ export async function setupFocusDataSource(
     } else {
       const existing = readAwsFocusConfig(source.config);
       const awsSource = readAwsFocusSource(existing);
-      tableName = awsBillingTableName(awsSource.awsAccountId);
+      tableName = awsUsageTableName(awsSource.awsAccountId);
       focusVersion = AWS_FOCUS_VERSION;
       nextConfig = {
         ...source.config,
@@ -341,7 +341,7 @@ export async function setupFocusDataSource(
     jobId: result.jobId,
     pipelineId: result.pipelineId,
     fqn,
-    goldFqn: focusViewFqn({ catalog, schema: medallionSchemas.gold, table: 'billing_daily' }),
+    goldFqn: focusViewFqn({ catalog, schema: medallionSchemas.gold, table: 'daily_usage' }),
     cronExpression: result.cronExpression,
     timezoneId: result.timezoneId,
     createdView: false,
@@ -656,7 +656,7 @@ export async function syncSharedFocusPipeline(
   const sourceFiles = enabledSources.map((source) => sourcePipelineFile(workspaceRoot, source));
   const goldFile: PipelineSourceFile = {
     workspacePath: `${workspaceRoot}/${SHARED_PIPELINE_FILENAME_GOLD}`,
-    pipelineSql: buildBillingDailyGoldSql({
+    pipelineSql: buildDailyUsageGoldSql({
       catalog,
       silverSchema,
       goldSchema,
@@ -746,7 +746,7 @@ function sourcePipelineFile(
     throw new Error(`Unsupported shared pipeline provider "${source.providerName}"`);
   }
   const awsSource = readAwsFocusSource(readAwsFocusConfig(source.config));
-  const tableName = awsBillingTableName(awsSource.awsAccountId);
+  const tableName = awsUsageTableName(awsSource.awsAccountId);
   return {
     tableName,
     providerName: source.providerName,
@@ -760,7 +760,7 @@ function sourcePipelineFile(
   };
 }
 
-export function buildBillingDailyGoldSql({
+export function buildDailyUsageGoldSql({
   catalog,
   silverSchema,
   goldSchema,
@@ -779,8 +779,8 @@ export function buildBillingDailyGoldSql({
   FROM ${quoteIdent(catalog)}.${quoteIdent(silverSchema)}.${quoteIdent(source.tableName)}`,
     )
     .join('\n  UNION ALL\n  ');
-  return /* sql */ `CREATE VIEW ${quoteIdent('billing')}
-COMMENT 'FOCUS 1.2 compatible billing details managed by FinLake'
+  return /* sql */ `CREATE VIEW ${quoteIdent('usage')}
+COMMENT 'FOCUS 1.2 compatible usage details managed by FinLake'
 AS
 WITH focus_rows AS (
   ${focus12UnionSql}
@@ -789,13 +789,13 @@ SELECT
   ${FOCUS_12_BILLING_COLUMNS.map((column) => quoteIdent(column.name)).join(',\n  ')}
 FROM focus_rows;
 
-CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent('billing_daily')}
-COMMENT 'FOCUS daily billing rollup managed by FinLake'
+CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent('daily_usage')}
+COMMENT 'FOCUS daily usage rollup managed by FinLake'
 AS
 WITH focus_rows AS (
   SELECT
-    ${BILLING_DAILY_SOURCE_COLUMNS.map(quoteIdent).join(',\n    ')}
-  FROM ${quoteIdent(silverSchema)}.${quoteIdent('billing')}
+    ${DAILY_USAGE_SOURCE_COLUMNS.map(quoteIdent).join(',\n    ')}
+  FROM ${quoteIdent(silverSchema)}.${quoteIdent('usage')}
 )
 SELECT
   CAST(ChargePeriodStart AS DATE) AS x_ChargeDate,

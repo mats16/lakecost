@@ -1121,7 +1121,7 @@ function FocusViewSection({
   const remoteAccountPrices =
     (row?.config.accountPricesTable as string | undefined) ?? ACCOUNT_PRICES_DEFAULT;
   const [tableName, setTableName] = useState(
-    tableLeafName(row?.tableName ?? draft?.tableName ?? 'databricks_billing'),
+    tableLeafName(row?.tableName ?? draft?.tableName ?? 'databricks_usage'),
   );
   const [accountPrices, setAccountPrices] = useState(remoteAccountPrices);
   const [result, setResult] = useState<DataSourceSetupResult | null>(null);
@@ -1135,7 +1135,7 @@ function FocusViewSection({
   const isSetup = Boolean(row?.enabled || result);
 
   useEffect(
-    () => setTableName(tableLeafName(row?.tableName ?? draft?.tableName ?? 'databricks_billing')),
+    () => setTableName(tableLeafName(row?.tableName ?? draft?.tableName ?? 'databricks_usage')),
     [draft?.tableName, row?.tableName],
   );
   useEffect(() => setAccountPrices(remoteAccountPrices), [remoteAccountPrices]);

@@ -86,7 +86,7 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
         tableName: string;
         message: string;
       }> = [];
-      const resolved = billingDailyTableName(catalog, goldSchema);
+      const resolved = dailyUsageTableName(catalog, goldSchema);
       let daily: FocusDailyRow[] = [];
       let services: FocusServiceRow[] = [];
       let skus: FocusSkuRow[] = [];
@@ -142,13 +142,11 @@ function quoteTableName(value: string): string {
     .join('.');
 }
 
-function billingDailyTableName(
+function dailyUsageTableName(
   catalog?: string,
   goldSchema: string = MEDALLION_SCHEMA_DEFAULTS.gold,
 ): { display: string; sql: string } {
-  const dailyParts = catalog
-    ? [catalog, goldSchema, 'billing_daily']
-    : [goldSchema, 'billing_daily'];
+  const dailyParts = catalog ? [catalog, goldSchema, 'daily_usage'] : [goldSchema, 'daily_usage'];
   const display = dailyParts.join('.');
   return { display, sql: quoteTableName(display) };
 }
@@ -310,7 +308,7 @@ function sourceSummary(source: DataSource, catalog?: string, goldSchema?: string
     templateId: source.templateId,
     name: source.name,
     providerName: source.providerName,
-    tableName: billingDailyTableName(catalog, goldSchema).display,
+    tableName: dailyUsageTableName(catalog, goldSchema).display,
     focusVersion: source.focusVersion,
     updatedAt: source.updatedAt,
   };

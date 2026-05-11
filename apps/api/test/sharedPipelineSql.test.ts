@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  awsBillingTableName,
+  awsUsageTableName,
   buildAwsFocusSilverPipelineSql,
 } from '../src/services/awsFocusTransformPipelineSql.js';
-import { buildBillingDailyGoldSql } from '../src/services/dataSourceSetup.js';
+import { buildDailyUsageGoldSql } from '../src/services/dataSourceSetup.js';
 import { buildFocusSilverPipelineSql } from '../src/services/databricksFocusTransformPipelineSql.js';
 import { MEDALLION_SCHEMA_DEFAULTS, medallionSchemaNamesFromSettings } from '@finlake/shared';
 
@@ -17,39 +17,39 @@ test('medallion schema defaults use FinLake schema names', () => {
   assert.deepEqual(medallionSchemaNamesFromSettings({}), MEDALLION_SCHEMA_DEFAULTS);
 });
 
-test('awsBillingTableName derives canonical AWS silver table name', () => {
-  assert.equal(awsBillingTableName('123456789012'), 'aws_billing_123456789012');
+test('awsUsageTableName derives canonical AWS silver table name', () => {
+  assert.equal(awsUsageTableName('123456789012'), 'aws_123456789012_usage');
 });
 
-test('awsBillingTableName rejects non-account identifiers', () => {
-  assert.throws(() => awsBillingTableName('aws_billing'));
-  assert.throws(() => awsBillingTableName('12345'));
+test('awsUsageTableName rejects non-account identifiers', () => {
+  assert.throws(() => awsUsageTableName('aws_usage'));
+  assert.throws(() => awsUsageTableName('12345'));
 });
 
 test('buildAwsFocusSilverPipelineSql embeds source-specific values without gold rollup', () => {
   const sql = buildAwsFocusSilverPipelineSql({
-    tableName: 'aws_billing_123456789012',
+    tableName: 'aws_123456789012_usage',
     s3Bucket: 'finlake-billing-123456789012',
     s3Prefix: 'exports/focus',
     exportName: 'finlake-focus-1-2',
   });
 
-  assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `aws_billing_123456789012`/);
+  assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `aws_123456789012_usage`/);
   assert.match(
     sql,
     /FROM read_files\(\s*'s3:\/\/finlake-billing-123456789012\/exports\/focus\/finlake-focus-1-2\/data\/\*\*\/\*\.parquet'/,
   );
-  assert.doesNotMatch(sql, /billing_daily/);
+  assert.doesNotMatch(sql, /daily_usage/);
   assert.doesNotMatch(sql, /gold_schema_name/);
 });
 
 test('buildFocusSilverPipelineSql keeps Databricks SkuPriceDetails as a map', () => {
   const sql = buildFocusSilverPipelineSql({
-    table: 'databricks_billing',
+    table: 'databricks_usage',
     accountPricesTable: 'system.billing.list_prices',
   });
 
-  assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `databricks_billing` \(/);
+  assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `databricks_usage` \(/);
   assert.match(
     sql,
     /`BillingAccountId` STRING COMMENT 'Provider-assigned identifier of the billing account where the charge is invoiced\.'/,
@@ -69,18 +69,18 @@ test('buildFocusSilverPipelineSql keeps Databricks SkuPriceDetails as a map', ()
   assert.doesNotMatch(sql, /ServiceProviderName/);
 });
 
-test('buildBillingDailyGoldSql unions source silver tables without FinLake metadata columns', () => {
-  const sql = buildBillingDailyGoldSql({
+test('buildDailyUsageGoldSql unions source silver tables without FinLake metadata columns', () => {
+  const sql = buildDailyUsageGoldSql({
     catalog: 'finops',
     silverSchema: 'silver',
     goldSchema: 'gold',
     sources: [
-      { tableName: 'databricks_billing', providerName: 'Databricks' },
-      { tableName: 'aws_billing_123456789012', providerName: 'Amazon Web Services' },
+      { tableName: 'databricks_usage', providerName: 'Databricks' },
+      { tableName: 'aws_123456789012_usage', providerName: 'Amazon Web Services' },
     ],
   });
 
-  assert.match(sql, /CREATE VIEW `billing`/);
+  assert.match(sql, /CREATE VIEW `usage`/);
   assert.match(sql, /`AvailabilityZone`,/);
   assert.match(sql, /`SkuPriceDetails`,/);
   assert.doesNotMatch(sql, /from_json\(CAST\(`SkuPriceDetails` AS STRING\)/);
@@ -89,11 +89,11 @@ test('buildBillingDailyGoldSql unions source silver tables without FinLake metad
   assert.doesNotMatch(sql, /`x_Discounts`/);
   assert.doesNotMatch(sql, /`x_Operation`/);
   assert.doesNotMatch(sql, /`x_ServiceCode`/);
-  assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `gold`\.`billing_daily`/);
-  assert.match(sql, /FROM `finops`\.`silver`\.`databricks_billing`/);
+  assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `gold`\.`daily_usage`/);
+  assert.match(sql, /FROM `finops`\.`silver`\.`databricks_usage`/);
   assert.match(sql, /UNION ALL/);
-  assert.match(sql, /FROM `finops`\.`silver`\.`aws_billing_123456789012`/);
-  assert.match(sql, /FROM `silver`\.`billing`/);
+  assert.match(sql, /FROM `finops`\.`silver`\.`aws_123456789012_usage`/);
+  assert.match(sql, /FROM `silver`\.`usage`/);
   assert.doesNotMatch(sql, /SELECT \*/);
   assert.doesNotMatch(sql, /x_FinLakeDataSourceId/);
   assert.doesNotMatch(sql, /x_FinLakeDataSourceName/);
