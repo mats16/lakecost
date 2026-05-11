@@ -598,20 +598,26 @@ async function ensureAwsBucketExists({
 
   try {
     await client.send(new CreateBucketCommand({ Bucket: bucket }));
+  } catch (err) {
+    logger.error({ err, bucket }, 'CreateBucket failed');
+    throw new AwsFocusExportServiceError(
+      `Failed to create S3 bucket ${bucket}: ${(err as Error).message}`,
+      502,
+    );
+  }
+
+  try {
     await client.send(
       new PutBucketTaggingCommand({
         Bucket: bucket,
         Tagging: { TagSet: finlakeAwsResourceTags() },
       }),
     );
-    return 'created';
   } catch (err) {
-    logger.error({ err, bucket }, 'CreateBucket/PutBucketTagging failed');
-    throw new AwsFocusExportServiceError(
-      `Failed to create or tag S3 bucket ${bucket}: ${(err as Error).message}`,
-      502,
-    );
+    logger.warn({ err, bucket }, 'PutBucketTagging failed (bucket was created successfully)');
   }
+
+  return 'created';
 }
 
 async function upsertAwsDataExportBucketPolicy({

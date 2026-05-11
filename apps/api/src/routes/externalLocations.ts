@@ -12,7 +12,7 @@ const UcNameSchema = z
   .string()
   .min(1)
   .max(255)
-  .regex(/^[A-Za-z0-9_.\-]+$/);
+  .regex(/^[A-Za-z0-9_.-]+$/);
 
 export function externalLocationsRouter(env: Env): Router {
   const router = Router();

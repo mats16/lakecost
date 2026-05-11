@@ -85,9 +85,10 @@ export async function syncGovernedTags(
   env: Env,
   body: GovernedTagSyncBody,
 ): Promise<GovernedTagSyncResult> {
-  return body.platform === 'databricks'
-    ? syncDatabricksGovernedTags(env, body.tagKey)
-    : syncAwsCostAllocationTags(env, body.awsAccountId, body.tagKey);
+  if (body.platform === 'databricks') {
+    return syncDatabricksGovernedTags(env, body.tagKey);
+  }
+  return syncAwsCostAllocationTags(env, body.awsAccountId, body.tagKey);
 }
 
 async function syncDatabricksGovernedTags(
@@ -117,7 +118,22 @@ async function syncDatabricksGovernedTags(
     };
   }
 
-  const existing = await listDatabricksTagPolicies(env, []);
+  let existing: Map<string, TagPolicyLike>;
+  try {
+    existing = await listDatabricksTagPolicies(env, [], { throwOnError: true });
+  } catch (err) {
+    logger.error({ err }, 'Failed to list existing tag policies before sync');
+    return {
+      platform: 'databricks',
+      syncedAt,
+      tags: definitions.map((definition) => ({
+        key: definition.key,
+        status: 'failed',
+        message: `Cannot determine existing policies: ${(err as Error).message}`,
+      })),
+      awsAccounts: [],
+    };
+  }
   const tags: GovernedTagSyncTagResult[] = [];
   for (const definition of definitions) {
     const tagPolicy = {
@@ -243,6 +259,7 @@ async function syncAwsCostAllocationTags(
 async function listDatabricksTagPolicies(
   env: Env,
   warnings: string[],
+  options?: { throwOnError?: boolean },
 ): Promise<Map<string, TagPolicyLike>> {
   try {
     const wc = requireAppWorkspaceClient(env, GovernedTagsServiceError);
@@ -253,6 +270,9 @@ async function listDatabricksTagPolicies(
     }
     return policies;
   } catch (err) {
+    if (options?.throwOnError) {
+      throw err;
+    }
     logger.warn({ err }, 'Databricks governed tag policy list failed');
     warnings.push(`Databricks governed tags: ${(err as Error).message}`);
     return new Map();

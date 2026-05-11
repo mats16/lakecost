@@ -71,14 +71,22 @@ export const GovernedTagsResponseSchema = z.object({
 });
 export type GovernedTagsResponse = z.infer<typeof GovernedTagsResponseSchema>;
 
-export const GovernedTagSyncBodySchema = z.object({
-  platform: z.enum(['databricks', 'aws']),
-  awsAccountId: z
-    .string()
-    .regex(/^\d{12}$/)
-    .optional(),
-  tagKey: z.string().min(1).max(128).optional(),
-});
+const tagKeyField = z.string().min(1).max(128).optional();
+
+export const GovernedTagSyncBodySchema = z.discriminatedUnion('platform', [
+  z.object({
+    platform: z.literal('databricks'),
+    tagKey: tagKeyField,
+  }),
+  z.object({
+    platform: z.literal('aws'),
+    awsAccountId: z
+      .string()
+      .regex(/^\d{12}$/)
+      .optional(),
+    tagKey: tagKeyField,
+  }),
+]);
 export type GovernedTagSyncBody = z.infer<typeof GovernedTagSyncBodySchema>;
 
 export const GovernedTagSyncTagResultSchema = z.object({
