@@ -187,7 +187,7 @@ function GovernedTagTableRow({
         ) : (
           <button
             type="button"
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-primary px-3 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label={t('governedTags.syncDatabricksTag', { tag: row.definition.key })}
             disabled={syncPending}
             onClick={() => onSyncDatabricks(row.definition.key)}
@@ -281,7 +281,7 @@ function AwsAccountStatus({
   return (
     <button
       type="button"
-      className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex h-7 cursor-pointer items-center gap-2 rounded-full border border-dashed border-(--success) px-3 text-xs font-medium text-(--success) transition hover:bg-(--success)/10 disabled:cursor-not-allowed disabled:opacity-60"
       title={status.message ?? undefined}
       aria-label={t('governedTags.syncAwsAccountTag', {
         tag: tagKey,

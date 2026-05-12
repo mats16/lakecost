@@ -167,7 +167,7 @@ function Configurator({ row, onClose }: { row: DataSource; onClose: () => void }
       <div className="flex justify-end pt-2">
         <Button
           type="button"
-          variant="destructive"
+          className="warning-action-button"
           disabled={deleteDs.isPending}
           onClick={onDelete}
         >
@@ -225,7 +225,7 @@ function DataSourceDrawerTitle({ row, title }: { row?: DataSource; title: string
             type="submit"
             disabled={updateDs.isPending || !trimmedName || !dirty}
             aria-label={t('dataSources.name.save')}
-            className="size-10 shrink-0 p-0"
+            className="success-action-button size-10 shrink-0 p-0"
           >
             {updateDs.isPending ? <Spinner /> : <Check className="size-4" aria-hidden="true" />}
           </Button>
@@ -466,12 +466,7 @@ function AwsSourceForm({ form }: { form: ReturnType<typeof useAwsFocusForm> }) {
 
           {!form.registered && form.setupMode === 'existing' ? (
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                disabled={form.saveDisabled}
-                onClick={form.onSave}
-                className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-              >
+              <Button type="button" disabled={form.saveDisabled} onClick={form.onSave}>
                 {form.savePending ? <Spinner /> : null}
                 {t('dataSources.aws.saveExternalLocation')}
               </Button>
@@ -564,12 +559,7 @@ function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
   const { t } = useI18n();
   if (form.setupMode === 'create') {
     return (
-      <Button
-        type="button"
-        disabled={form.createExportDisabled}
-        onClick={form.onCreateExport}
-        className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-      >
+      <Button type="button" disabled={form.createExportDisabled} onClick={form.onCreateExport}>
         {form.creatingExport ? <Spinner /> : null}
         {t('dataSources.aws.createExport')}
       </Button>
@@ -578,7 +568,7 @@ function AwsExportPanel({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
 
   return (
     <>
-      <Button type="button" variant="secondary" onClick={() => form.openExportModal(true)}>
+      <Button type="button" onClick={() => form.openExportModal(true)}>
         {t('dataSources.aws.exportCreateSection')}
       </Button>
       <AwsExportModal form={form} />
@@ -889,12 +879,7 @@ function AwsExportModal({ form }: { form: ReturnType<typeof useAwsFocusForm> }) 
           )}
         </p>
         <div className="flex justify-end">
-          <Button
-            type="button"
-            disabled={form.createExportDisabled}
-            onClick={form.onCreateExport}
-            className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
-          >
+          <Button type="button" disabled={form.createExportDisabled} onClick={form.onCreateExport}>
             {form.creatingExport ? <Spinner /> : null}
             {t(
               form.setupMode === 'create'
@@ -984,7 +969,7 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
             type="button"
             disabled={form.setupDisabled}
             onClick={form.onSetup}
-            className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
+            className={form.hadScheduleBeforeSetup ? 'success-action-button' : undefined}
           >
             {form.setupDs.isPending ? <Spinner /> : null}
             {t(
@@ -997,6 +982,7 @@ function AwsTransformationSection({ form }: { form: ReturnType<typeof useAwsFocu
             <Button
               type="button"
               variant="secondary"
+              className="hover:bg-(--secondary-foreground) hover:text-(--secondary)"
               disabled={form.runJob.isPending}
               onClick={form.onRunJob}
             >
@@ -1264,7 +1250,7 @@ function FocusViewSection({
             type="button"
             disabled={setupBusy || !remoteCatalog || tableName.trim() === ''}
             onClick={onSetup}
-            className="bg-(--success) text-(--background) hover:bg-(--success)/90"
+            className={isSetup ? 'success-action-button' : undefined}
           >
             {setupBusy ? <Spinner /> : null}
             {t(
@@ -1277,6 +1263,7 @@ function FocusViewSection({
             <Button
               type="button"
               variant="secondary"
+              className="hover:bg-(--secondary-foreground) hover:text-(--secondary)"
               disabled={runJob.isPending}
               onClick={onRunJob}
             >

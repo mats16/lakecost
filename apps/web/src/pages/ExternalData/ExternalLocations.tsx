@@ -167,12 +167,7 @@ export function ExternalLocations() {
               >
                 <RefreshCcw className={locations.isFetching ? 'animate-spin' : undefined} />
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="bg-(--success) text-(--background) hover:bg-(--success)/90"
-                onClick={openCreateModal}
-              >
+              <Button type="button" size="sm" onClick={openCreateModal}>
                 {t('externalData.externalLocations.create')}
               </Button>
             </div>
@@ -348,7 +343,11 @@ function ExternalLocationActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onDelete(name)} disabled={deleting}>
+        <DropdownMenuItem
+          className="text-(--warning) focus:text-(--warning)"
+          onClick={() => onDelete(name)}
+          disabled={deleting}
+        >
           <Trash2 className="size-4" aria-hidden="true" />
           <span>
             {deleting
@@ -538,11 +537,7 @@ function CreateExternalLocationModal({
           <Button type="button" variant="secondary" onClick={onClose} disabled={createPending}>
             {t('common.cancel')}
           </Button>
-          <Button
-            type="submit"
-            className="bg-(--success) text-(--background) hover:bg-(--success)/90"
-            disabled={createPending}
-          >
+          <Button type="submit" disabled={createPending}>
             {createPending ? (
               <>
                 <Spinner /> {t('externalData.externalLocations.creating')}

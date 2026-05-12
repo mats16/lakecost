@@ -20,9 +20,11 @@ import {
   ExternalLink,
   Globe,
   LayoutDashboard,
+  Moon,
   Notebook,
   Binoculars,
   Shapes,
+  Sun,
   type LucideIcon,
 } from 'lucide-react';
 import { useI18n, type Locale } from '../../i18n';
@@ -81,6 +83,10 @@ interface ExternalNavItem {
   icon: LucideIcon;
 }
 
+type ThemeMode = 'light' | 'dark';
+
+const THEME_STORAGE_KEY = 'finlake.theme';
+
 function buildDatabricksItems(catalogName: string | null): ExternalNavItem[] {
   return [
     {
@@ -91,6 +97,24 @@ function buildDatabricksItems(catalogName: string | null): ExternalNavItem[] {
     { path: '/sql/dashboards', labelKey: 'nav.dashboards', icon: LayoutDashboard },
     { path: '/browse', labelKey: 'nav.workspace', icon: Notebook },
   ];
+}
+
+function detectInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') return 'dark';
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {
+    // ignore
+  }
+  return document.documentElement.classList.contains('light') ? 'light' : 'dark';
+}
+
+function applyTheme(theme: ThemeMode) {
+  const root = document.documentElement;
+  root.classList.toggle('dark', theme === 'dark');
+  root.classList.toggle('light', theme === 'light');
+  root.style.colorScheme = theme;
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -111,6 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
   const [exploreOpen, setExploreOpen] = useState(onExploreRoute);
+  const [theme, setTheme] = useState<ThemeMode>(detectInitialTheme);
 
   useEffect(() => {
     if (onInformRoute) {
@@ -123,6 +148,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       setExploreOpen(true);
     }
   }, [onConfigureRoute, onExploreRoute, onInformRoute]);
+
+  useEffect(() => {
+    applyTheme(theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
 
   return (
     <div className="app-shell">
@@ -264,10 +298,33 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="sidebar-footer">
           <AccountMenu />
+          <ThemeToggle
+            theme={theme}
+            onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          />
         </div>
       </aside>
       <main className="main">{children}</main>
     </div>
+  );
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => void }) {
+  const { t } = useI18n();
+  const isDark = theme === 'dark';
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-pressed={isDark}
+      aria-label={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+      title={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+      onClick={onToggle}
+    >
+      <span className="theme-toggle-thumb" aria-hidden="true">
+        {isDark ? <Moon className="size-4" /> : <Sun className="size-4" />}
+      </span>
+    </button>
   );
 }
 

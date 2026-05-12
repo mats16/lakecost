@@ -91,7 +91,7 @@ export function Transformations() {
               <EmptyTitle>{t('transformations.emptyTitle')}</EmptyTitle>
               <EmptyDescription>{t('transformations.emptyDesc')}</EmptyDescription>
             </EmptyHeader>
-            <Button asChild variant="secondary">
+            <Button asChild>
               <Link to="/data-sources">{t('transformations.configureSources')}</Link>
             </Button>
           </Empty>
@@ -242,7 +242,7 @@ function ScheduleSection({
         </label>
         <Button
           type="button"
-          variant="secondary"
+          className="success-action-button"
           disabled={saving || !dirty || !cronValid || !timezoneId.trim()}
           onClick={() => onSave({ cronExpression, timezoneId })}
         >

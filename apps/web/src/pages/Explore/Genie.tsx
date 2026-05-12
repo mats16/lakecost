@@ -112,7 +112,11 @@ function GenieActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onDelete} disabled={deletePending}>
+        <DropdownMenuItem
+          className="text-(--warning) focus:text-(--warning)"
+          onClick={onDelete}
+          disabled={deletePending}
+        >
           {deletePending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
           <span>{deletePending ? t('genie.deleting') : t('genie.deleteAction')}</span>
         </DropdownMenuItem>

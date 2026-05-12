@@ -267,7 +267,7 @@ export function Catalog() {
                 <Button
                   type="submit"
                   disabled={submitDisabled}
-                  className="bg-(--success) text-(--background) hover:bg-(--success)/90 disabled:bg-muted disabled:text-muted-foreground"
+                  className={hasConfiguredCatalog ? 'success-action-button' : undefined}
                 >
                   {saving ? (
                     <>
@@ -336,7 +336,7 @@ export function Catalog() {
             <div>
               <Button
                 type="button"
-                variant="destructive"
+                className="warning-action-button"
                 onClick={() => {
                   cleanup.reset();
                   setCleanupModalOpen(true);
@@ -499,7 +499,7 @@ function CleanupConfirmModal({
               </Button>
               <Button
                 type="button"
-                variant="destructive"
+                className="warning-action-button"
                 onClick={() => {
                   cleanup.reset();
                   setStarted(true);

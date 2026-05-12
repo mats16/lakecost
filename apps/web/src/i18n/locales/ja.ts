@@ -15,7 +15,7 @@ export const ja: Dictionary = {
     bcmCredentials: 'BCM Credentials',
     tags: 'タグ',
     transformations: '変換パイプライン',
-    configureCatalog: 'Admin',
+    configureCatalog: 'システム管理',
     explore: '探索',
     genie: 'Genie',
     query: 'クエリ',
@@ -42,6 +42,10 @@ export const ja: Dictionary = {
     sectionApp: 'FinLake',
     settings: '設定',
     databricksConsole: 'Databricks コンソール',
+  },
+  theme: {
+    switchToDark: 'ダークモードに切り替え',
+    switchToLight: 'ライトモードに切り替え',
   },
   explore: {
     underConstructionTitle: '工事中',

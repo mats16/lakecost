@@ -41,6 +41,10 @@ export const en = {
     settings: 'Settings',
     databricksConsole: 'Databricks Console',
   },
+  theme: {
+    switchToDark: 'Switch to dark mode',
+    switchToLight: 'Switch to light mode',
+  },
   explore: {
     underConstructionTitle: 'Under construction',
     underConstructionDesc: 'This Explore surface is being prepared.',

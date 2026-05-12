@@ -48,11 +48,7 @@ export function Budgets() {
         title={t('budgets.title')}
         subtitle={t('budgets.subtitle')}
         actions={
-          <Button
-            type="button"
-            className="success-action-button"
-            onClick={() => setCreateModalOpen(true)}
-          >
+          <Button type="button" onClick={() => setCreateModalOpen(true)}>
             <Plus /> {t('budgets.newBudget')}
           </Button>
         }
@@ -294,7 +290,7 @@ function CreateBudgetModal({
           <Button type="button" variant="secondary" onClick={close} disabled={createPending}>
             {t('common.cancel')}
           </Button>
-          <Button type="submit" className="success-action-button" disabled={createPending}>
+          <Button type="submit" disabled={createPending}>
             {createPending ? (
               <>
                 <Spinner /> {t('common.saving')}
