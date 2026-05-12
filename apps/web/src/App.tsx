@@ -9,6 +9,8 @@ import { Catalog } from './pages/Configure/Catalog';
 import { Transformations } from './pages/Configure/Transformations';
 import { GovernedTags } from './pages/Configure/GovernedTags';
 import { Credentials } from './pages/ExternalData/Credentials';
+import { ExploreStub } from './pages/Explore/ExploreStub';
+import { Genie } from './pages/Explore/Genie';
 
 export function App() {
   return (
@@ -18,13 +20,19 @@ export function App() {
         <Route path="/overview" element={<Dashboard />} />
         <Route path="/explorer" element={<CostExplorer />} />
         <Route path="/budgets" element={<Budgets />} />
+        <Route path="/genie" element={<Genie />} />
+        <Route path="/ginie" element={<Navigate to="/genie" replace />} />
+        <Route
+          path="/query"
+          element={<ExploreStub titleKey="explore.query.title" descKey="explore.query.desc" />}
+        />
 
         <Route element={<ConfigureLayout />}>
           <Route path="/data-sources" element={<DataSources />} />
           <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
           <Route path="/credentials" element={<Credentials />} />
-          <Route path="/catalog" element={<Catalog />} />
+          <Route path="/admin" element={<Catalog />} />
         </Route>
 
         <Route path="/configure" element={<Navigate to="/data-sources" replace />} />
@@ -34,12 +42,13 @@ export function App() {
           path="/configure/transformations"
           element={<Navigate to="/transformations" replace />}
         />
-        <Route path="/configure/catalog" element={<Navigate to="/catalog" replace />} />
+        <Route path="/configure/catalog" element={<Navigate to="/admin" replace />} />
+        <Route path="/catalog" element={<Navigate to="/admin" replace />} />
 
         <Route path="/storage-credentials" element={<Navigate to="/credentials" replace />} />
         <Route path="/bcm-credentials" element={<Navigate to="/credentials" replace />} />
 
-        <Route path="/settings" element={<Navigate to="/catalog" replace />} />
+        <Route path="/settings" element={<Navigate to="/admin" replace />} />
         <Route path="/setup" element={<Navigate to="/data-sources" replace />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>

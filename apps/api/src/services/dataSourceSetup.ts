@@ -675,6 +675,7 @@ export async function syncSharedFocusPipeline(
     cronExpression,
     timezoneId,
     servicePrincipalId: env.DATABRICKS_CLIENT_ID,
+    environmentTag: env.NODE_ENV,
   };
   const result = await upsertPipelineSchedule(wc, params, {
     jobId: existingJobId,

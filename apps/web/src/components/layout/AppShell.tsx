@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   LineChart,
   Notebook,
+  Binoculars,
   Shapes,
   type LucideIcon,
 } from 'lucide-react';
@@ -61,7 +62,17 @@ const CONFIGURE: NavGroup = {
     { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
     { to: '/credentials', labelKey: 'nav.credentials' },
-    { to: '/catalog', labelKey: 'nav.configureCatalog' },
+    { to: '/admin', labelKey: 'nav.configureCatalog' },
+  ],
+};
+
+const EXPLORE: NavGroup = {
+  labelKey: 'nav.explore',
+  icon: Binoculars,
+  matchPrefix: '/genie',
+  items: [
+    { to: '/genie', labelKey: 'nav.genie', end: true },
+    { to: '/query', labelKey: 'nav.query' },
   ],
 };
 
@@ -97,8 +108,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
   );
   const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname.startsWith(item.to));
+  const onExploreRoute = EXPLORE.items.some((item) =>
+    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
+  );
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
+  const [exploreOpen, setExploreOpen] = useState(onExploreRoute);
 
   useEffect(() => {
     if (onInformRoute) {
@@ -107,7 +122,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (onConfigureRoute) {
       setConfigureOpen(true);
     }
-  }, [onConfigureRoute, onInformRoute]);
+    if (onExploreRoute) {
+      setExploreOpen(true);
+    }
+  }, [onConfigureRoute, onExploreRoute, onInformRoute]);
 
   return (
     <div className="app-shell">
@@ -188,6 +206,43 @@ export function AppShell({ children }: { children: ReactNode }) {
             {configureOpen ? (
               <div className="nav-children">
                 {CONFIGURE.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => (isActive ? 'active' : '')}
+                  >
+                    <span>{t(item.labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div
+            className={`nav-group ${exploreOpen ? 'open' : ''} ${onExploreRoute ? 'active' : ''}`}
+          >
+            <div className="nav-group-row">
+              <NavLink
+                to={EXPLORE.items[0]?.to ?? '/genie'}
+                className={() => (onExploreRoute ? 'group-head active' : 'group-head')}
+              >
+                <EXPLORE.icon className="nav-icon" aria-hidden="true" />
+                <span>{t(EXPLORE.labelKey)}</span>
+              </NavLink>
+              <button
+                type="button"
+                className="nav-chevron"
+                aria-expanded={exploreOpen}
+                aria-label={t(EXPLORE.labelKey)}
+                onClick={() => setExploreOpen((v) => !v)}
+              >
+                <ChevronDown className="nav-icon" aria-hidden="true" />
+              </button>
+            </div>
+            {exploreOpen ? (
+              <div className="nav-children">
+                {EXPLORE.items.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

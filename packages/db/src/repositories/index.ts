@@ -32,6 +32,7 @@ export interface CachedAggregationsRepo {
   get(cacheKey: string): Promise<CachedAggregationValue | null>;
   set(value: CachedAggregationValue): Promise<void>;
   prune(now: string): Promise<number>;
+  clear(): Promise<number>;
 }
 
 export interface SetupStateValue {
@@ -48,6 +49,7 @@ export interface SetupStateRepo {
   get(workspaceId: string): Promise<SetupStateValue | null>;
   upsert(value: SetupStateValue): Promise<SetupStateValue>;
   recordCheck(workspaceId: string, result: SetupCheckResult): Promise<void>;
+  clear(): Promise<number>;
 }
 
 export interface DataSourceValue {
@@ -77,6 +79,7 @@ export interface DataSourcesRepo {
   create(input: DataSourceCreateInput): Promise<DataSourceValue>;
   update(id: number, patch: DataSourceUpdatePatch): Promise<DataSourceValue>;
   delete(id: number): Promise<void>;
+  clear(): Promise<number>;
 }
 
 export interface AppSettingValue {
@@ -90,6 +93,7 @@ export interface AppSettingsRepo {
   list(): Promise<AppSettingValue[]>;
   upsert(key: string, value: string): Promise<AppSettingValue>;
   delete(key: string): Promise<void>;
+  deleteMany(keys: readonly string[]): Promise<number>;
 }
 
 export function settingsToRecord(rows: AppSettingValue[]): Record<string, string> {

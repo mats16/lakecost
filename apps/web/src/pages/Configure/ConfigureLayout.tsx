@@ -7,7 +7,7 @@ const TABS = [
   { to: '/tags', labelKey: 'nav.tags' },
   { to: '/transformations', labelKey: 'nav.transformations' },
   { to: '/credentials', labelKey: 'nav.credentials' },
-  { to: '/catalog', labelKey: 'nav.configureCatalog' },
+  { to: '/admin', labelKey: 'nav.configureCatalog' },
 ];
 
 export function ConfigureLayout({ children }: { children?: ReactNode }) {

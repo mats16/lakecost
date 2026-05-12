@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Budget,
+  AdminCleanupResponse,
   AwsFocusExportCreateBody,
   AwsFocusExportCreateResponse,
   CatalogListResponse,
@@ -15,6 +16,9 @@ import type {
   ExternalLocationCreateBody,
   ExternalLocationCreateResponse,
   ExternalLocationListResponse,
+  GenieChatRequest,
+  GenieChatResponse,
+  GenieSetupResponse,
   GovernedTagsResponse,
   GovernedTagSyncBody,
   GovernedTagSyncResult,
@@ -221,6 +225,62 @@ export function useUpdateAppSettings() {
         qc.invalidateQueries({ queryKey: ['overview'] });
       }
     },
+  });
+}
+
+export function useAdminCleanup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { deleteCatalog?: boolean } = {}) =>
+      apiFetch<AdminCleanupResponse>('/api/admin/cleanup', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+      qc.invalidateQueries({ queryKey: ['dataSources'] });
+      qc.invalidateQueries({ queryKey: ['setup'] });
+      qc.invalidateQueries({ queryKey: ['overview'] });
+      qc.invalidateQueries({ queryKey: ['transformations'] });
+      qc.invalidateQueries({ queryKey: ['catalogs'] });
+    },
+  });
+}
+
+export function useSetupGenieSpace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<GenieSetupResponse>('/api/genie/setup', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+    },
+  });
+}
+
+export function useDeleteGenieSpace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>('/api/genie/space', {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+    },
+  });
+}
+
+export function useAskGenie() {
+  return useMutation({
+    mutationFn: (body: GenieChatRequest) =>
+      apiFetch<GenieChatResponse>('/api/genie/chat', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   });
 }
 

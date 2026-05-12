@@ -21,6 +21,8 @@ import { storageCredentialsRouter } from './routes/storageCredentials.js';
 import { serviceCredentialsRouter } from './routes/serviceCredentials.js';
 import { transformationsRouter } from './routes/transformations.js';
 import { governedTagsRouter } from './routes/governedTags.js';
+import { genieRouter } from './routes/genie.js';
+import { adminRouter } from './routes/admin.js';
 
 export interface AppDeps {
   env: Env;
@@ -52,6 +54,8 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/storage-credentials', storageCredentialsRouter(env));
   app.use('/api/unity-catalog/external-locations', externalLocationsRouter(env));
   app.use('/api/unity-catalog/credentials', serviceCredentialsRouter(env));
+  app.use('/api/genie', genieRouter(db, env));
+  app.use('/api/admin', adminRouter(db, env));
 
   if (env.NODE_ENV === 'production') {
     const distDir = resolveWebDistDir(env);

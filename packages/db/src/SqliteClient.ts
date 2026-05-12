@@ -1,7 +1,7 @@
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as s from './schema/sqlite.js';
 import type { DatabaseClient } from './DatabaseClient.js';
@@ -332,6 +332,11 @@ class SqliteCachedAggregationsRepo implements CachedAggregationsRepo {
     );
     return result.rowsAffected;
   }
+
+  async clear(): Promise<number> {
+    const result = await this.db.run(sql`delete from cached_aggregations`);
+    return result.rowsAffected;
+  }
 }
 
 class SqliteSetupStateRepo implements SetupStateRepo {
@@ -405,6 +410,11 @@ class SqliteSetupStateRepo implements SetupStateRepo {
     if (result.step === 'azureExport') next.azureExportConfigured = result.status === 'ok';
     await this.upsert(next);
   }
+
+  async clear(): Promise<number> {
+    const result = await this.db.run(sql`delete from setup_state`);
+    return result.rowsAffected;
+  }
 }
 
 class SqliteDataSourcesRepo implements DataSourcesRepo {
@@ -470,6 +480,11 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
   async delete(id: number): Promise<void> {
     await this.db.delete(s.dataSources).where(eq(s.dataSources.id, id));
   }
+
+  async clear(): Promise<number> {
+    const result = await this.db.run(sql`delete from data_sources`);
+    return result.rowsAffected;
+  }
 }
 
 function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
@@ -517,5 +532,11 @@ class SqliteAppSettingsRepo implements AppSettingsRepo {
 
   async delete(key: string): Promise<void> {
     await this.db.delete(s.appSettings).where(eq(s.appSettings.key, key));
+  }
+
+  async deleteMany(keys: readonly string[]): Promise<number> {
+    if (keys.length === 0) return 0;
+    const result = await this.db.delete(s.appSettings).where(inArray(s.appSettings.key, [...keys]));
+    return result.rowsAffected;
   }
 }
