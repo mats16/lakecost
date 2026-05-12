@@ -231,6 +231,7 @@ export async function preflightFocusDataSource(
       cronExpression: FOCUS_REFRESH_CRON_DEFAULT,
       timezoneId: FOCUS_REFRESH_TIMEZONE_DEFAULT,
       servicePrincipalId: sp,
+      environmentTag: env.NODE_ENV,
     };
     await pushStep(steps, 'Pipeline API dry run', async () => {
       await dryRunPipelineCreate(appClient, scheduleParams);

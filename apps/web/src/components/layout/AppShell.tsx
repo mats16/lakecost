@@ -20,9 +20,12 @@ import {
   ExternalLink,
   Globe,
   LayoutDashboard,
-  LineChart,
+  Layers,
+  Moon,
   Notebook,
+  Binoculars,
   Shapes,
+  Sun,
   type LucideIcon,
 } from 'lucide-react';
 import { useI18n, type Locale } from '../../i18n';
@@ -61,17 +64,29 @@ const CONFIGURE: NavGroup = {
     { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
     { to: '/credentials', labelKey: 'nav.credentials' },
-    { to: '/catalog', labelKey: 'nav.configureCatalog' },
+    { to: '/admin', labelKey: 'nav.configureCatalog' },
   ],
 };
 
-const SECONDARY: NavItem[] = [{ to: '/explorer', labelKey: 'nav.costExplorer', icon: LineChart }];
+const EXPLORE: NavGroup = {
+  labelKey: 'nav.explore',
+  icon: Binoculars,
+  matchPrefix: '/genie',
+  items: [
+    { to: '/genie', labelKey: 'nav.genie', end: true },
+    { to: '/query', labelKey: 'nav.query' },
+  ],
+};
 
 interface ExternalNavItem {
   path: string;
   labelKey: string;
   icon: LucideIcon;
 }
+
+type ThemeMode = 'light' | 'dark';
+
+const THEME_STORAGE_KEY = 'finlake.theme';
 
 function buildDatabricksItems(catalogName: string | null): ExternalNavItem[] {
   return [
@@ -83,6 +98,24 @@ function buildDatabricksItems(catalogName: string | null): ExternalNavItem[] {
     { path: '/sql/dashboards', labelKey: 'nav.dashboards', icon: LayoutDashboard },
     { path: '/browse', labelKey: 'nav.workspace', icon: Notebook },
   ];
+}
+
+function detectInitialTheme(): ThemeMode {
+  if (typeof window === 'undefined') return 'dark';
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {
+    // ignore
+  }
+  return document.documentElement.classList.contains('light') ? 'light' : 'dark';
+}
+
+function applyTheme(theme: ThemeMode) {
+  const root = document.documentElement;
+  root.classList.toggle('dark', theme === 'dark');
+  root.classList.toggle('light', theme === 'light');
+  root.style.colorScheme = theme;
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -97,8 +130,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
   );
   const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname.startsWith(item.to));
+  const onExploreRoute = EXPLORE.items.some((item) =>
+    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
+  );
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
+  const [exploreOpen, setExploreOpen] = useState(onExploreRoute);
+  const [theme, setTheme] = useState<ThemeMode>(detectInitialTheme);
 
   useEffect(() => {
     if (onInformRoute) {
@@ -107,12 +145,27 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (onConfigureRoute) {
       setConfigureOpen(true);
     }
-  }, [onConfigureRoute, onInformRoute]);
+    if (onExploreRoute) {
+      setExploreOpen(true);
+    }
+  }, [onConfigureRoute, onExploreRoute, onInformRoute]);
+
+  useEffect(() => {
+    applyTheme(theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h1>{t('appName')}</h1>
+        <div className="sidebar-brand">
+          <Layers className="sidebar-brand-icon" aria-hidden="true" />
+          <h1>{t('appName')}</h1>
+        </div>
         <div className="nav-section-label">{t('nav.finops')}</div>
         <nav>
           <div className={`nav-group ${informOpen ? 'open' : ''} ${onInformRoute ? 'active' : ''}`}>
@@ -149,20 +202,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             ) : null}
           </div>
-
-          {SECONDARY.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) => (isActive ? 'active' : '')}
-              >
-                {Icon ? <Icon className="nav-icon" aria-hidden="true" /> : null}
-                <span>{t(item.labelKey)}</span>
-              </NavLink>
-            );
-          })}
 
           <div
             className={`nav-group ${configureOpen ? 'open' : ''} ${onConfigureRoute ? 'active' : ''}`}
@@ -201,6 +240,43 @@ export function AppShell({ children }: { children: ReactNode }) {
             ) : null}
           </div>
 
+          <div
+            className={`nav-group ${exploreOpen ? 'open' : ''} ${onExploreRoute ? 'active' : ''}`}
+          >
+            <div className="nav-group-row">
+              <NavLink
+                to={EXPLORE.items[0]?.to ?? '/genie'}
+                className={() => (onExploreRoute ? 'group-head active' : 'group-head')}
+              >
+                <EXPLORE.icon className="nav-icon" aria-hidden="true" />
+                <span>{t(EXPLORE.labelKey)}</span>
+              </NavLink>
+              <button
+                type="button"
+                className="nav-chevron"
+                aria-expanded={exploreOpen}
+                aria-label={t(EXPLORE.labelKey)}
+                onClick={() => setExploreOpen((v) => !v)}
+              >
+                <ChevronDown className="nav-icon" aria-hidden="true" />
+              </button>
+            </div>
+            {exploreOpen ? (
+              <div className="nav-children">
+                {EXPLORE.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => (isActive ? 'active' : '')}
+                  >
+                    <span>{t(item.labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
           {workspaceUrl ? (
             <>
               <div className="nav-section-label">{t('nav.databricks')}</div>
@@ -226,10 +302,33 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="sidebar-footer">
           <AccountMenu />
+          <ThemeToggle
+            theme={theme}
+            onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          />
         </div>
       </aside>
       <main className="main">{children}</main>
     </div>
+  );
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => void }) {
+  const { t } = useI18n();
+  const isDark = theme === 'dark';
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-pressed={isDark}
+      aria-label={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+      title={isDark ? t('theme.switchToLight') : t('theme.switchToDark')}
+      onClick={onToggle}
+    >
+      <span className="theme-toggle-thumb" aria-hidden="true">
+        {isDark ? <Moon className="size-4" /> : <Sun className="size-4" />}
+      </span>
+    </button>
   );
 }
 

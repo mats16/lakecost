@@ -19,6 +19,8 @@ export interface PipelineScheduleParams {
   timezoneId: string;
   /** Optional application ID for service-principal-owned pipeline runs. */
   servicePrincipalId?: string;
+  /** Deployment environment tag value, normally NODE_ENV. */
+  environmentTag?: string;
 }
 
 export interface PipelineSourceFile {
@@ -35,7 +37,25 @@ export interface UpsertPipelineScheduleResult {
   createdJob: boolean;
 }
 
-const FINLAKE_MANAGED_TAGS = { ManagedBy: 'finlake' } as const;
+const FINLAKE_BASE_RESOURCE_TAGS = {
+  ManagedBy: 'finlake',
+  Project: 'finops',
+  CostCenter: 'finlake',
+} as const;
+
+export function finlakeResourceTags(environmentTag?: string): Record<string, string> {
+  return {
+    ...FINLAKE_BASE_RESOURCE_TAGS,
+    Environment: normalizedEnvironmentTag(environmentTag),
+  };
+}
+
+function normalizedEnvironmentTag(environmentTag?: string): string {
+  const trimmed = environmentTag?.trim();
+  // Fall back to 'local' when the value is empty or is an unexpanded DAB template variable (e.g. '${bundle.target}')
+  if (!trimmed || trimmed.startsWith('${')) return 'local';
+  return trimmed;
+}
 
 async function ensureWorkspaceDir(wc: WorkspaceClient, dir: string): Promise<void> {
   try {
@@ -87,7 +107,7 @@ async function upsertPipeline(
     ...(params.servicePrincipalId
       ? { run_as: { service_principal_name: params.servicePrincipalId } }
       : {}),
-    tags: FINLAKE_MANAGED_TAGS,
+    tags: finlakeResourceTags(params.environmentTag),
   };
 
   if (existingPipelineId) {
@@ -125,7 +145,7 @@ export async function dryRunPipelineCreate(
     ...(params.servicePrincipalId
       ? { run_as: { service_principal_name: params.servicePrincipalId } }
       : {}),
-    tags: FINLAKE_MANAGED_TAGS,
+    tags: finlakeResourceTags(params.environmentTag),
     dry_run: true,
   });
 }
@@ -148,7 +168,7 @@ export async function upsertPipelineSchedule(
   const jobSettings = {
     name: params.jobName,
     max_concurrent_runs: 1,
-    tags: FINLAKE_MANAGED_TAGS,
+    tags: finlakeResourceTags(params.environmentTag),
     schedule: {
       quartz_cron_expression: params.cronExpression,
       timezone_id: params.timezoneId,

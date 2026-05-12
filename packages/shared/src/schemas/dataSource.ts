@@ -160,9 +160,9 @@ export const DATA_SOURCE_TEMPLATES = [
 
 /**
  * Default Quartz cron for Databricks system.billing usage refresh — daily at
- * 02:00 UTC, picked because system.billing.usage publishes once per day.
+ * 21:00 UTC, which is 06:00 the next day in Japan Standard Time.
  */
-export const FOCUS_REFRESH_CRON_DEFAULT = '0 0 2 * * ?';
+export const FOCUS_REFRESH_CRON_DEFAULT = '0 0 21 * * ?';
 export const FOCUS_REFRESH_TIMEZONE_DEFAULT = 'UTC';
 
 export const DataSourceSetupBodySchema = z.object({

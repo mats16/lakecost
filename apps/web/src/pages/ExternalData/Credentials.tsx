@@ -147,7 +147,6 @@ export function Credentials() {
               <Button
                 type="button"
                 size="sm"
-                className="bg-(--success) text-(--background) hover:bg-(--success)/90"
                 onClick={() => {
                   createCredential.reset();
                   setServiceCredentialNameEdited(false);
@@ -365,11 +364,7 @@ function CreateCredentialModal({
           <Button type="button" variant="secondary" onClick={onClose} disabled={createPending}>
             {t('common.cancel')}
           </Button>
-          <Button
-            type="submit"
-            className="bg-(--success) text-(--background) hover:bg-(--success)/90"
-            disabled={createPending}
-          >
+          <Button type="submit" disabled={createPending}>
             {createPending ? (
               <>
                 <Spinner /> {t('credentials.creating')}
@@ -445,7 +440,7 @@ function ServiceCredentialTable({
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="secondary" size="sm" onClick={() => onSelect(row)}>
+                  <Button type="button" size="sm" onClick={() => onSelect(row)}>
                     {t('credentials.setup')}
                   </Button>
                   <CredentialActions
@@ -507,7 +502,11 @@ function CredentialActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onDelete(name)} disabled={deleting}>
+        <DropdownMenuItem
+          className="text-(--warning) focus:text-(--warning)"
+          onClick={() => onDelete(name)}
+          disabled={deleting}
+        >
           <Trash2 className="size-4" aria-hidden="true" />
           <span>
             {deleting ? t('credentials.actions.deleting') : t('credentials.actions.delete')}

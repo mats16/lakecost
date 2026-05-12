@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Budget,
+  AdminCleanupResponse,
   AwsFocusExportCreateBody,
   AwsFocusExportCreateResponse,
   CatalogListResponse,
@@ -15,6 +16,9 @@ import type {
   ExternalLocationCreateBody,
   ExternalLocationCreateResponse,
   ExternalLocationListResponse,
+  GenieChatRequest,
+  GenieChatResponse,
+  GenieSetupResponse,
   GovernedTagsResponse,
   GovernedTagSyncBody,
   GovernedTagSyncResult,
@@ -28,7 +32,6 @@ import type {
   StorageCredentialCreateBody,
   StorageCredentialCreateResponse,
   StorageCredentialListResponse,
-  TransformationPipelineShared,
   TransformationPipelinesResponse,
   TransformationSharedRunResult,
   UsageBySkuRow,
@@ -221,6 +224,62 @@ export function useUpdateAppSettings() {
         qc.invalidateQueries({ queryKey: ['overview'] });
       }
     },
+  });
+}
+
+export function useAdminCleanup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { deleteCatalog?: boolean } = {}) =>
+      apiFetch<AdminCleanupResponse>('/api/admin/cleanup', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+      qc.invalidateQueries({ queryKey: ['dataSources'] });
+      qc.invalidateQueries({ queryKey: ['setup'] });
+      qc.invalidateQueries({ queryKey: ['overview'] });
+      qc.invalidateQueries({ queryKey: ['transformations'] });
+      qc.invalidateQueries({ queryKey: ['catalogs'] });
+    },
+  });
+}
+
+export function useSetupGenieSpace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<GenieSetupResponse>('/api/genie/setup', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+    },
+  });
+}
+
+export function useDeleteGenieSpace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>('/api/genie/space', {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+    },
+  });
+}
+
+export function useAskGenie() {
+  return useMutation({
+    mutationFn: (body: GenieChatRequest) =>
+      apiFetch<GenieChatResponse>('/api/genie/chat', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
   });
 }
 
@@ -477,20 +536,6 @@ export function useTransformationPipelines() {
     queryFn: () => apiFetch<TransformationPipelinesResponse>('/api/transformations/pipelines'),
     staleTime: 60 * 1000,
     retry: false,
-  });
-}
-
-export function useUpdateTransformationSchedule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { cronExpression: string; timezoneId: string }) =>
-      apiFetch<TransformationPipelineShared>('/api/transformations/shared-schedule', {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transformations'] });
-    },
   });
 }
 

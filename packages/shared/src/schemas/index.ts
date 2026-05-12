@@ -10,3 +10,5 @@ export * from './externalLocation.js';
 export * from './storageCredential.js';
 export * from './serviceCredential.js';
 export * from './governedTags.js';
+export * from './genie.js';
+export * from './admin.js';
