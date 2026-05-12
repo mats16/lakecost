@@ -2,82 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  asRecord,
-  genieMessageError,
   normalizeGenieStreamAttachments,
   normalizeQueryResult,
   normalizeStatementResponse,
-  sqlValue,
-  textValue,
-  toGenieStreamMessage,
-} from '../src/services/genieUtils.js';
-
-// ---------------------------------------------------------------------------
-// asRecord
-// ---------------------------------------------------------------------------
-
-test('asRecord returns the object when given a plain object', () => {
-  const obj = { a: 1 };
-  assert.equal(asRecord(obj), obj);
-});
-
-test('asRecord returns empty object for non-objects', () => {
-  assert.deepEqual(asRecord(null), {});
-  assert.deepEqual(asRecord(undefined), {});
-  assert.deepEqual(asRecord(42), {});
-  assert.deepEqual(asRecord('hello'), {});
-  assert.deepEqual(asRecord([1, 2]), {});
-});
-
-// ---------------------------------------------------------------------------
-// textValue
-// ---------------------------------------------------------------------------
-
-test('textValue extracts trimmed strings', () => {
-  assert.equal(textValue('hello'), 'hello');
-  assert.equal(textValue('  spaced  '), 'spaced');
-  assert.equal(textValue(''), null);
-  assert.equal(textValue('   '), null);
-});
-
-test('textValue returns null for null and undefined', () => {
-  assert.equal(textValue(null), null);
-  assert.equal(textValue(undefined), null);
-});
-
-test('textValue joins array elements', () => {
-  assert.equal(textValue(['hello', 'world']), 'helloworld');
-  assert.equal(textValue(['hello ', 'world']), 'helloworld');
-  assert.equal(textValue([]), null);
-  assert.equal(textValue(['', '  ']), null);
-});
-
-test('textValue extracts from nested content/text/value/markdown keys', () => {
-  assert.equal(textValue({ content: 'from content' }), 'from content');
-  assert.equal(textValue({ text: 'from text' }), 'from text');
-  assert.equal(textValue({ value: 'from value' }), 'from value');
-  assert.equal(textValue({ markdown: 'from markdown' }), 'from markdown');
-});
-
-test('textValue returns null for empty objects', () => {
-  assert.equal(textValue({}), null);
-});
-
-// ---------------------------------------------------------------------------
-// sqlValue
-// ---------------------------------------------------------------------------
-
-test('sqlValue extracts SQL from query/sql/statement/content keys', () => {
-  assert.equal(sqlValue({ query: 'SELECT 1' }), 'SELECT 1');
-  assert.equal(sqlValue({ sql: 'SELECT 2' }), 'SELECT 2');
-  assert.equal(sqlValue({ statement: 'SELECT 3' }), 'SELECT 3');
-  assert.equal(sqlValue({ content: 'SELECT 4' }), 'SELECT 4');
-});
-
-test('sqlValue returns null for empty or non-object', () => {
-  assert.equal(sqlValue(null), null);
-  assert.equal(sqlValue({}), null);
-});
+} from '../src/services/genieAttachments.js';
+import { genieMessageError, toGenieStreamMessage } from '../src/services/genieUtils.js';
 
 // ---------------------------------------------------------------------------
 // genieMessageError

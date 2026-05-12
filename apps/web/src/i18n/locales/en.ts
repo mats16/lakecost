@@ -1,7 +1,7 @@
 export const en = {
   appName: 'FinLake',
   nav: {
-    finops: 'FinOps',
+    finops: 'FinOps Lakehouse',
     inform: 'Inform',
     overview: 'Overview',
     configure: 'Configure',

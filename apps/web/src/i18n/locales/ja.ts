@@ -3,7 +3,7 @@ import type { Dictionary } from './en';
 export const ja: Dictionary = {
   appName: 'FinLake',
   nav: {
-    finops: 'FinOps',
+    finops: 'FinOps Lakehouse',
     inform: '可視化',
     overview: '概要',
     configure: '構成',

@@ -8,6 +8,8 @@ export class WorkspaceServiceError extends Error {
   }
 }
 
+export type ServiceErrorCtor = new (message: string, statusCode: number) => WorkspaceServiceError;
+
 export function isPermissionDenied(err: unknown): boolean {
   if (err != null && typeof err === 'object' && 'errorCode' in err) {
     return (err as { errorCode: unknown }).errorCode === 'PERMISSION_DENIED';

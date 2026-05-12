@@ -1,9 +1,7 @@
 import type { Env } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { buildAppWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
-import { type WorkspaceServiceError, isPermissionDenied } from './workspaceClientErrors.js';
-
-type ServiceErrorCtor = new (message: string, statusCode: number) => WorkspaceServiceError;
+import { isPermissionDenied, type ServiceErrorCtor } from './workspaceClientErrors.js';
 
 interface CurrentPrincipalLike {
   id?: string;

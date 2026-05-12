@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer';
 import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
@@ -6,59 +5,37 @@ import {
   GENIE_SPACE_SETTING_KEY,
   medallionSchemaNamesFromSettings,
   type Env,
-  type GenieAttachment,
   type GenieChatResponse,
   type GenieSetupResponse,
 } from '@finlake/shared';
-import { logger } from '../config/logger.js';
+import { fetchServicePrincipalToken } from '../auth/appServicePrincipal.js';
 import { sleep } from '../utils/sleep.js';
 import {
-  asRecord,
   genieMessageError,
-  normalizeQueryResult,
-  normalizeStatementResponse,
-  sqlValue,
-  textValue,
   toGenieStreamMessage,
   type GenieMessageResponse,
-  type GenieStatementResponse,
   type GenieStreamEvent,
   type GenieStreamMessage,
 } from './genieUtils.js';
+import {
+  getGenieAttachmentStatementResponse,
+  normalizeGenieAttachments,
+} from './genieAttachments.js';
+import {
+  createGenieMessage,
+  createGenieSpace,
+  getGenieMessage,
+  listGenieConversationMessages,
+  trashGenieSpace,
+} from './genieClient.js';
 import { normalizeHost } from './normalizeHost.js';
-import { WorkspaceServiceError, isPermissionDenied } from './workspaceClientErrors.js';
+import { WorkspaceServiceError } from './workspaceClientErrors.js';
 
 export type { GenieStreamEvent } from './genieUtils.js';
 export class GenieServiceError extends WorkspaceServiceError {}
 
 const GENIE_SPACE_TITLE = 'FinOps Agent';
 const GENIE_SPACE_PARENT_PATH = '/Workspace/Shared';
-
-interface CreateGenieSpaceResponse {
-  space_id?: string;
-  title?: string;
-}
-
-interface OAuthTokenResponse {
-  access_token?: string;
-  token_type?: string;
-  expires_in?: number;
-}
-
-interface GenieConversationResponse {
-  id?: string;
-  conversation_id?: string;
-  message_id?: string;
-  space_id?: string;
-  status?: string;
-  content?: string;
-  attachments?: unknown[] | null;
-  error?: string | { message?: string; error_code?: string } | null;
-  conversation?: {
-    id?: string;
-  };
-  message?: GenieMessageResponse;
-}
 
 const GENIE_POLL_TIMEOUT_MS = 2 * 60 * 1000;
 const GENIE_POLL_INITIAL_DELAY_MS = 1_000;
@@ -103,14 +80,19 @@ export async function setupFinLakeGenieSpace(
     throw new GenieServiceError('DATABRICKS_HOST and SQL_WAREHOUSE_ID are required.', 500);
   }
 
-  const token = await fetchServicePrincipalToken(host, env);
-  const space = await createGenieSpace(host, token, {
-    title: GENIE_SPACE_TITLE,
-    description: 'FinLake Genie Space for exploring usage and daily cost facts.',
-    warehouseId: env.SQL_WAREHOUSE_ID,
-    parentPath: GENIE_SPACE_PARENT_PATH,
-    tableIdentifiers: tables,
-  });
+  const token = await fetchServicePrincipalToken(host, env, GenieServiceError);
+  const space = await createGenieSpace(
+    host,
+    token,
+    {
+      title: GENIE_SPACE_TITLE,
+      description: 'FinLake Genie Space for exploring usage and daily cost facts.',
+      warehouseId: env.SQL_WAREHOUSE_ID,
+      parentPath: GENIE_SPACE_PARENT_PATH,
+      serializedSpace: buildSerializedSpace(tables),
+    },
+    GenieServiceError,
+  );
 
   const spaceId = space.space_id?.trim();
   if (!spaceId) {
@@ -131,8 +113,8 @@ export async function deleteFinLakeGenieSpace(env: Env, db: DatabaseClient): Pro
     throw new GenieServiceError('DATABRICKS_HOST is required.', 500);
   }
 
-  const token = await fetchServicePrincipalToken(host, env);
-  await trashGenieSpace(host, token, spaceId);
+  const token = await fetchServicePrincipalToken(host, env, GenieServiceError);
+  await trashGenieSpace(host, token, spaceId, GenieServiceError);
   await db.repos.appSettings.delete(GENIE_SPACE_SETTING_KEY);
 }
 
@@ -157,12 +139,18 @@ export async function askFinLakeGenie(
   }
 
   const userToken = opts.userAccessToken?.trim();
-  const token = userToken || (await fetchServicePrincipalToken(host, env));
+  const token = userToken || (await fetchServicePrincipalToken(host, env, GenieServiceError));
   const authMode = userToken ? 'obo' : 'service_principal';
-  const started = await createGenieMessage(host, token, spaceId, {
-    content: opts.content,
-    conversationId: opts.conversationId,
-  });
+  const started = await createGenieMessage(
+    host,
+    token,
+    spaceId,
+    {
+      content: opts.content,
+      conversationId: opts.conversationId,
+    },
+    GenieServiceError,
+  );
 
   const startedMessage = started.message ?? started;
   const conversationId =
@@ -226,11 +214,17 @@ export async function streamFinLakeGenieMessage(
   }
 
   const userToken = opts.userAccessToken?.trim();
-  const token = userToken || (await fetchServicePrincipalToken(host, env));
-  const started = await createGenieMessage(host, token, spaceId, {
-    content: opts.content,
-    conversationId: opts.conversationId,
-  });
+  const token = userToken || (await fetchServicePrincipalToken(host, env, GenieServiceError));
+  const started = await createGenieMessage(
+    host,
+    token,
+    spaceId,
+    {
+      content: opts.content,
+      conversationId: opts.conversationId,
+    },
+    GenieServiceError,
+  );
   const startedMessage = started.message ?? started;
   const conversationId =
     startedMessage.conversation_id?.trim() ||
@@ -258,7 +252,14 @@ export async function streamFinLakeGenieMessage(
     }
     await sleep(delay);
     delay = Math.min(Math.round(delay * 1.5), GENIE_POLL_MAX_DELAY_MS);
-    message = await getGenieMessage(host, token, spaceId, conversationId, messageId);
+    message = await getGenieMessage(
+      host,
+      token,
+      spaceId,
+      conversationId,
+      messageId,
+      GenieServiceError,
+    );
   }
 
   const status = message.status?.trim() || 'UNKNOWN';
@@ -302,6 +303,7 @@ export async function streamFinLakeGenieConversation(
     context.spaceId,
     opts.conversationId,
     opts.pageToken,
+    GenieServiceError,
   );
   const messages = page.messages.reverse().map((message) => toGenieStreamMessage(message));
 
@@ -349,94 +351,6 @@ export async function streamFinLakeGenieExistingMessage(
   await emitQueryResultsForMessage(context, opts.conversationId, streamMessage, opts.emit);
 }
 
-async function createGenieSpace(
-  host: string,
-  token: string,
-  opts: {
-    title: string;
-    description: string;
-    warehouseId: string;
-    parentPath: string;
-    tableIdentifiers: string[];
-  },
-): Promise<CreateGenieSpaceResponse> {
-  const body = {
-    title: opts.title,
-    description: opts.description,
-    warehouse_id: opts.warehouseId,
-    parent_path: opts.parentPath,
-    serialized_space: JSON.stringify(buildSerializedSpace(opts.tableIdentifiers)),
-  };
-
-  let response: Response;
-  try {
-    response = await fetch(`${host}/api/2.0/genie/spaces`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    logger.error({ err }, 'Create Genie Space request failed');
-    throw new GenieServiceError(`Failed to create Genie Space: ${(err as Error).message}`, 502);
-  }
-
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn({ status: response.status, message }, 'Create Genie Space failed');
-    throw new GenieServiceError(
-      `Failed to create Genie Space: ${message}`,
-      mapDatabricksStatusCode(response, message),
-    );
-  }
-
-  return (await response.json()) as CreateGenieSpaceResponse;
-}
-
-async function createGenieMessage(
-  host: string,
-  token: string,
-  spaceId: string,
-  opts: {
-    content: string;
-    conversationId?: string;
-  },
-): Promise<GenieConversationResponse> {
-  const encodedSpaceId = encodeURIComponent(spaceId);
-  const conversationId = opts.conversationId?.trim();
-  const path = conversationId
-    ? `/api/2.0/genie/spaces/${encodedSpaceId}/conversations/${encodeURIComponent(conversationId)}/messages`
-    : `/api/2.0/genie/spaces/${encodedSpaceId}/start-conversation`;
-
-  let response: Response;
-  try {
-    response = await fetch(`${host}${path}`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ content: opts.content }),
-    });
-  } catch (err) {
-    logger.error({ err, spaceId, conversationId }, 'Create Genie message request failed');
-    throw new GenieServiceError(`Failed to ask Genie: ${(err as Error).message}`, 502);
-  }
-
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn({ status: response.status, message, spaceId, conversationId }, 'Ask Genie failed');
-    throw new GenieServiceError(
-      `Failed to ask Genie: ${message}`,
-      mapDatabricksStatusCode(response, message),
-    );
-  }
-
-  return (await response.json()) as GenieConversationResponse;
-}
-
 async function resolveGenieContext(
   env: Env,
   db: DatabaseClient,
@@ -455,56 +369,7 @@ async function resolveGenieContext(
   return {
     host,
     spaceId,
-    token: userToken || (await fetchServicePrincipalToken(host, env)),
-  };
-}
-
-async function listGenieConversationMessages(
-  host: string,
-  token: string,
-  spaceId: string,
-  conversationId: string,
-  pageToken: string | undefined,
-): Promise<{ messages: GenieMessageResponse[]; nextPageToken: string | null }> {
-  const params = new URLSearchParams({ page_size: '50' });
-  if (pageToken) params.set('page_token', pageToken);
-  let response: Response;
-  try {
-    response = await fetch(
-      `${host}/api/2.0/genie/spaces/${encodeURIComponent(spaceId)}/conversations/${encodeURIComponent(conversationId)}/messages?${params}`,
-      {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      },
-    );
-  } catch (err) {
-    logger.error({ err, spaceId, conversationId }, 'List Genie messages request failed');
-    throw new GenieServiceError(
-      `Failed to load Genie conversation: ${(err as Error).message}`,
-      502,
-    );
-  }
-
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn(
-      { status: response.status, message, spaceId, conversationId },
-      'List Genie messages failed',
-    );
-    throw new GenieServiceError(
-      `Failed to load Genie conversation: ${message}`,
-      mapDatabricksStatusCode(response, message),
-    );
-  }
-
-  const body = (await response.json()) as {
-    messages?: GenieMessageResponse[];
-    next_page_token?: string;
-  };
-  return {
-    messages: body.messages ?? [],
-    nextPageToken: body.next_page_token ?? null,
+    token: userToken || (await fetchServicePrincipalToken(host, env, GenieServiceError)),
   };
 }
 
@@ -515,7 +380,14 @@ async function pollGenieMessage(
   conversationId: string,
   messageId: string,
 ): Promise<GenieMessageResponse> {
-  let message = await getGenieMessage(host, token, spaceId, conversationId, messageId);
+  let message = await getGenieMessage(
+    host,
+    token,
+    spaceId,
+    conversationId,
+    messageId,
+    GenieServiceError,
+  );
   let delay = GENIE_POLL_INITIAL_DELAY_MS;
   const deadline = Date.now() + GENIE_POLL_TIMEOUT_MS;
 
@@ -525,242 +397,17 @@ async function pollGenieMessage(
     }
     await sleep(delay);
     delay = Math.min(Math.round(delay * 1.5), GENIE_POLL_MAX_DELAY_MS);
-    message = await getGenieMessage(host, token, spaceId, conversationId, messageId);
+    message = await getGenieMessage(
+      host,
+      token,
+      spaceId,
+      conversationId,
+      messageId,
+      GenieServiceError,
+    );
   }
 
   return message;
-}
-
-async function getGenieMessage(
-  host: string,
-  token: string,
-  spaceId: string,
-  conversationId: string,
-  messageId: string,
-): Promise<GenieMessageResponse> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `${host}/api/2.0/genie/spaces/${encodeURIComponent(spaceId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
-      {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      },
-    );
-  } catch (err) {
-    logger.error({ err, spaceId, conversationId, messageId }, 'Get Genie message request failed');
-    throw new GenieServiceError(`Failed to poll Genie: ${(err as Error).message}`, 502);
-  }
-
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn(
-      { status: response.status, message, spaceId, conversationId, messageId },
-      'Poll Genie failed',
-    );
-    throw new GenieServiceError(
-      `Failed to poll Genie: ${message}`,
-      mapDatabricksStatusCode(response, message),
-    );
-  }
-
-  return (await response.json()) as GenieMessageResponse;
-}
-
-async function normalizeGenieAttachments(
-  host: string,
-  token: string,
-  spaceId: string,
-  conversationId: string,
-  messageId: string,
-  attachments: unknown[],
-): Promise<GenieAttachment[]> {
-  const items = attachments.map((attachment) => {
-    const record = asRecord(attachment);
-    const id = textValue(record.attachment_id) ?? textValue(record.id);
-    return {
-      id,
-      text: textValue(record.text),
-      sql: sqlValue(record.query),
-    };
-  });
-
-  const queryResults = await Promise.all(
-    items.map((item) =>
-      item.id && item.sql
-        ? getGenieAttachmentQueryResult(host, token, spaceId, conversationId, messageId, item.id)
-        : Promise.resolve(null),
-    ),
-  );
-
-  return items.map(
-    (item, i): GenieAttachment => ({
-      id: item.id,
-      text: item.text,
-      sql: item.sql,
-      queryResult: queryResults[i] ?? null,
-    }),
-  );
-}
-
-async function fetchGenieAttachmentRaw(
-  host: string,
-  token: string,
-  spaceId: string,
-  conversationId: string,
-  messageId: string,
-  attachmentId: string,
-): Promise<unknown | null> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `${host}/api/2.0/genie/spaces/${encodeURIComponent(spaceId)}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}/query-result`,
-      {
-        headers: {
-          authorization: `Bearer ${token}`,
-        },
-      },
-    );
-  } catch (err) {
-    logger.warn({ err, attachmentId }, 'Get Genie query result request failed');
-    return null;
-  }
-
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn(
-      { status: response.status, message, attachmentId },
-      'Get Genie query result failed',
-    );
-    return null;
-  }
-
-  return response.json();
-}
-
-async function getGenieAttachmentQueryResult(
-  host: string,
-  token: string,
-  spaceId: string,
-  conversationId: string,
-  messageId: string,
-  attachmentId: string,
-): Promise<GenieAttachment['queryResult']> {
-  const body = await fetchGenieAttachmentRaw(
-    host,
-    token,
-    spaceId,
-    conversationId,
-    messageId,
-    attachmentId,
-  );
-  return body ? normalizeQueryResult(body) : null;
-}
-
-async function getGenieAttachmentStatementResponse(
-  host: string,
-  token: string,
-  spaceId: string,
-  conversationId: string,
-  messageId: string,
-  attachmentId: string,
-): Promise<GenieStatementResponse | null> {
-  const body = await fetchGenieAttachmentRaw(
-    host,
-    token,
-    spaceId,
-    conversationId,
-    messageId,
-    attachmentId,
-  );
-  return body ? normalizeStatementResponse(body) : null;
-}
-
-async function trashGenieSpace(host: string, token: string, spaceId: string): Promise<void> {
-  let response: Response;
-  try {
-    response = await fetch(`${host}/api/2.0/genie/spaces/${encodeURIComponent(spaceId)}`, {
-      method: 'DELETE',
-      headers: {
-        authorization: `Bearer ${token}`,
-      },
-    });
-  } catch (err) {
-    logger.error({ err, spaceId }, 'Delete Genie Space request failed');
-    throw new GenieServiceError(`Failed to delete Genie Space: ${(err as Error).message}`, 502);
-  }
-
-  if (response.status === 404) {
-    logger.warn({ spaceId }, 'Genie Space was not found during delete; clearing app setting');
-    return;
-  }
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn({ status: response.status, message, spaceId }, 'Delete Genie Space failed');
-    throw new GenieServiceError(
-      `Failed to delete Genie Space: ${message}`,
-      mapDatabricksStatusCode(response, message),
-    );
-  }
-}
-
-let cachedSpToken: { token: string; expiresAt: number } | null = null;
-
-async function fetchServicePrincipalToken(host: string, env: Env): Promise<string> {
-  if (cachedSpToken && Date.now() < cachedSpToken.expiresAt) {
-    return cachedSpToken.token;
-  }
-  const clientId = env.DATABRICKS_CLIENT_ID;
-  const clientSecret = env.DATABRICKS_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new GenieServiceError(
-      'Databricks service principal credentials are not configured.',
-      500,
-    );
-  }
-
-  let response: Response;
-  try {
-    response = await fetch(`${host}/oidc/v1/token`, {
-      method: 'POST',
-      headers: {
-        authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-        scope: 'all-apis',
-      }).toString(),
-    });
-  } catch (err) {
-    logger.error({ err }, 'Databricks service principal token request failed');
-    throw new GenieServiceError(
-      `Failed to get service principal OAuth token: ${(err as Error).message}`,
-      502,
-    );
-  }
-
-  if (!response.ok) {
-    const message = await databricksErrorMessage(response);
-    logger.warn({ status: response.status, message }, 'Databricks service principal token failed');
-    throw new GenieServiceError(
-      `Failed to get service principal OAuth token: ${message}`,
-      response.status === 401 ? 401 : response.status === 403 ? 403 : 502,
-    );
-  }
-
-  const body = (await response.json()) as OAuthTokenResponse;
-  const token = body.access_token?.trim();
-  if (!token) {
-    throw new GenieServiceError(
-      'Databricks service principal token response had no access_token.',
-      502,
-    );
-  }
-  const expiresIn = body.expires_in ?? 3600;
-  cachedSpToken = { token, expiresAt: Date.now() + (expiresIn - 60) * 1000 };
-  return token;
 }
 
 function buildSerializedSpace(tableIdentifiers: string[]) {
@@ -833,24 +480,5 @@ async function emitQueryResultsForMessage(
       statementId,
       data: statement,
     });
-  }
-}
-
-function mapDatabricksStatusCode(response: Response, errorMessage: string): number {
-  if (response.status === 401) return 401;
-  if (response.status === 403 || isPermissionDenied(errorMessage)) return 403;
-  return 502;
-}
-
-async function databricksErrorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as {
-      message?: string;
-      error_code?: string;
-      error?: { message?: string };
-    };
-    return body.message ?? body.error?.message ?? body.error_code ?? response.statusText;
-  } catch {
-    return response.statusText;
   }
 }
