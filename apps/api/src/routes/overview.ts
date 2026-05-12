@@ -4,6 +4,7 @@ import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   CATALOG_SETTING_KEY,
   DataSourceTableNameSchema,
+  GOLD_USAGE_TABLES,
   MEDALLION_SCHEMA_DEFAULTS,
   UsageRangeSchema,
   medallionSchemaNamesFromSettings,
@@ -146,7 +147,8 @@ function dailyUsageTableName(
   catalog?: string,
   goldSchema: string = MEDALLION_SCHEMA_DEFAULTS.gold,
 ): { display: string; sql: string } {
-  const dailyParts = catalog ? [catalog, goldSchema, 'daily_usage'] : [goldSchema, 'daily_usage'];
+  const table = GOLD_USAGE_TABLES.daily;
+  const dailyParts = catalog ? [catalog, goldSchema, table] : [goldSchema, table];
   const display = dailyParts.join('.');
   return { display, sql: quoteTableName(display) };
 }

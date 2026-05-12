@@ -6,6 +6,7 @@ import {
   DATABRICKS_FOCUS_VERSION,
   FOCUS_REFRESH_CRON_DEFAULT,
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
+  GOLD_USAGE_TABLES,
   LAKEFLOW_PIPELINE_SETTING_KEYS,
   focusSourceTables,
   focusViewFqn,
@@ -62,7 +63,7 @@ export const LEGACY_SHARED_PIPELINE_SETTING_KEYS = {
   pipelineId: 'focus_pipeline_id',
 } as const;
 
-const SHARED_PIPELINE_FILENAME_GOLD = 'gold_daily_usage.sql';
+const SHARED_PIPELINE_FILENAME_GOLD = 'gold_usage.sql';
 const FOCUS_12_BILLING_COLUMNS = [
   { name: 'AvailabilityZone', type: 'STRING' },
   { name: 'BilledCost', type: 'DOUBLE' },
@@ -122,7 +123,7 @@ const FOCUS_12_BILLING_COLUMNS = [
   { name: 'SubAccountType', type: 'STRING' },
   { name: 'Tags', type: 'MAP<STRING, STRING>' },
 ] as const;
-const DAILY_USAGE_SOURCE_COLUMNS = [
+const USAGE_DIMENSION_COLUMNS = [
   'ChargePeriodStart',
   'BillingPeriodStart',
   'BillingAccountId',
@@ -137,10 +138,14 @@ const DAILY_USAGE_SOURCE_COLUMNS = [
   'ServiceName',
   'SkuId',
   'SkuMeter',
-  'ListCost',
-  'BilledCost',
-  'ContractedCost',
-  'EffectiveCost',
+] as const;
+const USAGE_RESOURCE_COLUMNS = ['ResourceType', 'ResourceId', 'ResourceName', 'Tags'] as const;
+const USAGE_COST_COLUMNS = ['ListCost', 'BilledCost', 'ContractedCost', 'EffectiveCost'] as const;
+const DAILY_USAGE_SOURCE_COLUMNS = [...USAGE_DIMENSION_COLUMNS, ...USAGE_COST_COLUMNS] as const;
+const MONTHLY_USAGE_SOURCE_COLUMNS = [
+  ...USAGE_DIMENSION_COLUMNS,
+  ...USAGE_RESOURCE_COLUMNS,
+  ...USAGE_COST_COLUMNS,
 ] as const;
 
 export function readFocusConfig(config: Record<string, unknown>): FocusConfig {
@@ -341,7 +346,11 @@ export async function setupFocusDataSource(
     jobId: result.jobId,
     pipelineId: result.pipelineId,
     fqn,
-    goldFqn: focusViewFqn({ catalog, schema: medallionSchemas.gold, table: 'daily_usage' }),
+    goldFqn: focusViewFqn({
+      catalog,
+      schema: medallionSchemas.gold,
+      table: GOLD_USAGE_TABLES.daily,
+    }),
     cronExpression: result.cronExpression,
     timezoneId: result.timezoneId,
     createdView: false,
@@ -656,7 +665,7 @@ export async function syncSharedFocusPipeline(
   const sourceFiles = enabledSources.map((source) => sourcePipelineFile(workspaceRoot, source));
   const goldFile: PipelineSourceFile = {
     workspacePath: `${workspaceRoot}/${SHARED_PIPELINE_FILENAME_GOLD}`,
-    pipelineSql: buildDailyUsageGoldSql({
+    pipelineSql: buildUsageGoldSql({
       catalog,
       silverSchema,
       goldSchema,
@@ -761,7 +770,7 @@ function sourcePipelineFile(
   };
 }
 
-export function buildDailyUsageGoldSql({
+export function buildUsageGoldSql({
   catalog,
   silverSchema,
   goldSchema,
@@ -790,7 +799,7 @@ SELECT
   ${FOCUS_12_BILLING_COLUMNS.map((column) => quoteIdent(column.name)).join(',\n  ')}
 FROM focus_rows;
 
-CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent('daily_usage')}
+CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent(GOLD_USAGE_TABLES.daily)}
 COMMENT 'FOCUS daily usage rollup managed by FinLake'
 AS
 WITH focus_rows AS (
@@ -832,7 +841,56 @@ GROUP BY
   ServiceSubcategory,
   ServiceName,
   SkuId,
-  SkuMeter;`;
+  SkuMeter;
+
+CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent(GOLD_USAGE_TABLES.monthly)}
+COMMENT 'FOCUS monthly usage rollup aggregated at the resource level (ResourceType, ResourceId, ResourceName) with latest Tags per resource. Managed by FinLake.'
+AS
+WITH focus_rows AS (
+  SELECT
+    ${MONTHLY_USAGE_SOURCE_COLUMNS.map(quoteIdent).join(',\n    ')}
+  FROM ${quoteIdent(silverSchema)}.${quoteIdent('usage')}
+)
+SELECT
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE) AS x_BillingMonth,
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  SkuId,
+  SkuMeter,
+  ResourceType,
+  ResourceId,
+  ResourceName,
+  MAX_BY(Tags, ChargePeriodStart) AS Tags,
+  CAST(SUM(COALESCE(ListCost, 0)) AS DECIMAL(30, 15)) AS ListCost,
+  CAST(SUM(COALESCE(BilledCost, 0)) AS DECIMAL(30, 15)) AS BilledCost,
+  CAST(SUM(COALESCE(ContractedCost, 0)) AS DECIMAL(30, 15)) AS ContractedCost,
+  CAST(SUM(COALESCE(EffectiveCost, 0)) AS DECIMAL(30, 15)) AS EffectiveCost
+FROM focus_rows
+GROUP BY
+  CAST(DATE_TRUNC('MONTH', BillingPeriodStart) AS DATE),
+  BillingAccountId,
+  BillingAccountName,
+  BillingCurrency,
+  SubAccountId,
+  SubAccountName,
+  SubAccountType,
+  ProviderName,
+  ServiceCategory,
+  ServiceSubcategory,
+  ServiceName,
+  SkuId,
+  SkuMeter,
+  ResourceType,
+  ResourceId,
+  ResourceName;`;
 }
 
 function stringSetting(value: string | undefined): string | null {
