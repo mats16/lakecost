@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Globe,
   LayoutDashboard,
+  Layers,
   Moon,
   Notebook,
   Binoculars,
@@ -161,7 +162,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h1>{t('appName')}</h1>
+        <div className="sidebar-brand">
+          <Layers className="sidebar-brand-icon" aria-hidden="true" />
+          <h1>{t('appName')}</h1>
+        </div>
         <div className="nav-section-label">{t('nav.finops')}</div>
         <nav>
           <div className={`nav-group ${informOpen ? 'open' : ''} ${onInformRoute ? 'active' : ''}`}>

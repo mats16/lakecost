@@ -81,10 +81,25 @@ a {
   gap: 10px;
 }
 
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 24px 4px;
+}
+
+.sidebar-brand-icon {
+  width: 22px;
+  height: 24px;
+  flex-shrink: 0;
+  color: var(--sidebar-foreground);
+  stroke-width: 1.9;
+}
+
 .sidebar h1 {
   font-size: 18px;
   font-weight: 600;
-  margin: 0 0 24px 4px;
+  margin: 0;
   letter-spacing: 0.02em;
   color: var(--sidebar-foreground);
 }
