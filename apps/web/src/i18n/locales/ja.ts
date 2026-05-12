@@ -101,7 +101,6 @@ export const ja: Dictionary = {
       costTrendsBreakdown: 'コスト推移と内訳',
       costAllocationTopSpenders: 'コスト配賦と上位支出',
       optimizationGovernance: '最適化とガバナンス',
-      databricksCostDetail: 'Databricks コスト詳細 (SKU 別 DBU)',
       budgetTrackingTaggingHealth: '予算追跡とタグ健全性',
     },
     kpi: {
@@ -165,7 +164,7 @@ export const ja: Dictionary = {
     teamBudgets: 'チーム予算',
     teamBudgetsDesc: 'FinLake の予算レコードを表示します。',
     taggingCoverage: 'タグカバレッジ',
-    taggingCoverageDesc: 'プロバイダー別カバレッジにはタグインベントリフィードが必要です。',
+    taggingCoverageDesc: '直近の請求月におけるリソース単位のタグ付与率です。',
     notMeasured: '未計測',
     notAvailable: '該当なし',
     dailySpendSpike: '日次支出のスパイク',
@@ -185,13 +184,6 @@ export const ja: Dictionary = {
       createBudgets: 'チーム単位の消化率を追跡するには予算を作成してください。',
       noProviders: 'プロバイダーがありません',
       enableSourcesForCoverage: 'カバレッジを監視するにはデータソースを有効化してください。',
-    },
-    skuBuckets: {
-      'All-Purpose': '汎用',
-      Jobs: 'ジョブ',
-      'SQL Warehouse': 'SQL ウェアハウス',
-      'ML / Model Serving': 'ML / モデルサービング',
-      Serverless: 'サーバーレス',
     },
     recommendations: {
       reviewSpend: '{name} の支出を確認',

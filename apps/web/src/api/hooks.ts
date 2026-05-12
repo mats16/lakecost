@@ -112,6 +112,8 @@ export interface FocusOverviewSkuRow {
 export interface FocusOverviewCoverageRow {
   dataSourceId: number;
   providerName: string;
+  subAccountId: string | null;
+  subAccountName: string | null;
   rowCount: number;
   taggedRows: number;
   tagCoveragePct: number;

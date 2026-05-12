@@ -99,7 +99,6 @@ export const en = {
       costTrendsBreakdown: 'Cost Trends & Breakdown',
       costAllocationTopSpenders: 'Cost Allocation & Top Spenders',
       optimizationGovernance: 'Optimization & Governance',
-      databricksCostDetail: 'Databricks Cost Detail (DBU by SKU)',
       budgetTrackingTaggingHealth: 'Budget Tracking & Tagging Health',
     },
     kpi: {
@@ -163,7 +162,7 @@ export const en = {
     teamBudgets: 'Team Budgets',
     teamBudgetsDesc: 'Actual budget records from FinLake budgets.',
     taggingCoverage: 'Tagging Coverage',
-    taggingCoverageDesc: 'Provider coverage requires tag inventory feeds.',
+    taggingCoverageDesc: 'Resource-level tagging rate for the most recent billing month.',
     notMeasured: 'Not measured',
     notAvailable: 'N/A',
     dailySpendSpike: 'Daily spend spike',
@@ -182,13 +181,6 @@ export const en = {
       createBudgets: 'Create budgets to track team-level burn rates.',
       noProviders: 'No providers',
       enableSourcesForCoverage: 'Enable data sources to monitor coverage.',
-    },
-    skuBuckets: {
-      'All-Purpose': 'All-Purpose',
-      Jobs: 'Jobs',
-      'SQL Warehouse': 'SQL Warehouse',
-      'ML / Model Serving': 'ML / Model Serving',
-      Serverless: 'Serverless',
     },
     recommendations: {
       reviewSpend: 'Review {name} spend',

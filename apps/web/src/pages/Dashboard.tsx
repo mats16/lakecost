@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -38,11 +38,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@databricks/appkit-ui/react';
 import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Database,
   DollarSign,
   RefreshCcw,
@@ -152,21 +157,6 @@ const PROVIDERS: Record<ProviderKey, ProviderMeta> = {
   },
 };
 
-const SKU_BUCKETS = [
-  {
-    label: 'All-Purpose',
-    match: (s: string) => s.includes('ALL_PURPOSE') || s.includes('INTERACTIVE'),
-  },
-  { label: 'Jobs', match: (s: string) => s.includes('JOB') },
-  { label: 'SQL Warehouse', match: (s: string) => s.includes('SQL') || s.includes('WAREHOUSE') },
-  {
-    label: 'ML / Model Serving',
-    match: (s: string) =>
-      s.includes('MODEL') || s.includes('SERVING') || s.includes('AI_') || s.includes('VECTOR'),
-  },
-  { label: 'Serverless', match: (s: string) => s.includes('SERVERLESS') },
-];
-
 const periodOptions = ['mtd', 'last30'] as const;
 type Period = (typeof periodOptions)[number];
 
@@ -192,6 +182,7 @@ export function Dashboard() {
   const { t, locale } = useI18n();
   const formatUsd = useCurrencyUsd();
   const [period, setPeriod] = useState<Period>('mtd');
+  const [coveragePage, setCoveragePage] = useState(0);
   const wideRange = useMemo(overviewRange, []);
   const mtdRange = useMemo(monthToDateRange, []);
   const rollingRange = useMemo(last30Range, []);
@@ -254,7 +245,6 @@ export function Dashboard() {
     () => buildTopServices(serviceRows, skuRows, activeProviders),
     [activeProviders, serviceRows, skuRows],
   );
-  const skuBuckets = useMemo(() => bucketSkus(skuRows, t), [skuRows, t]);
   const lastUpdated = useMemo(
     () => formatLastUpdated(history.dataUpdatedAt, current.dataUpdatedAt, locale),
     [current.dataUpdatedAt, history.dataUpdatedAt, locale],
@@ -264,10 +254,28 @@ export function Dashboard() {
   const loading = history.isLoading || current.isLoading;
   const costError = history.isError || current.isError;
   const sourceErrors = [...(history.data?.errors ?? []), ...(current.data?.errors ?? [])];
-  const tagCoverage =
-    coverageRows.length > 0
-      ? coverageRows.reduce((sum, row) => sum + row.tagCoveragePct, 0) / coverageRows.length
-      : null;
+  const tagCoverage = useMemo(() => {
+    const totalResources = coverageRows.reduce((sum, row) => sum + row.rowCount, 0);
+    if (totalResources <= 0) return null;
+    const taggedResources = coverageRows.reduce((sum, row) => sum + row.taggedRows, 0);
+    return (taggedResources / totalResources) * 100;
+  }, [coverageRows]);
+  const sortedCoverage = useMemo(
+    () =>
+      [...coverageRows].sort(
+        (a, b) => b.tagCoveragePct - a.tagCoveragePct || b.rowCount - a.rowCount,
+      ),
+    [coverageRows],
+  );
+  const coveragePageSize = 5;
+  const coveragePageCount = Math.max(1, Math.ceil(sortedCoverage.length / coveragePageSize));
+  useEffect(() => {
+    setCoveragePage((p) => Math.min(p, coveragePageCount - 1));
+  }, [coveragePageCount]);
+  const visibleCoverage = sortedCoverage.slice(
+    coveragePage * coveragePageSize,
+    coveragePage * coveragePageSize + coveragePageSize,
+  );
 
   return (
     <>
@@ -650,21 +658,6 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <SectionTitle title={t('dashboard.sections.databricksCostDetail')} />
-      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {skuBuckets.map((bucket) => (
-          <SkuCard
-            key={bucket.label}
-            label={bucket.label}
-            costUsd={bucket.costUsd}
-            percent={bucket.percent}
-            color={PROVIDERS.databricks.color}
-            formatUsd={formatUsd}
-            loading={current.isLoading}
-          />
-        ))}
-      </div>
-
       <SectionTitle title={t('dashboard.sections.budgetTrackingTaggingHealth')} />
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
@@ -719,8 +712,37 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.taggingCoverage')}</CardTitle>
-            <CardDescription>{t('dashboard.taggingCoverageDesc')}</CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm">{t('dashboard.taggingCoverage')}</CardTitle>
+                <CardDescription>{t('dashboard.taggingCoverageDesc')}</CardDescription>
+              </div>
+              {sortedCoverage.length > coveragePageSize ? (
+                <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setCoveragePage((p) => Math.max(0, p - 1))}
+                    disabled={coveragePage === 0}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="whitespace-nowrap tabular-nums">
+                    {coveragePage + 1} / {coveragePageCount}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setCoveragePage((p) => Math.min(coveragePageCount - 1, p + 1))}
+                    disabled={coveragePage >= coveragePageCount - 1}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
@@ -729,25 +751,52 @@ export function Dashboard() {
                   title={t('dashboard.empty.noProviders')}
                   description={t('dashboard.empty.enableSourcesForCoverage')}
                 />
+              ) : visibleCoverage.length === 0 ? (
+                activeProviders.map((provider) => (
+                  <div key={provider.key}>
+                    <div className="mb-1 flex items-center justify-between text-sm">
+                      <span className="inline-flex items-center gap-2">
+                        <Tags className="h-3.5 w-3.5" />
+                        {providerDisplayLabel(provider, t)}
+                      </span>
+                      <span className="text-muted-foreground">{t('dashboard.notMeasured')}</span>
+                    </div>
+                    <Progress value={0} />
+                  </div>
+                ))
               ) : (
-                activeProviders.map((provider) => {
-                  const providerCoverage = coverageRows.find(
-                    (row) => normalizeProvider(row.providerName) === provider.key,
-                  );
+                visibleCoverage.map((row) => {
+                  const providerKey = normalizeProvider(row.providerName);
+                  const provider =
+                    activeProviders.find((p) => p.key === providerKey) ?? PROVIDERS[providerKey];
+                  const subId = row.subAccountId?.trim() || '';
+                  const subName = row.subAccountName?.trim() || '';
+                  const subLabel = subId || subName || t('dashboard.notAvailable');
+                  const tooltipText = subName && subName !== subId ? subName : null;
+                  const label = `${providerDisplayLabel(provider, t)} (${subLabel})`;
                   return (
-                    <div key={provider.key}>
+                    <div
+                      key={`${row.dataSourceId}-${row.providerName}-${row.subAccountId ?? 'na'}`}
+                    >
                       <div className="mb-1 flex items-center justify-between text-sm">
                         <span className="inline-flex items-center gap-2">
                           <Tags className="h-3.5 w-3.5" />
-                          {providerDisplayLabel(provider, t)}
+                          {tooltipText ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-help">{label}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{tooltipText}</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            label
+                          )}
                         </span>
                         <span className="text-muted-foreground">
-                          {providerCoverage
-                            ? `${Math.round(providerCoverage.tagCoveragePct)}%`
-                            : t('dashboard.notMeasured')}
+                          {`${Math.round(row.tagCoveragePct)}%`}
                         </span>
                       </div>
-                      <Progress value={providerCoverage?.tagCoveragePct ?? 0} />
+                      <Progress value={row.tagCoveragePct} />
                     </div>
                   );
                 })
@@ -933,38 +982,6 @@ function SeverityBadge({ severity }: { severity: Anomaly['severity'] }) {
     return <Badge variant="destructive">{t('dashboard.severity.high')}</Badge>;
   }
   return <Badge variant="outline">{t('dashboard.severity.medium')}</Badge>;
-}
-
-function SkuCard({
-  label,
-  costUsd,
-  percent,
-  color,
-  formatUsd,
-  loading,
-}: {
-  label: string;
-  costUsd: number;
-  percent: number;
-  color: string;
-  formatUsd: (value: number) => string;
-  loading?: boolean;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <div className="h-1" style={{ background: color }} />
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">
-          {loading ? <Skeleton className="h-7 w-20" /> : formatUsd(costUsd)}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Progress value={percent} />
-        <p className="text-muted-foreground mt-2 mb-0 text-right text-xs">{Math.round(percent)}%</p>
-      </CardContent>
-    </Card>
-  );
 }
 
 function normalizeProvider(value: string): ProviderKey {
@@ -1166,21 +1183,6 @@ function cleanSkuName(value: string): string {
     .replace(/^ENTERPRISE_/, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function bucketSkus(rows: FocusOverviewSkuRow[], t: TFunction) {
-  const databricksRows = rows.filter((row) => normalizeProvider(row.providerName) === 'databricks');
-  const total = databricksRows.reduce((sum, row) => sum + row.costUsd, 0);
-  return SKU_BUCKETS.map((bucket) => {
-    const costUsd = databricksRows
-      .filter((row) => bucket.match(row.skuName.toUpperCase()))
-      .reduce((sum, row) => sum + row.costUsd, 0);
-    return {
-      label: t(`dashboard.skuBuckets.${bucket.label}`),
-      costUsd,
-      percent: total > 0 ? (costUsd / total) * 100 : 0,
-    };
-  });
 }
 
 function buildRecommendations(

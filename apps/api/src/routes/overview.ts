@@ -44,6 +44,8 @@ const FocusSkuRowSchema = z.object({
 const FocusCoverageRowSchema = z.object({
   dataSourceId: z.number(),
   providerName: z.string(),
+  subAccountId: z.string().nullable(),
+  subAccountName: z.string().nullable(),
   rowCount: z.number(),
   taggedRows: z.number(),
   tagCoveragePct: z.number(),
@@ -88,20 +90,23 @@ function focusOverviewHandler(db: DatabaseClient, env: Env): RequestHandler {
         tableName: string;
         message: string;
       }> = [];
-      const resolved = dailyUsageTableName(catalog, goldSchema);
+      const resolved = usageTableName('daily', catalog, goldSchema);
+      const monthlyResolved = usageTableName('monthly', catalog, goldSchema);
       let daily: FocusDailyRow[] = [];
       let services: FocusServiceRow[] = [];
       let skus: FocusSkuRow[] = [];
       let coverage: FocusCoverageRow[] = [];
       if (sources.length > 0) {
         const cte = joinedBillingRowsSql(sources, resolved.sql);
+        const monthlyCte = joinedBillingRowsSql(sources, monthlyResolved.sql);
         const params = baseParams(sources, range);
+        const monthlyParams = sourceJoinParams(sources);
         try {
           [daily, services, skus, coverage] = await Promise.all([
             queryDaily(executor, cte, params),
             queryServices(executor, cte, params),
             querySkus(executor, cte, params),
-            queryCoverage(executor, cte, params),
+            queryCoverage(executor, monthlyCte, monthlyParams),
           ]);
         } catch (err) {
           errors.push({
@@ -144,13 +149,14 @@ function quoteTableName(value: string): string {
     .join('.');
 }
 
-function dailyUsageTableName(
+function usageTableName(
+  kind: keyof typeof GOLD_USAGE_TABLES,
   catalog?: string,
   goldSchema: string = MEDALLION_SCHEMA_DEFAULTS.gold,
 ): { display: string; sql: string } {
-  const table = GOLD_USAGE_TABLES.daily;
-  const dailyParts = catalog ? [catalog, goldSchema, table] : [goldSchema, table];
-  const display = dailyParts.join('.');
+  const table = GOLD_USAGE_TABLES[kind];
+  const parts = catalog ? [catalog, goldSchema, table] : [goldSchema, table];
+  const display = parts.join('.');
   return { display, sql: quoteTableName(display) };
 }
 
@@ -170,16 +176,20 @@ export function baseParams(sources: DataSource[], range: UsageRange): SqlParam[]
   return [
     { name: 'start_ts', value: range.start, type: 'TIMESTAMP' },
     { name: 'end_ts', value: range.end, type: 'TIMESTAMP' },
-    ...sources.flatMap((source, i) => [
-      { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
-      { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
-      {
-        name: `billing_account_id_${i}`,
-        value: source.billingAccountId,
-        type: 'STRING' as const,
-      },
-    ]),
+    ...sourceJoinParams(sources),
   ];
+}
+
+export function sourceJoinParams(sources: DataSource[]): SqlParam[] {
+  return sources.flatMap((source, i) => [
+    { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
+    { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
+    {
+      name: `billing_account_id_${i}`,
+      value: source.billingAccountId,
+      type: 'STRING' as const,
+    },
+  ]);
 }
 
 export function joinedBillingRowsSql(sources: DataSource[], table: string): string {
@@ -290,17 +300,38 @@ async function queryCoverage(
   return executor.run(
     /* sql */ `
 ${cte}
+, resources AS (
+  SELECT
+    data_source_id,
+    COALESCE(ProviderName, source_provider_name) AS provider_name,
+    SubAccountId,
+    MAX(SubAccountName) AS SubAccountName,
+    x_BillingMonth,
+    ResourceType,
+    ResourceId,
+    MAX(CASE WHEN Tags IS NOT NULL AND size(Tags) > 0 THEN 1 ELSE 0 END) AS has_tags
+  FROM matched
+  WHERE ResourceId IS NOT NULL
+    AND TRIM(ResourceId) <> ''
+  GROUP BY 1, 2, 3, 5, 6, 7
+)
 SELECT
-  data_source_id,
-  COALESCE(ProviderName, source_provider_name) AS provider_name,
+  r.data_source_id,
+  r.provider_name,
+  r.SubAccountId AS sub_account_id,
+  r.SubAccountName AS sub_account_name,
   CAST(COUNT(*) AS DOUBLE) AS row_count,
-  CAST(0 AS DOUBLE) AS tagged_rows,
-  CAST(0 AS DOUBLE) AS tag_coverage_pct,
-  CAST(MAX(x_ChargeDate) AS STRING) AS last_charge_at
-FROM matched
-WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
-  AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
-GROUP BY 1, 2
+  CAST(SUM(r.has_tags) AS DOUBLE) AS tagged_rows,
+  CASE
+    WHEN COUNT(*) > 0
+      THEN CAST(SUM(r.has_tags) * 100.0 / COUNT(*) AS DOUBLE)
+    ELSE CAST(0 AS DOUBLE)
+  END AS tag_coverage_pct,
+  CAST(MAX(r.x_BillingMonth) AS STRING) AS last_charge_at
+FROM resources r
+WHERE r.x_BillingMonth = (SELECT MAX(x_BillingMonth) FROM resources)
+GROUP BY 1, 2, 3, 4
+ORDER BY tag_coverage_pct DESC, row_count DESC
 `,
     params,
     FocusCoverageRowSchema,
@@ -313,7 +344,7 @@ function sourceSummary(source: DataSource, catalog?: string, goldSchema?: string
     templateId: source.templateId,
     name: source.name,
     providerName: source.providerName,
-    tableName: dailyUsageTableName(catalog, goldSchema).display,
+    tableName: usageTableName('daily', catalog, goldSchema).display,
     focusVersion: source.focusVersion,
     updatedAt: source.updatedAt,
   };
