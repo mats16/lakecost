@@ -52,6 +52,7 @@ export function finlakeResourceTags(environmentTag?: string): Record<string, str
 
 function normalizedEnvironmentTag(environmentTag?: string): string {
   const trimmed = environmentTag?.trim();
+  // Fall back to 'local' when the value is empty or is an unexpanded DAB template variable (e.g. '${bundle.target}')
   if (!trimmed || trimmed.startsWith('${')) return 'local';
   return trimmed;
 }

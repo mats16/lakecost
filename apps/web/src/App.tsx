@@ -19,7 +19,6 @@ export function App() {
         <Route path="/overview" element={<Dashboard />} />
         <Route path="/budgets" element={<Budgets />} />
         <Route path="/genie" element={<Genie />} />
-        <Route path="/ginie" element={<Navigate to="/genie" replace />} />
         <Route
           path="/query"
           element={<ExploreStub titleKey="explore.query.title" descKey="explore.query.desc" />}

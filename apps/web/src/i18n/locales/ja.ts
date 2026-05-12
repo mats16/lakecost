@@ -324,7 +324,7 @@ export const ja: Dictionary = {
       progressTitle: 'FinLake リソースを削除中',
       progressDesc:
         'クリーンアップを実行中です。各ステップの完了状況はこのダイアログで確認できます。',
-      deleteCatalogLabel: 'Delete physical catalog',
+      deleteCatalogLabel: '物理カタログを削除',
       deleteCatalogDesc:
         'カタログ「{catalog}」も CASCADE 付きで削除します。デフォルトではオフで、カタログ内の内容も削除されます。',
       deleteCatalogNoCatalog: '現在保存されているカタログはありません。',
