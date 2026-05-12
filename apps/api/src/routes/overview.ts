@@ -23,6 +23,7 @@ const FocusDailyRowSchema = z.object({
   dataSourceId: z.number(),
   usageDate: z.string(),
   providerName: z.string(),
+  serviceCategory: z.string(),
   costUsd: z.number(),
 });
 
@@ -217,12 +218,14 @@ SELECT
   data_source_id,
   date_format(x_ChargeDate, 'yyyy-MM-dd') AS usage_date,
   COALESCE(ProviderName, source_provider_name) AS provider_name,
+  COALESCE(NULLIF(TRIM(ServiceCategory), ''), 'Unknown') AS service_category,
   CAST(SUM(COALESCE(EffectiveCost, 0)) AS DOUBLE) AS cost_usd
 FROM matched
 WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
   AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
 ORDER BY 2
+LIMIT 50000
 `,
     params,
     FocusDailyRowSchema,

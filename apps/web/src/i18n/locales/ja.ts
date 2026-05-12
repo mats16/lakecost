@@ -128,8 +128,7 @@ export const ja: Dictionary = {
     noSpikeDetected: 'スパイクは検出されていません',
     alert: 'アラート',
     monthlyPotential: '月あたり {amount} の可能性',
-    monthlyCostByProvider: 'プロバイダー別月次コスト (12か月 + 予測)',
-    connectedProviders: '接続済みプロバイダー:',
+    monthlyCostByServiceCategory: 'サービスカテゴリ別月次コスト (12か月 + 予測)',
     providers: {
       other: 'その他',
     },

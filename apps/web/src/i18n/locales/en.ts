@@ -126,8 +126,7 @@ export const en = {
     noSpikeDetected: 'No spike detected',
     alert: 'Alert',
     monthlyPotential: '{amount}/mo potential',
-    monthlyCostByProvider: 'Monthly Cost by Provider (12 months + Forecast)',
-    connectedProviders: 'Connected providers:',
+    monthlyCostByServiceCategory: 'Monthly Cost by Service Category (12 months + Forecast)',
     providers: {
       other: 'Other',
     },

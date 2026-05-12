@@ -86,6 +86,27 @@ interface Anomaly {
   when: string;
 }
 
+const SERVICE_CATEGORY_PALETTE = [
+  '#3B82F6',
+  '#49A078',
+  '#F2A72B',
+  '#9B59B6',
+  '#20C7A8',
+  '#EC4899',
+  '#6366F1',
+  '#EAB308',
+  '#EF4444',
+  '#0EA5E9',
+  '#84CC16',
+  '#F97316',
+  '#718096',
+];
+
+interface ServiceCategoryMeta {
+  key: string;
+  color: string;
+}
+
 const PROVIDERS: Record<ProviderKey, ProviderMeta> = {
   databricks: {
     key: 'databricks',
@@ -220,9 +241,10 @@ export function Dashboard() {
     };
   }, [activeProviders, budgets.data?.items, dailyRows, locale, period, skuRows, t]);
 
+  const serviceCategories = useMemo(() => buildServiceCategories(dailyRows), [dailyRows]);
   const trendData = useMemo(
-    () => buildTrendData(dailyRows, activeProviders, overview.forecast, locale, t),
-    [activeProviders, dailyRows, locale, overview.forecast, t],
+    () => buildTrendData(dailyRows, serviceCategories, overview.forecast, locale, t),
+    [dailyRows, locale, overview.forecast, serviceCategories, t],
   );
   const providerBreakdown = useMemo(
     () => buildProviderBreakdown(activeProviders, dailyRows),
@@ -383,12 +405,7 @@ export function Dashboard() {
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.monthlyCostByProvider')}</CardTitle>
-            <CardDescription>
-              {t('dashboard.connectedProviders')}{' '}
-              {activeProviders.map((p) => providerDisplayLabel(p, t)).join(', ') ||
-                t('dashboard.none')}
-            </CardDescription>
+            <CardTitle className="text-sm">{t('dashboard.monthlyCostByServiceCategory')}</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -410,12 +427,12 @@ export function Dashboard() {
                       tickFormatter={shortUsd}
                     />
                     <RechartsTooltip content={<ChartTooltip formatUsd={formatUsd} />} />
-                    {activeProviders.map((provider) => (
+                    {serviceCategories.map((category) => (
                       <Bar
-                        key={provider.key}
-                        dataKey={provider.key}
+                        key={category.key}
+                        dataKey={category.key}
                         stackId="cost"
-                        fill={provider.color}
+                        fill={category.color}
                         radius={[3, 3, 0, 0]}
                       />
                     ))}
@@ -1016,15 +1033,28 @@ function monthlyTotals(rows: FocusOverviewDailyRow[]): Map<string, number> {
   return totals;
 }
 
+function buildServiceCategories(rows: FocusOverviewDailyRow[]): ServiceCategoryMeta[] {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(row.serviceCategory, (totals.get(row.serviceCategory) ?? 0) + row.costUsd);
+  }
+  return Array.from(totals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([key], index) => ({
+      key,
+      color: SERVICE_CATEGORY_PALETTE[index % SERVICE_CATEGORY_PALETTE.length] ?? '#718096',
+    }));
+}
+
 function buildTrendData(
   rows: FocusOverviewDailyRow[],
-  providers: ProviderMeta[],
+  categories: ServiceCategoryMeta[],
   forecast: number,
   locale: string,
   t: TFunction,
 ) {
   const now = new Date();
-  const totals = monthlyTotalsByProvider(rows);
+  const totals = monthlyTotalsBy(rows, (row) => row.serviceCategory);
   const months = Array.from({ length: 12 }, (_, index) => {
     const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
     return monthKey(date);
@@ -1034,8 +1064,8 @@ function buildTrendData(
       label: monthLabel(key, locale),
       forecast: false,
     };
-    for (const provider of providers) {
-      record[provider.key] = totals.get(`${key}:${provider.key}`) ?? 0;
+    for (const category of categories) {
+      record[category.key] = totals.get(`${key}:${category.key}`) ?? 0;
     }
     return record;
   });
@@ -1043,21 +1073,25 @@ function buildTrendData(
     label: t('dashboard.forecast'),
     forecast: true,
   };
-  for (const provider of providers) {
-    const currentMonthCost = totals.get(`${monthKey(now)}:${provider.key}`) ?? 0;
-    const totalMtd = providers.reduce(
-      (sum, item) => sum + (totals.get(`${monthKey(now)}:${item.key}`) ?? 0),
-      0,
-    );
-    forecastRecord[provider.key] = totalMtd > 0 ? forecast * (currentMonthCost / totalMtd) : 0;
+  const currentMonthKey = monthKey(now);
+  const totalMtd = categories.reduce(
+    (sum, item) => sum + (totals.get(`${currentMonthKey}:${item.key}`) ?? 0),
+    0,
+  );
+  for (const category of categories) {
+    const currentMonthCost = totals.get(`${currentMonthKey}:${category.key}`) ?? 0;
+    forecastRecord[category.key] = totalMtd > 0 ? forecast * (currentMonthCost / totalMtd) : 0;
   }
   return [...data, forecastRecord];
 }
 
-function monthlyTotalsByProvider(rows: FocusOverviewDailyRow[]): Map<string, number> {
+function monthlyTotalsBy(
+  rows: FocusOverviewDailyRow[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
+): Map<string, number> {
   const totals = new Map<string, number>();
   for (const row of rows) {
-    const key = `${row.usageDate.slice(0, 7)}:${normalizeProvider(row.providerName)}`;
+    const key = `${row.usageDate.slice(0, 7)}:${keyOf(row)}`;
     totals.set(key, (totals.get(key) ?? 0) + row.costUsd);
   }
   return totals;
@@ -1065,7 +1099,7 @@ function monthlyTotalsByProvider(rows: FocusOverviewDailyRow[]): Map<string, num
 
 function buildProviderBreakdown(providers: ProviderMeta[], dailyRows: FocusOverviewDailyRow[]) {
   const currentMonth = monthKey(new Date());
-  const totals = monthlyTotalsByProvider(dailyRows);
+  const totals = monthlyTotalsBy(dailyRows, (row) => normalizeProvider(row.providerName));
   const breakdownRows = providers
     .map((provider) => ({
       ...provider,
