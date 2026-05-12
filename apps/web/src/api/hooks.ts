@@ -32,7 +32,6 @@ import type {
   StorageCredentialCreateBody,
   StorageCredentialCreateResponse,
   StorageCredentialListResponse,
-  TransformationPipelineShared,
   TransformationPipelinesResponse,
   TransformationSharedRunResult,
   UsageBySkuRow,
@@ -537,20 +536,6 @@ export function useTransformationPipelines() {
     queryFn: () => apiFetch<TransformationPipelinesResponse>('/api/transformations/pipelines'),
     staleTime: 60 * 1000,
     retry: false,
-  });
-}
-
-export function useUpdateTransformationSchedule() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: { cronExpression: string; timezoneId: string }) =>
-      apiFetch<TransformationPipelineShared>('/api/transformations/shared-schedule', {
-        method: 'PATCH',
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['transformations'] });
-    },
   });
 }
 

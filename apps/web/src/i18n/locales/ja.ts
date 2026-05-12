@@ -508,6 +508,7 @@ export const ja: Dictionary = {
       source: 'ソース',
       owner: '所有者',
       schedule: 'スケジュール',
+      trigger: 'トリガー',
       lastUpdate: '最終更新',
       status: '状態',
     },

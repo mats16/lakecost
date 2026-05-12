@@ -2,8 +2,6 @@ import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   type Env,
   type TransformationResource,
-  type TransformationPipelineShared,
-  type TransformationPipelineRow,
   type TransformationPipelinesResponse,
 } from '@finlake/shared';
 import {
@@ -16,15 +14,7 @@ import { WorkspaceServiceError } from './workspaceClientErrors.js';
 import {
   LEGACY_SHARED_PIPELINE_SETTING_KEYS,
   SHARED_PIPELINE_SETTING_KEYS,
-  syncSharedFocusPipeline,
 } from './dataSourceSetup.js';
-
-interface SourceForPipeline {
-  id: number;
-  name: string;
-  providerName: string;
-  tableName: string;
-}
 
 interface SharedPipelineIds {
   jobId: number | null;
@@ -41,11 +31,7 @@ export async function listTransformationPipelines(
   env: Env,
   userToken: string | undefined,
 ): Promise<TransformationPipelinesResponse> {
-  const [rawSources, rawSettings] = await Promise.all([
-    db.repos.dataSources.list(),
-    db.repos.appSettings.list(),
-  ]);
-  const sources = rawSources.map(toSourceForPipeline);
+  const rawSettings = await db.repos.appSettings.list();
   const appSettings = settingsToRecord(rawSettings);
   const shared = sharedPipelineIds(appSettings);
   const generatedAt = new Date().toISOString();
@@ -60,62 +46,8 @@ export async function listTransformationPipelines(
   );
 
   return {
-    shared: toSharedResponse(shared, consoleHost, resources),
     resources,
-    rows: sources.map((source) => localOnlyRow(source, fallbackDays, shared, consoleHost)),
     generatedAt,
-  };
-}
-
-function toSourceForPipeline(
-  source: Awaited<ReturnType<DatabaseClient['repos']['dataSources']['list']>>[number],
-): SourceForPipeline {
-  return {
-    id: source.id,
-    name: source.name,
-    providerName: source.providerName,
-    tableName: source.tableName,
-  };
-}
-
-function localOnlyRow(
-  source: SourceForPipeline,
-  days: string[],
-  shared: SharedPipelineIds,
-  consoleHost: string | null,
-): TransformationPipelineRow {
-  return {
-    dataSourceId: source.id,
-    dataSourceName: source.name,
-    providerName: source.providerName,
-    tableName: source.tableName,
-    jobId: shared.jobId,
-    pipelineId: shared.pipelineId,
-    cronExpression: null,
-    timezoneId: null,
-    accountId: null,
-    workspaceId: null,
-    pipelineUrl: pipelineUrl(shared.pipelineId, consoleHost),
-    pipelineName: null,
-    pipelineType: null,
-    createdBy: null,
-    runAs: null,
-    createTime: null,
-    changeTime: null,
-    deleteTime: null,
-    updateId: null,
-    updateType: null,
-    triggerType: null,
-    resultState: null,
-    runAsUserName: null,
-    periodStartTime: null,
-    periodEndTime: null,
-    durationSeconds: null,
-    statusDays: days.map((date) => ({
-      date,
-      resultState: null,
-      updateCount: 0,
-    })),
   };
 }
 
@@ -405,41 +337,6 @@ function sharedPipelineIds(settings: Record<string, string>): SharedPipelineIds 
       settings[SHARED_PIPELINE_SETTING_KEYS.pipelineId] ??
       settings[LEGACY_SHARED_PIPELINE_SETTING_KEYS.pipelineId] ??
       null,
-  };
-}
-
-function toSharedResponse(
-  shared: SharedPipelineIds,
-  consoleHost: string | null,
-  resources: TransformationResource[] = [],
-): TransformationPipelineShared {
-  const job = resources.find((resource) => resource.resourceType === 'job');
-  return {
-    jobId: shared.jobId,
-    jobUrl: jobUrl(shared.jobId, consoleHost),
-    pipelineId: shared.pipelineId,
-    pipelineUrl: pipelineUrl(shared.pipelineId, consoleHost),
-    cronExpression: job?.cronExpression ?? null,
-    timezoneId: job?.timezoneId ?? null,
-  };
-}
-
-export async function updateSharedTransformationSchedule(
-  db: DatabaseClient,
-  env: Env,
-  input: { cronExpression: string; timezoneId: string },
-): Promise<TransformationPipelineShared> {
-  const cronExpression = input.cronExpression.trim();
-  const timezoneId = input.timezoneId.trim();
-  const enabledSources = (await db.repos.dataSources.list()).filter((source) => source.enabled);
-  if (enabledSources.length > 0) {
-    await syncSharedFocusPipeline(env, db, enabledSources, { cronExpression, timezoneId });
-  }
-  const settings = settingsToRecord(await db.repos.appSettings.list());
-  return {
-    ...toSharedResponse(sharedPipelineIds(settings), normalizeHost(env.DATABRICKS_HOST)),
-    cronExpression,
-    timezoneId,
   };
 }
 

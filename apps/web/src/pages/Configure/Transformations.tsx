@@ -12,7 +12,6 @@ import {
   EmptyDescription,
   EmptyHeader,
   EmptyTitle,
-  Input,
   Skeleton,
   Table,
   TableBody,
@@ -21,13 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import {
-  FOCUS_REFRESH_CRON_DEFAULT,
-  FOCUS_REFRESH_TIMEZONE_DEFAULT,
-  type TransformationResource,
-  type TransformationPipelineShared,
-  type TransformationPipelineStatusDay,
-} from '@finlake/shared';
+import { type TransformationResource, type TransformationPipelineStatusDay } from '@finlake/shared';
 import {
   AlertCircle,
   CheckCircle2,
@@ -38,15 +31,13 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import { useTransformationPipelines, useUpdateTransformationSchedule } from '../../api/hooks';
+import { useTransformationPipelines } from '../../api/hooks';
 import { useI18n } from '../../i18n';
 import { messageOf } from './utils';
 
 export function Transformations() {
   const { t, locale } = useI18n();
   const pipelines = useTransformationPipelines();
-  const updateSchedule = useUpdateTransformationSchedule();
   const resources = pipelines.data?.resources ?? [];
   const error = messageOf(pipelines.error);
 
@@ -97,25 +88,13 @@ export function Transformations() {
           </Empty>
         ) : (
           <div className="grid gap-4">
-            {messageOf(updateSchedule.error) ? (
-              <Alert variant="destructive">
-                <AlertCircle />
-                <AlertDescription>{messageOf(updateSchedule.error)}</AlertDescription>
-              </Alert>
-            ) : null}
-            {pipelines.data?.shared.jobId ? (
-              <ScheduleSection
-                shared={pipelines.data.shared}
-                onSave={(body) => updateSchedule.mutateAsync(body)}
-                saving={updateSchedule.isPending}
-              />
-            ) : null}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('transformations.columns.name')}</TableHead>
                     <TableHead>{t('transformations.columns.type')}</TableHead>
+                    <TableHead>{t('transformations.columns.trigger')}</TableHead>
                     <TableHead>{t('transformations.columns.lastUpdate')}</TableHead>
                     <TableHead className="text-right">
                       {t('transformations.columns.status')}
@@ -178,6 +157,13 @@ function ResourceRow({
         </span>
       </TableCell>
       <TableCell>
+        <span className="text-muted-foreground font-mono text-xs">
+          {resource.cronExpression
+            ? `${resource.cronExpression} (${resource.timezoneId ?? 'UTC'})`
+            : '-'}
+        </span>
+      </TableCell>
+      <TableCell>
         <div className="min-w-44">
           <div>{lastUpdateTime ? formatDateTime(lastUpdateTime, locale) : '-'}</div>
           <div className="text-muted-foreground mt-1 text-xs">
@@ -191,65 +177,6 @@ function ResourceRow({
         <StatusDays days={resource.statusDays} />
       </TableCell>
     </TableRow>
-  );
-}
-
-function ScheduleSection({
-  shared,
-  onSave,
-  saving,
-}: {
-  shared: TransformationPipelineShared;
-  onSave: (body: { cronExpression: string; timezoneId: string }) => Promise<unknown>;
-  saving: boolean;
-}) {
-  const { t } = useI18n();
-  const currentCronExpression = shared.cronExpression ?? '';
-  const currentTimezoneId = shared.timezoneId ?? '';
-  const [cronExpression, setCronExpression] = useState(currentCronExpression);
-  const [timezoneId, setTimezoneId] = useState(currentTimezoneId);
-  const dirty = cronExpression !== currentCronExpression || timezoneId !== currentTimezoneId;
-  const cronParts = cronExpression.trim().split(/\s+/).length;
-  const cronValid = cronParts >= 6 && cronParts <= 7;
-
-  useEffect(() => {
-    setCronExpression(currentCronExpression);
-    setTimezoneId(currentTimezoneId);
-  }, [currentCronExpression, currentTimezoneId]);
-
-  return (
-    <div className="border-border bg-background/35 grid gap-3 rounded-md border p-4">
-      <div>
-        <div className="text-sm font-medium">{t('transformations.schedule.title')}</div>
-        <div className="text-muted-foreground text-xs">{t('transformations.schedule.desc')}</div>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(12rem,1fr)_minmax(8rem,16rem)_auto] sm:items-end">
-        <label className="grid gap-1 text-xs">
-          <span className="text-muted-foreground">{t('transformations.schedule.cron')}</span>
-          <Input
-            value={cronExpression}
-            onChange={(event) => setCronExpression(event.target.value)}
-            placeholder={FOCUS_REFRESH_CRON_DEFAULT}
-          />
-        </label>
-        <label className="grid gap-1 text-xs">
-          <span className="text-muted-foreground">{t('transformations.schedule.timezone')}</span>
-          <Input
-            value={timezoneId}
-            onChange={(event) => setTimezoneId(event.target.value)}
-            placeholder={FOCUS_REFRESH_TIMEZONE_DEFAULT}
-          />
-        </label>
-        <Button
-          type="button"
-          className="success-action-button"
-          disabled={saving || !dirty || !cronValid || !timezoneId.trim()}
-          onClick={() => onSave({ cronExpression, timezoneId })}
-        >
-          {t('transformations.schedule.save')}
-        </Button>
-      </div>
-    </div>
   );
 }
 

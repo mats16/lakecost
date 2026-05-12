@@ -501,6 +501,7 @@ export const en = {
       source: 'Source',
       owner: 'Owner',
       schedule: 'Schedule',
+      trigger: 'Trigger',
       lastUpdate: 'Last update',
       status: 'Status',
     },
