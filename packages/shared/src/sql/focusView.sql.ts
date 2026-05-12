@@ -171,62 +171,59 @@ SELECT
   'Databricks' AS PublisherName,
   split(current_metastore(), ':')[1] AS RegionId,
   split(current_metastore(), ':')[1] AS RegionName,
-  -- ResourceId: primary resource identifier per billing_origin_product
+  -- ResourceId: primary resource identifier per billing_origin_product.
+  -- Returns NULL when no metadata id is available — never falls back to billing_origin_product.
   CASE
     WHEN u.billing_origin_product IN ('JOBS')
-      THEN COALESCE(u.usage_metadata.job_id, u.billing_origin_product)
+      THEN u.usage_metadata.job_id
     WHEN u.billing_origin_product IN ('LAKEHOUSE_MONITORING')
-      THEN COALESCE(u.custom_tags['LakehouseMonitoringTableId'], u.billing_origin_product)
-    WHEN u.billing_origin_product IN ('PREDICTIVE_OPTIMIZATION')
-      THEN u.billing_origin_product
+      THEN u.custom_tags['LakehouseMonitoringTableId']
     WHEN u.billing_origin_product IN ('DLT', 'ONLINE_TABLES', 'LAKEFLOW_CONNECT')
-      THEN COALESCE(u.usage_metadata.dlt_pipeline_id, u.billing_origin_product)
-    WHEN u.billing_origin_product IN ('MODEL_SERVING')
-      AND u.sku_name = 'ENTERPRISE_ALL_PURPOSE_COMPUTE'
-      THEN COALESCE(u.usage_metadata.cluster_id, u.billing_origin_product)
-    WHEN u.billing_origin_product IN ('VECTOR_SEARCH')
-      AND (u.sku_name LIKE 'ENTERPRISE_JOBS_SERVERLESS_COMPUTE%'
-        OR u.sku_name LIKE 'ENTERPRISE_SERVERLESS_SQL_COMPUTE%')
-      THEN COALESCE(u.usage_metadata.dlt_pipeline_id, u.billing_origin_product)
-    WHEN u.billing_origin_product IN ('MODEL_SERVING', 'AI_FUNCTIONS', 'VECTOR_SEARCH', 'AI_GATEWAY')
-      THEN COALESCE(u.usage_metadata.endpoint_id, u.billing_origin_product)
+      THEN u.usage_metadata.dlt_pipeline_id
+    WHEN u.billing_origin_product = 'MODEL_SERVING'
+      THEN COALESCE(u.usage_metadata.endpoint_id, u.usage_metadata.cluster_id)
+    WHEN u.billing_origin_product = 'VECTOR_SEARCH'
+      THEN COALESCE(u.usage_metadata.endpoint_id, u.usage_metadata.dlt_pipeline_id)
+    WHEN u.billing_origin_product IN ('AI_FUNCTIONS', 'AI_GATEWAY')
+      THEN u.usage_metadata.endpoint_id
+    WHEN u.billing_origin_product = 'LAKEBASE'
+      THEN u.usage_metadata.project_id
     WHEN u.billing_origin_product IN ('DATABASE')
       AND (u.sku_name LIKE 'ENTERPRISE_JOBS_SERVERLESS_COMPUTE%')
-      THEN COALESCE(u.usage_metadata.dlt_pipeline_id, u.billing_origin_product)
+      THEN u.usage_metadata.dlt_pipeline_id
     WHEN u.billing_origin_product = 'DATABASE'
-      THEN COALESCE(u.usage_metadata.database_instance_id, u.billing_origin_product)
+      THEN u.usage_metadata.database_instance_id
+    WHEN u.billing_origin_product = 'SUPERVISOR_AGENT'
+      THEN u.usage_metadata.supervisor_agent_id
     WHEN u.billing_origin_product = 'ALL_PURPOSE'
-      THEN COALESCE(u.usage_metadata.cluster_id, u.billing_origin_product)
+      THEN u.usage_metadata.cluster_id
     WHEN u.billing_origin_product = 'DATA_CLASSIFICATION'
-      THEN COALESCE(u.usage_metadata.catalog_id, u.billing_origin_product)
+      THEN u.usage_metadata.catalog_id
     WHEN u.billing_origin_product = 'FINE_GRAINED_ACCESS_CONTROL'
-      THEN COALESCE(u.custom_tags['Name'], u.billing_origin_product)
-    WHEN u.billing_origin_product IN ('NETWORKING', 'AGENT_EVALUATION', 'SHARED_SERVERLESS_COMPUTE')
-      THEN u.billing_origin_product
+      THEN u.custom_tags['Name']
     WHEN u.billing_origin_product = 'FOUNDATION_MODEL_TRAINING'
-      THEN COALESCE(u.usage_metadata.run_name, u.billing_origin_product)
+      THEN u.usage_metadata.run_name
     WHEN u.billing_origin_product = 'AI_RUNTIME'
-      THEN COALESCE(u.usage_metadata.ai_runtime_workload_id, u.billing_origin_product)
+      THEN u.usage_metadata.ai_runtime_workload_id
     WHEN u.billing_origin_product = 'CLEAN_ROOM'
-      THEN COALESCE(u.usage_metadata.central_clean_room_id, u.billing_origin_product)
+      THEN u.usage_metadata.central_clean_room_id
     WHEN u.billing_origin_product = 'APPS'
-      THEN COALESCE(u.usage_metadata.app_id, u.billing_origin_product)
+      THEN u.usage_metadata.app_id
     WHEN u.billing_origin_product = 'SQL'
-      AND (u.sku_name LIKE '%_JOBS_SERVERLESS_COMPUTE%')
-      THEN COALESCE(u.usage_metadata.dlt_pipeline_id, u.billing_origin_product)
-    WHEN u.billing_origin_product = 'SQL'
-      THEN COALESCE(u.usage_metadata.warehouse_id, u.billing_origin_product)
+      THEN COALESCE(u.usage_metadata.warehouse_id, u.usage_metadata.dlt_pipeline_id)
     WHEN u.billing_origin_product = 'AGENT_BRICKS'
-      THEN COALESCE(u.usage_metadata.agent_bricks_id, u.billing_origin_product)
+      THEN u.usage_metadata.agent_bricks_id
     WHEN u.billing_origin_product = 'BASE_ENVIRONMENTS'
-      THEN COALESCE(u.usage_metadata.base_environment_id, u.billing_origin_product)
+      THEN u.usage_metadata.base_environment_id
     WHEN u.billing_origin_product = 'DATA_QUALITY_MONITORING'
-      THEN COALESCE(u.usage_metadata.schema_id, u.billing_origin_product)
+      THEN u.usage_metadata.schema_id
     WHEN u.billing_origin_product = 'DATA_SHARING'
-      THEN COALESCE(u.usage_metadata.sharing_materialization_id, u.billing_origin_product)
+      THEN u.usage_metadata.sharing_materialization_id
     WHEN u.billing_origin_product IN ('INTERACTIVE', 'NOTEBOOKS')
-      THEN COALESCE(u.usage_metadata.notebook_id, u.billing_origin_product)
-    ELSE u.billing_origin_product
+      THEN u.usage_metadata.notebook_id
+    WHEN u.billing_origin_product = 'DEFAULT_STORAGE'
+      THEN u.usage_metadata.metastore_id
+    ELSE CAST(NULL AS STRING)
   END AS ResourceId,
   -- ResourceName: human-friendly name for the resource
   CASE
@@ -237,9 +234,30 @@ SELECT
     WHEN u.billing_origin_product = 'ALL_PURPOSE'
       THEN COALESCE(u.cluster_name, u.usage_metadata.cluster_id)
     WHEN u.billing_origin_product = 'SQL'
-      THEN COALESCE(u.warehouse_name, u.usage_metadata.warehouse_id)
-    WHEN u.billing_origin_product IN ('MODEL_SERVING', 'AI_GATEWAY', 'AI_FUNCTIONS', 'VECTOR_SEARCH')
+      THEN COALESCE(
+        u.warehouse_name,
+        u.usage_metadata.warehouse_id,
+        u.pipeline_name,
+        u.usage_metadata.dlt_pipeline_id
+      )
+    WHEN u.billing_origin_product = 'VECTOR_SEARCH'
+      THEN COALESCE(
+        u.usage_metadata.endpoint_name,
+        u.usage_metadata.endpoint_id,
+        u.pipeline_name,
+        u.usage_metadata.dlt_pipeline_id
+      )
+    WHEN u.billing_origin_product = 'MODEL_SERVING'
+      THEN COALESCE(
+        u.usage_metadata.endpoint_name,
+        u.usage_metadata.endpoint_id,
+        u.cluster_name,
+        u.usage_metadata.cluster_id
+      )
+    WHEN u.billing_origin_product IN ('AI_GATEWAY', 'AI_FUNCTIONS')
       THEN COALESCE(u.usage_metadata.endpoint_name, u.usage_metadata.endpoint_id)
+    WHEN u.billing_origin_product = 'LAKEBASE'
+      THEN u.usage_metadata.project_id
     WHEN u.billing_origin_product = 'APPS'
       THEN COALESCE(u.usage_metadata.app_name, u.usage_metadata.app_id)
     WHEN u.billing_origin_product IN ('INTERACTIVE', 'NOTEBOOKS')
@@ -258,28 +276,48 @@ SELECT
       THEN u.usage_metadata.base_environment_id
     WHEN u.billing_origin_product = 'DATA_SHARING'
       THEN u.usage_metadata.sharing_materialization_id
-    ELSE u.billing_origin_product
+    WHEN u.billing_origin_product = 'SUPERVISOR_AGENT'
+      THEN u.usage_metadata.supervisor_agent_id
+    WHEN u.billing_origin_product = 'DEFAULT_STORAGE'
+      THEN u.usage_metadata.metastore_id
+    ELSE CAST(NULL AS STRING)
   END AS ResourceName,
   -- ResourceType / ServiceCategory / ServiceSubcategory
+  -- ResourceType is NULL whenever ResourceId is NULL (relies on lateral column alias)
   CASE
+    WHEN ResourceId IS NULL THEN CAST(NULL AS STRING)
     WHEN u.billing_origin_product = 'JOBS' THEN 'Job'
     WHEN u.billing_origin_product = 'DLT' THEN 'Spark Declarative Pipeline'
     WHEN u.billing_origin_product = 'LAKEFLOW_CONNECT' THEN 'LakeFlow Connect'
     WHEN u.billing_origin_product = 'ALL_PURPOSE' THEN 'Cluster'
     WHEN u.billing_origin_product = 'INTERACTIVE' THEN 'Compute'
     WHEN u.billing_origin_product = 'NOTEBOOKS' THEN 'Notebook'
-    WHEN u.billing_origin_product = 'SQL' THEN 'SQL Warehouse'
-    WHEN u.billing_origin_product = 'MODEL_SERVING' THEN 'Model Serving Endpoint'
-    WHEN u.billing_origin_product = 'VECTOR_SEARCH' THEN 'Vector Search Endpoint'
+    WHEN u.billing_origin_product = 'SQL' THEN
+      CASE WHEN u.usage_metadata.warehouse_id IS NOT NULL
+        THEN 'SQL Warehouse'
+        ELSE 'Spark Declarative Pipeline'
+      END
+    WHEN u.billing_origin_product = 'MODEL_SERVING' THEN
+      CASE WHEN u.usage_metadata.endpoint_id IS NOT NULL
+        THEN 'Model Serving Endpoint'
+        ELSE 'Cluster'
+      END
+    WHEN u.billing_origin_product = 'VECTOR_SEARCH' THEN
+      CASE WHEN u.usage_metadata.endpoint_id IS NOT NULL
+        THEN 'Vector Search Endpoint'
+        ELSE 'Spark Declarative Pipeline'
+      END
     WHEN u.billing_origin_product = 'AI_GATEWAY' THEN 'AI Gateway'
     WHEN u.billing_origin_product = 'AI_FUNCTIONS' THEN 'AI Function'
-    WHEN u.billing_origin_product = 'FOUNDATION_MODEL_TRAINING' THEN 'Foundation Model Training Run'
+    WHEN u.billing_origin_product = 'FOUNDATION_MODEL_TRAINING' THEN 'MLflow Experiment Run'
     WHEN u.billing_origin_product = 'AGENT_EVALUATION' THEN 'Agent Evaluation'
     WHEN u.billing_origin_product = 'AGENT_BRICKS' THEN 'Agent'
     WHEN u.billing_origin_product = 'AI_RUNTIME' THEN 'AI Runtime Workload'
     WHEN u.billing_origin_product = 'DATABASE' THEN 'Database Instance'
+    WHEN u.billing_origin_product = 'LAKEBASE' THEN 'Lakebase Project'
+    WHEN u.billing_origin_product = 'SUPERVISOR_AGENT' THEN 'Supervisor Agent'
     WHEN u.billing_origin_product = 'ONLINE_TABLES' THEN 'Online Table'
-    WHEN u.billing_origin_product = 'DEFAULT_STORAGE' THEN 'Storage'
+    WHEN u.billing_origin_product = 'DEFAULT_STORAGE' THEN 'Metastore'
     WHEN u.billing_origin_product = 'LAKEHOUSE_MONITORING' THEN 'Lakehouse Monitoring'
     WHEN u.billing_origin_product = 'DATA_QUALITY_MONITORING' THEN 'Data Quality Monitor'
     WHEN u.billing_origin_product = 'PREDICTIVE_OPTIMIZATION' THEN 'Predictive Optimization'
@@ -296,14 +334,14 @@ SELECT
   CASE
     WHEN u.billing_origin_product IN ('ALL_PURPOSE', 'INTERACTIVE', 'NOTEBOOKS', 'SHARED_SERVERLESS_COMPUTE')
       THEN 'Compute'
-    WHEN u.billing_origin_product IN ('JOBS', 'DLT')
+    WHEN u.billing_origin_product IN ('JOBS', 'DLT', 'SQL')
       THEN 'Analytics'
     WHEN u.billing_origin_product IN (
-      'MODEL_SERVING', 'VECTOR_SEARCH', 'FOUNDATION_MODEL_TRAINING', 'AGENT_EVALUATION',
-      'AI_GATEWAY', 'AI_FUNCTIONS', 'AGENT_BRICKS', 'AI_RUNTIME'
+      'MODEL_SERVING', 'FOUNDATION_MODEL_TRAINING', 'AGENT_EVALUATION',
+      'AI_GATEWAY', 'AI_FUNCTIONS', 'AGENT_BRICKS', 'AI_RUNTIME', 'SUPERVISOR_AGENT'
     ) THEN 'AI and Machine Learning'
     WHEN u.billing_origin_product IN ('DEFAULT_STORAGE') THEN 'Storage'
-    WHEN u.billing_origin_product IN ('DATABASE', 'ONLINE_TABLES', 'SQL') THEN 'Databases'
+    WHEN u.billing_origin_product IN ('DATABASE', 'ONLINE_TABLES', 'LAKEBASE', 'VECTOR_SEARCH') THEN 'Databases'
     WHEN u.billing_origin_product IN (
       'LAKEHOUSE_MONITORING', 'DATA_QUALITY_MONITORING', 'PREDICTIVE_OPTIMIZATION',
       'CLEAN_ROOM', 'DATA_SHARING'
@@ -328,12 +366,12 @@ SELECT
     WHEN u.billing_origin_product = 'MODEL_SERVING' THEN 'AI Platforms'
     WHEN u.billing_origin_product IN ('FOUNDATION_MODEL_TRAINING', 'AGENT_BRICKS', 'AI_RUNTIME')
       THEN 'Generative AI'
-    WHEN u.billing_origin_product IN ('AI_GATEWAY', 'AI_FUNCTIONS') THEN 'AI Platforms'
-    WHEN u.billing_origin_product IN ('VECTOR_SEARCH', 'AGENT_EVALUATION')
-      THEN 'Other (AI and Machine Learning)'
+    WHEN u.billing_origin_product IN ('AI_GATEWAY', 'AI_FUNCTIONS', 'SUPERVISOR_AGENT') THEN 'AI Platforms'
+    WHEN u.billing_origin_product = 'VECTOR_SEARCH' THEN 'Other (Databases)'
+    WHEN u.billing_origin_product = 'AGENT_EVALUATION' THEN 'Other (AI and Machine Learning)'
     WHEN u.billing_origin_product = 'DEFAULT_STORAGE' THEN 'Object Storage'
     WHEN u.billing_origin_product = 'SQL' THEN 'Data Warehouses'
-    WHEN u.billing_origin_product IN ('DATABASE', 'ONLINE_TABLES') THEN 'Relational Databases'
+    WHEN u.billing_origin_product IN ('DATABASE', 'ONLINE_TABLES', 'LAKEBASE') THEN 'Relational Databases'
     WHEN u.billing_origin_product IN ('LAKEHOUSE_MONITORING', 'DATA_QUALITY_MONITORING')
       THEN 'Observability'
     WHEN u.billing_origin_product = 'PREDICTIVE_OPTIMIZATION' THEN 'Cost Management'

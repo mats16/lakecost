@@ -21,6 +21,12 @@ export const MEDALLION_SCHEMA_DEFAULTS = {
   gold: 'analytics',
 } as const satisfies Record<MedallionSchema, string>;
 
+/** Materialized View names FinLake creates in the gold schema. */
+export const GOLD_USAGE_TABLES = {
+  daily: 'usage_daily',
+  monthly: 'usage_monthly',
+} as const;
+
 /** `app_settings` keys holding the shared Lakeflow pipeline/job identifiers. */
 export const LAKEFLOW_PIPELINE_SETTING_KEYS = {
   pipelineId: 'lakeflow_pipeline_id',

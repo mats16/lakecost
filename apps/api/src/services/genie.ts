@@ -3,6 +3,7 @@ import {
   CATALOG_SETTING_KEY,
   DataSourceIdentifierSchema,
   GENIE_SPACE_SETTING_KEY,
+  GOLD_USAGE_TABLES,
   medallionSchemaNamesFromSettings,
   type Env,
   type GenieChatResponse,
@@ -59,7 +60,8 @@ export async function setupFinLakeGenieSpace(
 
   const tables = [
     `${catalog}.${medallionSchemas.silver}.usage`,
-    `${catalog}.${medallionSchemas.gold}.daily_usage`,
+    `${catalog}.${medallionSchemas.gold}.${GOLD_USAGE_TABLES.daily}`,
+    `${catalog}.${medallionSchemas.gold}.${GOLD_USAGE_TABLES.monthly}`,
   ];
   if (existingSpaceId) {
     return { spaceId: existingSpaceId, title: GENIE_SPACE_TITLE, tableIdentifiers: tables };
@@ -438,7 +440,8 @@ function buildSerializedSpace(tableIdentifiers: string[]) {
         {
           id: '01f1a100000000000000000000000003',
           content: [
-            'Use the gold daily_usage table for trend and cost summary questions. ',
+            'Use the gold usage_daily table for trend and cost summary questions across day-level dimensions. ',
+            'Use the gold usage_monthly table for resource-level (ResourceType/ResourceId/ResourceName) cost questions and Tag-based showback/chargeback. ',
             'Use the silver usage table when the user asks for record-level usage details. ',
             'Treat cost values as USD unless the user explicitly asks otherwise.',
           ],
@@ -449,7 +452,10 @@ function buildSerializedSpace(tableIdentifiers: string[]) {
 }
 
 function descriptionForTable(identifier: string): string {
-  if (identifier.endsWith('.daily_usage')) {
+  if (identifier.endsWith(`.${GOLD_USAGE_TABLES.monthly}`)) {
+    return 'Gold monthly usage cost facts aggregated at the resource level (ResourceType, ResourceId, ResourceName) with the latest Tags per resource.';
+  }
+  if (identifier.endsWith(`.${GOLD_USAGE_TABLES.daily}`)) {
     return 'Gold daily usage cost facts aggregated for FinOps analysis.';
   }
   return 'Silver usage facts normalized for FinLake exploration.';
