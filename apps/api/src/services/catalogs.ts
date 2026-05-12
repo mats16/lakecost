@@ -1,5 +1,6 @@
 import {
   CATALOG_USER_GROUP_DEFAULT,
+  MEDALLION_SCHEMA_DEFAULTS,
   MEDALLION_SCHEMAS,
   quoteIdent,
   quotePrincipal,
@@ -82,11 +83,11 @@ interface ProvisionOptions {
 }
 
 /**
- * Provisions the medallion layout (`bronze` / `silver` / `gold`) under
+ * Provisions the medallion layout under
  * `catalog`, optionally creating the catalog itself, and grants the App
  * Service Principal the access it needs to run the FOCUS pipeline:
  * USE/SELECT on medallion schemas and CREATE TABLE / CREATE MATERIALIZED VIEW
- * on silver/gold outputs.
+ * on the focus/analytics outputs by default.
  *
  * All DDL/GRANT statements are run **as the calling user** (OBO) so the SP
  * does not need any prior privileges. Schema creates and GRANTs are
@@ -102,7 +103,7 @@ export async function provisionCatalog(
   // Fail fast on bad identifiers so we never interpolate them into SQL.
   const catalogIdent = quoteIdent(catalog);
   const schemaIdents = MEDALLION_SCHEMAS.map((s) => {
-    const schema = opts.schemaNames?.[s]?.trim() || s;
+    const schema = opts.schemaNames?.[s]?.trim() || MEDALLION_SCHEMA_DEFAULTS[s];
     return { layer: s, schema, ident: quoteIdent(schema) };
   });
 

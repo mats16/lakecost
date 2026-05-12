@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { IDENT_RE, quoteIdent } from '@finlake/shared';
+import { IDENT_RE, MEDALLION_SCHEMA_DEFAULTS, quoteIdent } from '@finlake/shared';
 
 export const AWS_FOCUS_TABLE_NAME_PARAMETER = 'table_name';
 export const AWS_FOCUS_S3_BUCKET_PARAMETER = 's3_bucket';
@@ -42,11 +42,11 @@ export function buildAwsFocusPipelineSql(): string {
   return pipelineTemplate;
 }
 
-export function awsBillingTableName(billingAccountId: string): string {
-  if (!/^\d{12}$/.test(billingAccountId)) {
-    throw new Error(`Invalid AWS billing account id "${billingAccountId}": expected 12 digits`);
+export function awsUsageTableName(accountId: string): string {
+  if (!/^\d{12}$/.test(accountId)) {
+    throw new Error(`Invalid AWS account id "${accountId}": expected 12 digits`);
   }
-  return `aws_billing_${billingAccountId}`;
+  return `aws_${accountId}_usage`;
 }
 
 export function buildAwsFocusSilverPipelineSql(opts: {
@@ -60,7 +60,7 @@ export function buildAwsFocusSilverPipelineSql(opts: {
     opts.s3Bucket,
     opts.s3Prefix,
     opts.exportName,
-    'gold',
+    MEDALLION_SCHEMA_DEFAULTS.gold,
   );
   return silverTemplate
     .replaceAll('${table_name}', quoteIdent(opts.tableName))

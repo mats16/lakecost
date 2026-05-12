@@ -52,7 +52,7 @@ export const ja: Dictionary = {
     noEnabledSources:
       '有効なデータソースがまだありません。概要セクションは表示されますが、コストチャートは Databricks またはクラウドのデータソースを「データソース」で有効化した後に表示されます。',
     focusLoadFailed:
-      'OBO トークン経由で FOCUS billing_daily ロールアップを読み込めませんでした。SQL ウェアハウス設定と Gold billing_daily テーブルへの SELECT 権限を確認してください。',
+      'OBO トークン経由で FOCUS daily_usage ロールアップを読み込めませんでした。SQL ウェアハウス設定と Gold daily_usage テーブルへの SELECT 権限を確認してください。',
     someSourcesFailed: '一部のデータソースをクエリできませんでした:',
     sections: {
       costSummary: 'コストサマリー',
@@ -169,7 +169,7 @@ export const ja: Dictionary = {
     footer: {
       dataSources: 'データソース:',
       lastUpdated:
-        '最終更新: {time}。コストソース: Gold billing_daily をユーザー OBO トークンでクエリしています。TCO 結合では共有クラスターのマッピングを考慮してください。',
+        '最終更新: {time}。コストソース: Gold daily_usage をユーザー OBO トークンでクエリしています。TCO 結合では共有クラスターのマッピングを考慮してください。',
     },
     totalSpend: '総コスト (30日)',
     distinctSkus: 'SKU 数',
@@ -264,7 +264,7 @@ export const ja: Dictionary = {
     provisionWarning: '一部の処理がスキップされました',
     provisionFailed: 'プロビジョニングでエラーが発生しました',
     provisionAllOk:
-      'カタログ「{name}」には bronze/silver/gold スキーマ、サービスプリンシパル権限、読み取りグループのカタログ/スキーマ権限が既に揃っています。',
+      'カタログ「{name}」には設定済みのスキーマ、サービスプリンシパル権限、読み取りグループのカタログ/スキーマ権限が既に揃っています。',
     provisionAwsCredentialNote:
       'AWS Storage Credential と IAM trust policy の検証は、このカタログ権限修復ではなく AWS data source のセットアップで実行されます。',
     provisionCatalogCreated: 'カタログ「{name}」を作成しました。',
@@ -273,6 +273,13 @@ export const ja: Dictionary = {
     provisionGrantFailed: '{scope} への GRANT に失敗しました: {message}',
     provisionScopeCatalog: 'catalog',
     provisionScopeUsersCatalog: '{group} のカタログアクセス',
+    pipelineChangedTitle: 'パイプラインを更新しました',
+    pipelineChangedDesc:
+      '共有 Lakeflow パイプラインは、変更後のカタログとスキーマ設定を参照するようになりました。',
+    pipelineChangedNotice:
+      '既存テーブルはジョブを再実行するまで再生成されません。新しい配置先でテーブルを作成・更新するにはジョブを実行してください。',
+    runPipelineJob: 'ジョブを実行',
+    pipelineRunStarted: 'Job #{jobId} の Run #{runId} を開始しました。',
     medallion: {
       schemaLabel: 'スキーマ名',
       goldLabel: 'Gold',

@@ -16,9 +16,9 @@ export const MEDALLION_SCHEMA_SETTING_KEYS = {
 } as const;
 
 export const MEDALLION_SCHEMA_DEFAULTS = {
-  bronze: 'bronze',
-  silver: 'silver',
-  gold: 'gold',
+  bronze: 'ingest',
+  silver: 'focus',
+  gold: 'analytics',
 } as const satisfies Record<MedallionSchema, string>;
 
 /** `app_settings` keys holding the shared Lakeflow pipeline/job identifiers. */

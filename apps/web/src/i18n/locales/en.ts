@@ -50,7 +50,7 @@ export const en = {
     noEnabledSources:
       'No enabled data sources yet. Overview sections stay available, but cost charts will populate after a Databricks or cloud source is enabled in Data Sources.',
     focusLoadFailed:
-      'Failed to load the FOCUS billing_daily rollup through the OBO token. Check SQL warehouse configuration and SELECT permissions on the gold billing_daily table.',
+      'Failed to load the FOCUS daily_usage rollup through the OBO token. Check SQL warehouse configuration and SELECT permissions on the gold daily_usage table.',
     someSourcesFailed: 'Some data sources could not be queried:',
     sections: {
       costSummary: 'Cost Summary',
@@ -166,7 +166,7 @@ export const en = {
     footer: {
       dataSources: 'Data sources:',
       lastUpdated:
-        'Last updated: {time}. Cost source: gold billing_daily queried with the user OBO token. TCO joins should account for shared cluster mappings.',
+        'Last updated: {time}. Cost source: gold daily_usage queried with the user OBO token. TCO joins should account for shared cluster mappings.',
     },
     totalSpend: 'Total spend (30d)',
     distinctSkus: 'Distinct SKUs',
@@ -259,7 +259,7 @@ export const en = {
     provisionWarning: 'Saved with warnings',
     provisionFailed: 'Provisioning had errors',
     provisionAllOk:
-      'Catalog "{name}" already had bronze/silver/gold, service principal grants, and reader group catalog/schema grants in place.',
+      'Catalog "{name}" already had the configured schemas, service principal grants, and reader group catalog/schema grants in place.',
     provisionAwsCredentialNote:
       'AWS Storage Credential and IAM trust policy validation runs from the AWS data source setup, not this catalog permission action.',
     provisionCatalogCreated: 'Created catalog "{name}".',
@@ -267,6 +267,13 @@ export const en = {
     provisionGrantFailed: 'GRANT for {scope} failed: {message}',
     provisionScopeCatalog: 'catalog',
     provisionScopeUsersCatalog: '{group} catalog access',
+    pipelineChangedTitle: 'Pipeline updated',
+    pipelineChangedDesc:
+      'The shared Lakeflow pipeline now points at the updated catalog and schema settings.',
+    pipelineChangedNotice:
+      'Existing tables are not regenerated until the job runs again. Run the job now to create or refresh tables in the new location.',
+    runPipelineJob: 'Run job',
+    pipelineRunStarted: 'Run #{runId} started for job #{jobId}.',
     medallion: {
       schemaLabel: 'Schema names',
       goldLabel: 'Gold',

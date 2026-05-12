@@ -31,7 +31,7 @@ export interface DataSourceTemplateRegistryEntry {
 
 const DATABRICKS_FOCUS13_INPUT: DataSourceTemplateInputConfig = {
   providerName: 'Databricks',
-  defaultTableName: 'databricks_billing',
+  defaultTableName: 'databricks_usage',
   setupSteps: ['systemTables', 'permissions'],
 };
 
@@ -44,13 +44,13 @@ export const DATA_SOURCE_TEMPLATE_REGISTRY: Record<string, DataSourceTemplateReg
   aws: {
     input: {
       providerName: 'AWS',
-      defaultTableName: 'aws_billing',
+      defaultTableName: 'aws_usage',
       setupSteps: ['awsCur'],
     },
     // 'Amazon Web Services' is kept for legacy DB rows created before providerName was standardized to 'AWS'.
     matches: [
-      { providerName: 'Amazon Web Services', defaultTableName: 'aws_billing' },
-      { providerName: 'AWS', defaultTableName: 'aws_billing' },
+      { providerName: 'Amazon Web Services', defaultTableName: 'aws_usage' },
+      { providerName: 'AWS', defaultTableName: 'aws_usage' },
     ],
     logo: { kind: 'aws' },
   },

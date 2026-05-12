@@ -9,7 +9,7 @@ function fakeSource(overrides: Partial<DataSource> & { id: number }): DataSource
     name: `source-${overrides.id}`,
     providerName: 'Databricks',
     billingAccountId: null,
-    tableName: 'billing',
+    tableName: 'usage',
     focusVersion: null,
     enabled: true,
     config: {},
@@ -58,11 +58,11 @@ test('baseParams includes time range and per-source params', () => {
 
 test('joinedBillingRowsSql generates CTE with requested + matched', () => {
   const sources = [fakeSource({ id: 1, billingAccountId: '123456789012' })];
-  const sql = joinedBillingRowsSql(sources, '`catalog`.`gold`.`billing_daily`');
+  const sql = joinedBillingRowsSql(sources, '`catalog`.`gold`.`daily_usage`');
 
   assert.ok(sql.includes('WITH requested AS'));
   assert.ok(sql.includes('matched AS'));
-  assert.ok(sql.includes('`catalog`.`gold`.`billing_daily`'));
+  assert.ok(sql.includes('`catalog`.`gold`.`daily_usage`'));
   assert.ok(sql.includes('r.billing_account_id IS NOT NULL'));
   assert.ok(sql.includes('r.billing_account_id IS NULL'));
 });

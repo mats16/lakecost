@@ -23,6 +23,7 @@ import {
 import {
   externalLocationNameForBucket,
   finlakeAwsResourceTags,
+  AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT,
   roleNameFromArn,
   storageCredentialNameForBucket,
   type AwsFocusExportCreateBody,
@@ -59,8 +60,6 @@ import {
 } from './serviceCredentials.js';
 import { requireAppWorkspaceClient } from './servicePrincipalIdentity.js';
 
-const AWS_FOCUS_12_QUERY_STATEMENT =
-  'SELECT AvailabilityZone, BilledCost, BillingAccountId, BillingAccountName, BillingAccountType, BillingCurrency, BillingPeriodEnd, BillingPeriodStart, CapacityReservationId, CapacityReservationStatus, ChargeCategory, ChargeClass, ChargeDescription, ChargeFrequency, ChargePeriodEnd, ChargePeriodStart, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountQuantity, CommitmentDiscountStatus, CommitmentDiscountType, CommitmentDiscountUnit, ConsumedQuantity, ConsumedUnit, ContractedCost, ContractedUnitPrice, EffectiveCost, InvoiceId, InvoiceIssuerName, ListCost, ListUnitPrice, PricingCategory, PricingCurrency, PricingCurrencyContractedUnitPrice, PricingCurrencyEffectiveCost, PricingCurrencyListUnitPrice, PricingQuantity, PricingUnit, ProviderName, PublisherName, RegionId, RegionName, ResourceId, ResourceName, ResourceType, ServiceCategory, ServiceName, ServiceSubcategory, SkuId, SkuMeter, SkuPriceDetails, SkuPriceId, SubAccountId, SubAccountName, SubAccountType, Tags FROM FOCUS_1_2_AWS';
 const AWS_EXPORT_BUCKET_POLICY_SID = 'EnableAWSDataExportsToWriteToS3AndCheckPolicy';
 const AWS_STORAGE_ROLE_NAME = 'FinLakeStorageRole';
 const AWS_STORAGE_POLICY_NAME = 'FinLakeStorageAccess';
@@ -472,7 +471,7 @@ async function ensureAwsDataExport({
           Name: exportName,
           Description: 'FOCUS 1.2 billing export',
           DataQuery: {
-            QueryStatement: AWS_FOCUS_12_QUERY_STATEMENT,
+            QueryStatement: AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT,
             TableConfigurations: {
               FOCUS_1_2_AWS: {
                 TIME_GRANULARITY: 'DAILY',
