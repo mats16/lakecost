@@ -268,6 +268,9 @@ export const en = {
     mainCatalogHeading: 'Catalog & Schemas',
     mainCatalogDesc: 'Configure the catalog and schemas used by FinLake.',
     mainCatalogPlaceholder: 'main',
+    setupModalTitle: 'Set up your catalog',
+    setupModalDesc:
+      'FinLake needs a catalog and medallion schemas before you can use the app. You cannot navigate away until you save.',
     catalogNameLabel: 'Catalog name',
     createIfMissing: 'Create if missing',
     catalogUserGroupLabel: 'Reader group',

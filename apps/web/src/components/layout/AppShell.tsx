@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useI18n, type Locale } from '../../i18n';
 import { useAppSettings, useMe } from '../../api/hooks';
+import { CatalogSetupModal } from '../CatalogSetupModal';
 
 interface NavItem {
   to: string;
@@ -309,6 +310,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="main">{children}</main>
+      {appSettings.isSuccess && !catalogName ? <CatalogSetupModal /> : null}
     </div>
   );
 }

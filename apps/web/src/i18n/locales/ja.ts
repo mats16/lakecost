@@ -272,6 +272,9 @@ export const ja: Dictionary = {
     mainCatalogHeading: 'カタログとスキーマ',
     mainCatalogDesc: 'FinLake で利用するカタログとスキーマの設定です。',
     mainCatalogPlaceholder: 'main',
+    setupModalTitle: 'カタログのセットアップが必要です',
+    setupModalDesc:
+      'FinLake を利用するには、データを書き込むカタログとメダリオンスキーマを設定してください。保存するまで他のページに移動できません。',
     catalogNameLabel: 'カタログの名前',
     createIfMissing: '存在しない場合は作成',
     catalogUserGroupLabel: '読み取りグループ',
