@@ -31,7 +31,13 @@ export function VendorLogo({
   if (logo?.kind === 'aws') {
     return (
       <div className="grid place-items-center" style={{ width: size, height: size }} aria-hidden>
-        <img src={awsLogoUrl} className="dark:invert" style={{ height: imageSize, width: 'auto' }} alt="" aria-hidden />
+        <img
+          src={awsLogoUrl}
+          className="dark:invert"
+          style={{ height: imageSize, width: 'auto' }}
+          alt=""
+          aria-hidden
+        />
       </div>
     );
   }
