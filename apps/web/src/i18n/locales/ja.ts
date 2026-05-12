@@ -19,7 +19,6 @@ export const ja: Dictionary = {
     explore: '探索',
     genie: 'Genie',
     query: 'クエリ',
-    costExplorer: 'コストエクスプローラー',
     budgets: '予算',
     settings: '設定',
     databricks: 'Databricks',
@@ -227,20 +226,6 @@ export const ja: Dictionary = {
     cost: 'コスト',
     noSkuBreakdown: 'SKU 別の内訳はまだありません。',
     emDash: '—',
-  },
-  costExplorer: {
-    title: 'コストエクスプローラー',
-    subtitle: '高コストなジョブ・ウェアハウス・クラスターを掘り下げます',
-    timeWindow: '期間:',
-    last7Days: '直近7日間',
-    last30Days: '直近30日間',
-    last90Days: '直近90日間',
-    topWorkloads: '上位ワークロード',
-    noData:
-      'データがありません。system.billing.usage が参照可能で、SQL ウェアハウスが設定されているか確認してください。',
-    type: '種別',
-    id: 'ID',
-    costUsd: 'コスト (USD)',
   },
   budgets: {
     title: '予算',

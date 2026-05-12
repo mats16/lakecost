@@ -20,7 +20,6 @@ import {
   ExternalLink,
   Globe,
   LayoutDashboard,
-  LineChart,
   Notebook,
   Binoculars,
   Shapes,
@@ -75,8 +74,6 @@ const EXPLORE: NavGroup = {
     { to: '/query', labelKey: 'nav.query' },
   ],
 };
-
-const SECONDARY: NavItem[] = [{ to: '/explorer', labelKey: 'nav.costExplorer', icon: LineChart }];
 
 interface ExternalNavItem {
   path: string;
@@ -167,20 +164,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             ) : null}
           </div>
-
-          {SECONDARY.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) => (isActive ? 'active' : '')}
-              >
-                {Icon ? <Icon className="nav-icon" aria-hidden="true" /> : null}
-                <span>{t(item.labelKey)}</span>
-              </NavLink>
-            );
-          })}
 
           <div
             className={`nav-group ${configureOpen ? 'open' : ''} ${onConfigureRoute ? 'active' : ''}`}

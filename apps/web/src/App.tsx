@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell';
 import { Dashboard } from './pages/Dashboard';
-import { CostExplorer } from './pages/CostExplorer';
 import { Budgets } from './pages/Budgets';
 import { ConfigureLayout } from './pages/Configure/ConfigureLayout';
 import { DataSources } from './pages/Configure/DataSources';
@@ -18,7 +17,6 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<Dashboard />} />
-        <Route path="/explorer" element={<CostExplorer />} />
         <Route path="/budgets" element={<Budgets />} />
         <Route path="/genie" element={<Genie />} />
         <Route path="/ginie" element={<Navigate to="/genie" replace />} />
