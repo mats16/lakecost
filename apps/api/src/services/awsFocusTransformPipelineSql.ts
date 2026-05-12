@@ -44,7 +44,7 @@ export function buildAwsFocusPipelineSql(): string {
 
 export function awsUsageTableName(accountId: string): string {
   if (!/^\d{12}$/.test(accountId)) {
-    throw new Error(`Invalid AWS billing account id "${accountId}": expected 12 digits`);
+    throw new Error(`Invalid AWS account id "${accountId}": expected 12 digits`);
   }
   return `aws_${accountId}_usage`;
 }

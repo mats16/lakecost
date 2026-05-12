@@ -51,8 +51,6 @@ export const DATA_SOURCE_TEMPLATE_REGISTRY: Record<string, DataSourceTemplateReg
     matches: [
       { providerName: 'Amazon Web Services', defaultTableName: 'aws_usage' },
       { providerName: 'AWS', defaultTableName: 'aws_usage' },
-      { providerName: 'Amazon Web Services', defaultTableName: 'aws_billing' },
-      { providerName: 'AWS', defaultTableName: 'aws_billing' },
     ],
     logo: { kind: 'aws' },
   },
