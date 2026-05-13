@@ -128,6 +128,12 @@ export const ja: Dictionary = {
     alert: 'アラート',
     monthlyPotential: '月あたり {amount} の可能性',
     monthlyCostByServiceCategory: 'サービスカテゴリ別月次コスト (12か月 + 予測)',
+    monthlyCostByDimension: '{dimension} 別月次コスト (12か月 + 予測)',
+    costBreakdownDimensions: {
+      providerName: 'ProviderName',
+      serviceCategory: 'ServiceCategory',
+      serviceName: 'ServiceName',
+    },
     providers: {
       other: 'その他',
     },

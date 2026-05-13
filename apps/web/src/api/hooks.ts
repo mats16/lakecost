@@ -92,6 +92,7 @@ export interface FocusOverviewDailyRow {
   usageDate: string;
   providerName: string;
   serviceCategory: string;
+  serviceName: string;
   costUsd: number;
 }
 

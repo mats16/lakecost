@@ -91,7 +91,7 @@ interface Anomaly {
   when: string;
 }
 
-const SERVICE_CATEGORY_PALETTE = [
+const COST_BREAKDOWN_PALETTE = [
   '#3B82F6',
   '#49A078',
   '#F2A72B',
@@ -107,8 +107,11 @@ const SERVICE_CATEGORY_PALETTE = [
   '#718096',
 ];
 
-interface ServiceCategoryMeta {
+interface CostBreakdownSeriesMeta {
+  // Synthetic id used as Recharts dataKey — values like "Other", "AWS S3"
+  // can't be used directly because Recharts treats dataKey as a lodash path.
   key: string;
+  value: string;
   color: string;
 }
 
@@ -159,6 +162,8 @@ const PROVIDERS: Record<ProviderKey, ProviderMeta> = {
 
 const periodOptions = ['mtd', 'last30'] as const;
 type Period = (typeof periodOptions)[number];
+const costBreakdownDimensions = ['providerName', 'serviceCategory', 'serviceName'] as const;
+type CostBreakdownDimension = (typeof costBreakdownDimensions)[number];
 
 function overviewRange() {
   const now = new Date();
@@ -182,6 +187,8 @@ export function Dashboard() {
   const { t, locale } = useI18n();
   const formatUsd = useCurrencyUsd();
   const [period, setPeriod] = useState<Period>('mtd');
+  const [costBreakdownDimension, setCostBreakdownDimension] =
+    useState<CostBreakdownDimension>('providerName');
   const [coveragePage, setCoveragePage] = useState(0);
   const wideRange = useMemo(overviewRange, []);
   const mtdRange = useMemo(monthToDateRange, []);
@@ -232,10 +239,25 @@ export function Dashboard() {
     };
   }, [activeProviders, budgets.data?.items, dailyRows, locale, period, skuRows, t]);
 
-  const serviceCategories = useMemo(() => buildServiceCategories(dailyRows), [dailyRows]);
+  const costBreakdownKeyOf = useMemo(
+    () => (row: FocusOverviewDailyRow) => costBreakdownValue(row, costBreakdownDimension),
+    [costBreakdownDimension],
+  );
+  const costBreakdownSeries = useMemo(
+    () => buildCostBreakdownSeries(dailyRows, costBreakdownKeyOf),
+    [costBreakdownKeyOf, dailyRows],
+  );
   const trendData = useMemo(
-    () => buildTrendData(dailyRows, serviceCategories, overview.forecast, locale, t),
-    [dailyRows, locale, overview.forecast, serviceCategories, t],
+    () =>
+      buildTrendData(
+        dailyRows,
+        costBreakdownSeries,
+        costBreakdownKeyOf,
+        overview.forecast,
+        locale,
+        t,
+      ),
+    [costBreakdownKeyOf, costBreakdownSeries, dailyRows, locale, overview.forecast, t],
   );
   const providerBreakdown = useMemo(
     () => buildProviderBreakdown(activeProviders, dailyRows),
@@ -413,7 +435,30 @@ export function Dashboard() {
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.monthlyCostByServiceCategory')}</CardTitle>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-sm">
+                {t('dashboard.monthlyCostByDimension', {
+                  dimension: t(`dashboard.costBreakdownDimensions.${costBreakdownDimension}`),
+                })}
+              </CardTitle>
+              <Select
+                value={costBreakdownDimension}
+                onValueChange={(value) =>
+                  setCostBreakdownDimension(value as CostBreakdownDimension)
+                }
+              >
+                <SelectTrigger className="w-full sm:w-[190px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {costBreakdownDimensions.map((dimension) => (
+                    <SelectItem key={dimension} value={dimension}>
+                      {t(`dashboard.costBreakdownDimensions.${dimension}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -435,12 +480,13 @@ export function Dashboard() {
                       tickFormatter={shortUsd}
                     />
                     <RechartsTooltip content={<ChartTooltip formatUsd={formatUsd} />} />
-                    {serviceCategories.map((category) => (
+                    {costBreakdownSeries.map((series) => (
                       <Bar
-                        key={category.key}
-                        dataKey={category.key}
+                        key={series.key}
+                        dataKey={series.key}
+                        name={series.value}
                         stackId="cost"
-                        fill={category.color}
+                        fill={series.color}
                         radius={[3, 3, 0, 0]}
                       />
                     ))}
@@ -1050,28 +1096,34 @@ function monthlyTotals(rows: FocusOverviewDailyRow[]): Map<string, number> {
   return totals;
 }
 
-function buildServiceCategories(rows: FocusOverviewDailyRow[]): ServiceCategoryMeta[] {
+function buildCostBreakdownSeries(
+  rows: FocusOverviewDailyRow[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
+): CostBreakdownSeriesMeta[] {
   const totals = new Map<string, number>();
   for (const row of rows) {
-    totals.set(row.serviceCategory, (totals.get(row.serviceCategory) ?? 0) + row.costUsd);
+    const value = keyOf(row);
+    totals.set(value, (totals.get(value) ?? 0) + row.costUsd);
   }
   return Array.from(totals.entries())
     .sort((a, b) => b[1] - a[1])
-    .map(([key], index) => ({
-      key,
-      color: SERVICE_CATEGORY_PALETTE[index % SERVICE_CATEGORY_PALETTE.length] ?? '#718096',
+    .map(([value], index) => ({
+      key: `series_${index}`,
+      value,
+      color: COST_BREAKDOWN_PALETTE[index % COST_BREAKDOWN_PALETTE.length] ?? '#718096',
     }));
 }
 
 function buildTrendData(
   rows: FocusOverviewDailyRow[],
-  categories: ServiceCategoryMeta[],
+  seriesItems: CostBreakdownSeriesMeta[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
   forecast: number,
   locale: string,
   t: TFunction,
 ) {
   const now = new Date();
-  const totals = monthlyTotalsBy(rows, (row) => row.serviceCategory);
+  const totals = monthlyTotalsBy(rows, keyOf);
   const months = Array.from({ length: 12 }, (_, index) => {
     const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
     return monthKey(date);
@@ -1081,8 +1133,8 @@ function buildTrendData(
       label: monthLabel(key, locale),
       forecast: false,
     };
-    for (const category of categories) {
-      record[category.key] = totals.get(`${key}:${category.key}`) ?? 0;
+    for (const series of seriesItems) {
+      record[series.key] = totals.get(`${key}:${series.value}`) ?? 0;
     }
     return record;
   });
@@ -1091,15 +1143,20 @@ function buildTrendData(
     forecast: true,
   };
   const currentMonthKey = monthKey(now);
-  const totalMtd = categories.reduce(
-    (sum, item) => sum + (totals.get(`${currentMonthKey}:${item.key}`) ?? 0),
+  const totalMtd = seriesItems.reduce(
+    (sum, item) => sum + (totals.get(`${currentMonthKey}:${item.value}`) ?? 0),
     0,
   );
-  for (const category of categories) {
-    const currentMonthCost = totals.get(`${currentMonthKey}:${category.key}`) ?? 0;
-    forecastRecord[category.key] = totalMtd > 0 ? forecast * (currentMonthCost / totalMtd) : 0;
+  for (const series of seriesItems) {
+    const currentMonthCost = totals.get(`${currentMonthKey}:${series.value}`) ?? 0;
+    forecastRecord[series.key] = totalMtd > 0 ? forecast * (currentMonthCost / totalMtd) : 0;
   }
   return [...data, forecastRecord];
+}
+
+function costBreakdownValue(row: FocusOverviewDailyRow, dimension: CostBreakdownDimension): string {
+  const value = row[dimension]?.trim();
+  return value || 'Unknown';
 }
 
 function monthlyTotalsBy(

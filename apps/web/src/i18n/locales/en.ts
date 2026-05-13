@@ -126,6 +126,12 @@ export const en = {
     alert: 'Alert',
     monthlyPotential: '{amount}/mo potential',
     monthlyCostByServiceCategory: 'Monthly Cost by Service Category (12 months + Forecast)',
+    monthlyCostByDimension: 'Monthly Cost by {dimension} (12 months + Forecast)',
+    costBreakdownDimensions: {
+      providerName: 'ProviderName',
+      serviceCategory: 'ServiceCategory',
+      serviceName: 'ServiceName',
+    },
     providers: {
       other: 'Other',
     },
