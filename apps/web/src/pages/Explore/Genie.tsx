@@ -1,4 +1,3 @@
-import { useRef, useState, type KeyboardEvent } from 'react';
 import {
   Alert,
   AlertDescription,
@@ -13,14 +12,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  GenieChatMessageList,
   Skeleton,
   Spinner,
-  Textarea,
-  useGenieChat,
 } from '@databricks/appkit-ui/react';
 import { CATALOG_SETTING_KEY, GENIE_SPACE_SETTING_KEY } from '@finlake/shared';
-import { AlertCircle, ExternalLink, MoreVertical, Send, Sparkles, Trash2 } from 'lucide-react';
+import { AlertCircle, ExternalLink, MoreVertical, Sparkles, Trash2 } from 'lucide-react';
 import { PageHeader } from '../../components/PageHeader';
 import { useAppSettings, useDeleteGenieSpace, useMe, useSetupGenieSpace } from '../../api/hooks';
 import { useI18n } from '../../i18n';
@@ -35,7 +31,11 @@ export function Genie() {
   const genieSpaceId = appSettings[GENIE_SPACE_SETTING_KEY]?.trim() || '';
   const catalog = appSettings[CATALOG_SETTING_KEY]?.trim() || '';
   const workspaceUrl = me.data?.workspaceUrl ?? null;
+  const workspaceId = me.data?.workspaceId ?? null;
   const genieSpaceUrl = genieSpaceId ? databricksGenieSpaceUrl(workspaceUrl, genieSpaceId) : null;
+  const genieEmbedUrl = genieSpaceId
+    ? databricksGenieEmbedUrl(workspaceUrl, workspaceId, genieSpaceId)
+    : null;
 
   return (
     <>
@@ -65,7 +65,7 @@ export function Genie() {
         }
       />
 
-      {settings.isLoading ? (
+      {settings.isLoading || (genieSpaceId && me.isLoading) ? (
         <Card>
           <CardContent>
             <div className="space-y-2">
@@ -76,6 +76,7 @@ export function Genie() {
         </Card>
       ) : genieSpaceId ? (
         <GenieChatSurface
+          genieEmbedUrl={genieEmbedUrl}
           deleteError={deleteSpace.error instanceof Error ? deleteSpace.error.message : null}
         />
       ) : (
@@ -93,6 +94,20 @@ export function Genie() {
 function databricksGenieSpaceUrl(workspaceUrl: string | null, spaceId: string): string | null {
   if (!workspaceUrl) return null;
   return `${workspaceUrl.replace(/\/$/, '')}/genie/rooms/${encodeURIComponent(spaceId)}`;
+}
+
+function databricksGenieEmbedUrl(
+  workspaceUrl: string | null,
+  workspaceId: string | null,
+  spaceId: string,
+): string | null {
+  if (!workspaceUrl || !workspaceId) return null;
+  const url = new URL(
+    `/embed/genie/rooms/${encodeURIComponent(spaceId)}`,
+    workspaceUrl.replace(/\/$/, ''),
+  );
+  url.searchParams.set('o', workspaceId);
+  return url.toString();
 }
 
 function GenieActions({
@@ -125,7 +140,13 @@ function GenieActions({
   );
 }
 
-function GenieChatSurface({ deleteError }: { deleteError: string | null }) {
+function GenieChatSurface({
+  genieEmbedUrl,
+  deleteError,
+}: {
+  genieEmbedUrl: string | null;
+  deleteError: string | null;
+}) {
   const { t } = useI18n();
 
   return (
@@ -138,100 +159,23 @@ function GenieChatSurface({ deleteError }: { deleteError: string | null }) {
         </Alert>
       ) : null}
 
-      <FinLakeGenieChat
-        alias="finlake"
-        placeholder={t('genie.inputPlaceholder')}
-        className="border-border bg-background h-[calc(100vh-176px)] min-h-[560px] overflow-hidden rounded-md border"
-      />
+      {genieEmbedUrl ? (
+        <div className="border-border bg-background h-[calc(100vh-176px)] min-h-[560px] overflow-hidden rounded-md border">
+          <iframe
+            src={genieEmbedUrl}
+            title={t('genie.iframeTitle')}
+            allow="clipboard-write"
+            className="size-full border-0"
+          />
+        </div>
+      ) : (
+        <Alert>
+          <AlertCircle />
+          <AlertTitle>{t('genie.workspaceUrlMissingTitle')}</AlertTitle>
+          <AlertDescription>{t('genie.workspaceUrlMissingDesc')}</AlertDescription>
+        </Alert>
+      )}
     </>
-  );
-}
-
-function FinLakeGenieChat({
-  alias,
-  placeholder,
-  className,
-}: {
-  alias: string;
-  placeholder: string;
-  className?: string;
-}) {
-  const chat = useGenieChat({ alias });
-  const { t } = useI18n();
-  const [value, setValue] = useState('');
-  const composingRef = useRef(false);
-  const disabled = chat.status === 'streaming' || chat.status === 'loading-history';
-
-  function send() {
-    const trimmed = value.trim();
-    if (!trimmed || disabled) return;
-    chat.sendMessage(trimmed);
-    setValue('');
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== 'Enter' || event.shiftKey) return;
-    if (event.nativeEvent.isComposing || composingRef.current) return;
-    event.preventDefault();
-    send();
-  }
-
-  return (
-    <div className={`flex flex-col ${className ?? ''}`}>
-      {chat.messages.length > 0 ? (
-        <div className="flex shrink-0 justify-end px-4 pt-3 pb-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={chat.reset}
-            className="text-muted-foreground text-xs"
-          >
-            {t('genie.newConversation')}
-          </Button>
-        </div>
-      ) : null}
-
-      <GenieChatMessageList
-        messages={chat.messages}
-        status={chat.status}
-        hasPreviousPage={chat.hasPreviousPage}
-        onFetchPreviousPage={chat.fetchPreviousPage}
-      />
-
-      {chat.error ? (
-        <div className="bg-destructive/10 text-destructive shrink-0 border-t px-4 py-2 text-sm">
-          {chat.error}
-        </div>
-      ) : null}
-
-      <div className="flex shrink-0 gap-2 border-t p-4">
-        <Textarea
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={onKeyDown}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={() => {
-            composingRef.current = false;
-          }}
-          placeholder={placeholder}
-          disabled={disabled}
-          rows={1}
-          className="max-h-48 min-h-10 flex-1 resize-none"
-        />
-        <Button
-          type="button"
-          onClick={send}
-          disabled={disabled || !value.trim()}
-          className="self-end"
-        >
-          <Send className="size-4" />
-          {t('genie.send')}
-        </Button>
-      </div>
-    </div>
   );
 }
 
