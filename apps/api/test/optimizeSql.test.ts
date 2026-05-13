@@ -26,6 +26,7 @@ test('buildDatabricksOptimizeCte reads x_Serverless and EffectiveCost from quote
   assert.match(sql, /FROM `finops`\.`focus`\.`databricks_usage`/);
   assert.match(sql, /CAST\(COALESCE\(EffectiveCost, 0\) AS DOUBLE\) AS cost_usd/);
   assert.match(sql, /CAST\(`x_Serverless` AS BOOLEAN\) AS x_serverless/);
+  assert.match(sql, /NULLIF\(TRIM\(SkuPriceDetails\['InstanceType'\]\), ''\) AS instance_type/);
   assert.match(sql, /ProviderName = 'Databricks'/);
   assert.doesNotMatch(sql, /finops\.focus\.databricks_usage/);
 });
@@ -121,6 +122,7 @@ test('buildDatabricksRecommendationsSql excludes blank resources and uses eligib
   assert.match(sql, /resource_id IS NOT NULL/);
   assert.match(sql, /TRIM\(resource_id\) <> ''/);
   assert.match(sql, /service_name IN \('SQL', 'JOBS', 'DLT'\) THEN 1\.35/);
+  assert.match(sql, /MAX_BY\(instance_type, charge_period_start\) AS instance_type/);
   assert.match(sql, /ORDER BY non_serverless_cost_usd \* eligibility_weight DESC/);
   assert.match(sql, /WHERE recommendation_rank <= 25/);
 });
@@ -176,11 +178,10 @@ test('DatabricksOptimizationResponseSchema parses API response shape', () => {
         resourceType: 'SQL Warehouse',
         resourceId: 'warehouse-1',
         resourceName: 'BI Warehouse',
+        instanceType: '2X-Small',
         totalCostUsd: 800,
         nonServerlessCostUsd: 500,
         serverlessRatio: 37.5,
-        reason: 'SQL warehouse spend is still running on non-serverless compute.',
-        action: 'Review serverless warehouse eligibility, auto-stop, and size policy.',
       },
     ],
     errors: [],

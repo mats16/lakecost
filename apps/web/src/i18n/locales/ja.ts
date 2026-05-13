@@ -90,11 +90,9 @@ export const ja: Dictionary = {
       },
       monthly: {
         title: 'サーバレス化推移',
-        desc: 'サーバレス、非サーバレス、不明に分けたコスト推移です。',
       },
       services: {
         title: 'サービス別サーバレス比率',
-        desc: 'サーバレス化の検討対象サービスを Databricks EffectiveCost で表示します。',
       },
       recommendations: {
         title: '優先的に見直すリソース',
@@ -103,7 +101,7 @@ export const ja: Dictionary = {
       legend: {
         serverless: 'サーバレス',
         nonServerless: '非サーバレス',
-        unknown: '不明',
+        unknown: 'その他',
         ratio: 'サーバレス比率',
       },
       priority: {
@@ -116,9 +114,9 @@ export const ja: Dictionary = {
         resource: 'リソース',
         workspace: 'ワークスペース',
         service: 'サービス',
+        instanceType: 'インスタンスタイプ',
         nonServerlessSpend: '非サーバレス支出',
         serverlessRatio: 'サーバレス比率',
-        action: '推奨アクション',
       },
       empty: {
         noData: 'Databricks 最適化データがありません',

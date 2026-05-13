@@ -66,11 +66,10 @@ export const DatabricksOptimizationRecommendationSchema = z.object({
   resourceType: z.string().nullable(),
   resourceId: z.string(),
   resourceName: z.string().nullable(),
+  instanceType: z.string().nullable(),
   totalCostUsd: z.number(),
   nonServerlessCostUsd: z.number(),
   serverlessRatio: z.number().nullable(),
-  reason: z.string(),
-  action: z.string(),
 });
 
 export type DatabricksOptimizationRecommendation = z.infer<

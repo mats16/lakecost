@@ -88,11 +88,9 @@ export const en = {
       },
       monthly: {
         title: 'Serverless adoption trend',
-        desc: 'Cost trend split by serverless, non-serverless, and unknown classification.',
       },
       services: {
         title: 'Serverless ratio by service',
-        desc: 'Serverless migration target services using Databricks EffectiveCost.',
       },
       recommendations: {
         title: 'Priority resources to review',
@@ -101,7 +99,7 @@ export const en = {
       legend: {
         serverless: 'Serverless',
         nonServerless: 'Non-serverless',
-        unknown: 'Unknown',
+        unknown: 'Other',
         ratio: 'Serverless ratio',
       },
       priority: {
@@ -114,9 +112,9 @@ export const en = {
         resource: 'Resource',
         workspace: 'Workspace',
         service: 'Service',
+        instanceType: 'Instance type',
         nonServerlessSpend: 'Non-serverless spend',
         serverlessRatio: 'Serverless ratio',
-        action: 'Recommended action',
       },
       empty: {
         noData: 'No Databricks optimization data',

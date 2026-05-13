@@ -132,6 +132,7 @@ export function buildDatabricksOptimizeCte(sources: DatabricksOptimizeSource[]):
     COALESCE(NULLIF(TRIM(ResourceType), ''), 'Unknown') AS resource_type,
     ResourceId AS resource_id,
     ResourceName AS resource_name,
+    NULLIF(TRIM(SkuPriceDetails['InstanceType']), '') AS instance_type,
     CAST(COALESCE(EffectiveCost, 0) AS DOUBLE) AS cost_usd,
     CAST(${quoteIdent('x_Serverless')} AS BOOLEAN) AS x_serverless
   FROM ${source.tableSql}
@@ -313,6 +314,7 @@ ${cte}
     resource_type,
     resource_id,
     MAX_BY(resource_name, charge_period_start) AS resource_name,
+    MAX_BY(instance_type, charge_period_start) AS instance_type,
     CAST(SUM(cost_usd) AS DOUBLE) AS total_cost_usd,
     CAST(SUM(CASE WHEN x_serverless = true THEN cost_usd ELSE 0 END) AS DOUBLE) AS serverless_cost_usd,
     CAST(SUM(CASE WHEN x_serverless = false THEN cost_usd ELSE 0 END) AS DOUBLE) AS non_serverless_cost_usd
@@ -355,25 +357,14 @@ SELECT
   resource_type,
   resource_id,
   resource_name,
+  instance_type,
   total_cost_usd,
   non_serverless_cost_usd,
   CASE
     WHEN ${KNOWN_COST_DENOMINATOR} > 0
       THEN CAST(serverless_cost_usd * 100.0 / ${KNOWN_COST_DENOMINATOR} AS DOUBLE)
     ELSE CAST(NULL AS DOUBLE)
-  END AS serverless_ratio,
-  CASE
-    WHEN service_name = 'SQL' THEN 'SQL warehouse spend is still running on non-serverless compute.'
-    WHEN service_name IN ('JOBS', 'DLT') THEN 'Scheduled data processing spend is concentrated on non-serverless compute.'
-    WHEN service_name IN ('INTERACTIVE', 'NOTEBOOKS', 'ALL_PURPOSE') THEN 'Interactive compute spend should be reviewed before expanding serverless adoption.'
-    ELSE 'This resource has material non-serverless Databricks spend in the selected period.'
-  END AS reason,
-  CASE
-    WHEN service_name = 'SQL' THEN 'Review serverless warehouse eligibility, auto-stop, and size policy.'
-    WHEN service_name IN ('JOBS', 'DLT') THEN 'Evaluate job or Lakeflow migration to serverless compute and validate runtime behavior.'
-    WHEN service_name IN ('INTERACTIVE', 'NOTEBOOKS', 'ALL_PURPOSE') THEN 'Review cluster policy and workload fit before moving users to serverless compute.'
-    ELSE 'Check whether the workload has a serverless runtime option and compare price/performance.'
-  END AS action
+  END AS serverless_ratio
 FROM ranked
 WHERE recommendation_rank <= 25
 ORDER BY recommendation_rank

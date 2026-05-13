@@ -317,7 +317,6 @@ export function DatabricksOptimize() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">{t('optimize.databricks.monthly.title')}</CardTitle>
-            <CardDescription>{t('optimize.databricks.monthly.desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -391,7 +390,6 @@ export function DatabricksOptimize() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">{t('optimize.databricks.services.title')}</CardTitle>
-            <CardDescription>{t('optimize.databricks.services.desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -438,11 +436,11 @@ export function DatabricksOptimize() {
                   <TableHead>{t('optimize.databricks.table.priority')}</TableHead>
                   <TableHead>{t('optimize.databricks.table.resource')}</TableHead>
                   <TableHead>{t('optimize.databricks.table.service')}</TableHead>
-                  <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
+                  <TableHead>{t('optimize.databricks.table.instanceType')}</TableHead>
                   <TableHead className="text-right">
                     {t('optimize.databricks.table.nonServerlessSpend')}
                   </TableHead>
-                  <TableHead>{t('optimize.databricks.table.action')}</TableHead>
+                  <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -492,8 +490,12 @@ function KpiCard({
         }`}
       />
       <CardHeader className="space-y-3">
-        <Icon className="text-muted-foreground h-4 w-4" />
-        <CardDescription className="text-[11px] tracking-wider uppercase">{label}</CardDescription>
+        <div className="flex items-center gap-2">
+          <Icon className="text-muted-foreground h-4 w-4 shrink-0" />
+          <CardDescription className="text-[11px] tracking-wider uppercase">
+            {label}
+          </CardDescription>
+        </div>
         <CardTitle className="text-2xl font-semibold">
           {loading ? <Skeleton className="h-8 w-24" /> : value}
         </CardTitle>
@@ -514,17 +516,13 @@ function ServiceRatioRow({ row }: { row: DatabricksOptimizationServiceRow }) {
   const nonServerlessWidth = knownCost > 0 ? (row.nonServerlessCostUsd / denominator) * 100 : 0;
   return (
     <div className="grid gap-2">
-      <div className="flex items-start justify-between gap-3 text-sm">
-        <div className="min-w-0">
-          <p className="m-0 truncate font-medium">{row.serviceName}</p>
-        </div>
-        <div className="text-right">
-          <p className="m-0 font-medium">{formatRatio(row.serverlessRatio)}</p>
-          <p className="text-muted-foreground m-0 text-xs">
-            {formatUsd(row.serverlessCostUsd)} / {formatUsd(row.totalCostUsd)}
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <p className="m-0 whitespace-nowrap font-medium">{row.serviceName}</p>
+        <p className="m-0 shrink-0 font-medium">{formatRatio(row.serverlessRatio)}</p>
       </div>
+      <p className="text-muted-foreground m-0 whitespace-nowrap text-right text-xs">
+        {formatUsd(row.serverlessCostUsd)} / {formatUsd(row.totalCostUsd)}
+      </p>
       <div
         className="bg-muted flex h-3 overflow-hidden rounded-sm"
         aria-label={t('optimize.databricks.services.title')}
@@ -571,21 +569,16 @@ function RecommendationRow({
           <span className="text-muted-foreground text-xs">{row.serviceCategory}</span>
         </div>
       </TableCell>
+      <TableCell className="min-w-36">{row.instanceType || t('dashboard.notAvailable')}</TableCell>
+      <TableCell className="text-right font-medium">
+        {formatUsd(row.nonServerlessCostUsd)}
+      </TableCell>
       <TableCell className="min-w-40">
         <div className="grid gap-0.5">
           <span>{workspacePrimary}</span>
           {workspaceSecondary ? (
             <span className="text-muted-foreground text-xs">{workspaceSecondary}</span>
           ) : null}
-        </div>
-      </TableCell>
-      <TableCell className="text-right font-medium">
-        {formatUsd(row.nonServerlessCostUsd)}
-      </TableCell>
-      <TableCell className="min-w-72">
-        <div className="grid gap-1">
-          <span>{row.action}</span>
-          <span className="text-muted-foreground text-xs">{row.reason}</span>
         </div>
       </TableCell>
     </TableRow>
