@@ -141,6 +141,8 @@ export const ja: Dictionary = {
     forecast: '予測',
     providerBreakdownMtd: 'プロバイダー内訳 (当月)',
     providerBreakdownDesc: '計測済みコストがあるプロバイダーのみを表示します。',
+    breakdownMtdByDimension: '{dimension} 内訳 (当月)',
+    breakdownMtdDesc: '当月の計測済みコストのみを表示します。',
     totalMtd: '当月合計',
     topServicesBySpend: '支出上位サービス',
     topServicesDesc: '有効な FOCUS 日次ロールアップテーブルから集計しています。',
@@ -178,6 +180,7 @@ export const ja: Dictionary = {
       noCostTrendData: 'コスト推移データがありません',
       enableSourceAndRunRefresh: 'データソースを有効化し、リフレッシュジョブを実行してください。',
       noMeasuredProviderSpend: '計測済みのプロバイダー支出がありません',
+      noMeasuredBreakdownSpend: '計測済みの支出がありません',
       configuredSourcesAfterFacts:
         'コストファクトが利用可能になると、設定済みソースが表示されます。',
       noServicesYet: 'サービスデータがまだありません',

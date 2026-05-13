@@ -164,6 +164,7 @@ const periodOptions = ['mtd', 'last30'] as const;
 type Period = (typeof periodOptions)[number];
 const costBreakdownDimensions = ['providerName', 'serviceCategory', 'serviceName'] as const;
 type CostBreakdownDimension = (typeof costBreakdownDimensions)[number];
+const COST_BREAKDOWN_LEGEND_LIMIT = 10;
 
 function overviewRange() {
   const now = new Date();
@@ -259,9 +260,9 @@ export function Dashboard() {
       ),
     [costBreakdownKeyOf, costBreakdownSeries, dailyRows, locale, overview.forecast, t],
   );
-  const providerBreakdown = useMemo(
-    () => buildProviderBreakdown(activeProviders, dailyRows),
-    [activeProviders, dailyRows],
+  const costBreakdownMtd = useMemo(
+    () => buildCostBreakdownMtd(costBreakdownSeries, dailyRows, costBreakdownKeyOf),
+    [costBreakdownKeyOf, costBreakdownSeries, dailyRows],
   );
   const topServices = useMemo(
     () => buildTopServices(serviceRows, skuRows, activeProviders),
@@ -431,34 +432,34 @@ export function Dashboard() {
         />
       </div>
 
-      <SectionTitle title={t('dashboard.sections.costTrendsBreakdown')} />
+      <div className="mt-5 mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="m-0 text-base font-semibold">
+          {t('dashboard.sections.costTrendsBreakdown')}
+        </h3>
+        <Select
+          value={costBreakdownDimension}
+          onValueChange={(value) => setCostBreakdownDimension(value as CostBreakdownDimension)}
+        >
+          <SelectTrigger className="w-full sm:w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {costBreakdownDimensions.map((dimension) => (
+              <SelectItem key={dimension} value={dimension}>
+                {t(`dashboard.costBreakdownDimensions.${dimension}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-sm">
-                {t('dashboard.monthlyCostByDimension', {
-                  dimension: t(`dashboard.costBreakdownDimensions.${costBreakdownDimension}`),
-                })}
-              </CardTitle>
-              <Select
-                value={costBreakdownDimension}
-                onValueChange={(value) =>
-                  setCostBreakdownDimension(value as CostBreakdownDimension)
-                }
-              >
-                <SelectTrigger className="w-full sm:w-[190px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {costBreakdownDimensions.map((dimension) => (
-                    <SelectItem key={dimension} value={dimension}>
-                      {t(`dashboard.costBreakdownDimensions.${dimension}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <CardTitle className="text-sm">
+              {t('dashboard.monthlyCostByDimension', {
+                dimension: t(`dashboard.costBreakdownDimensions.${costBreakdownDimension}`),
+              })}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -499,57 +500,63 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.providerBreakdownMtd')}</CardTitle>
-            <CardDescription>{t('dashboard.providerBreakdownDesc')}</CardDescription>
+            <CardTitle className="text-sm">
+              {t('dashboard.breakdownMtdByDimension', {
+                dimension: t(`dashboard.costBreakdownDimensions.${costBreakdownDimension}`),
+              })}
+            </CardTitle>
+            <CardDescription>{t('dashboard.breakdownMtdDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-80 w-full" />
-            ) : providerBreakdown.length === 0 ? (
+            ) : costBreakdownMtd.length === 0 ? (
               <EmptyState
-                title={t('dashboard.empty.noMeasuredProviderSpend')}
+                title={t('dashboard.empty.noMeasuredBreakdownSpend')}
                 description={t('dashboard.empty.configuredSourcesAfterFacts')}
               />
             ) : (
-              <div className="grid gap-4 lg:grid-cols-[1fr_160px] xl:grid-cols-1 2xl:grid-cols-[1fr_160px]">
-                <div className="relative h-56">
+              <div className="grid gap-3 lg:grid-cols-[minmax(10rem,1fr)_max-content]">
+                <div className="relative h-56 w-full">
                   <ResponsiveContainer>
                     <PieChart>
                       <Pie
-                        data={providerBreakdown}
-                        innerRadius={58}
-                        outerRadius={88}
+                        data={costBreakdownMtd}
+                        innerRadius="60%"
+                        outerRadius="90%"
                         dataKey="cost"
-                        nameKey="label"
+                        nameKey="value"
                         stroke="var(--card)"
                         strokeWidth={2}
                       >
-                        {providerBreakdown.map((entry) => (
+                        {costBreakdownMtd.map((entry) => (
                           <Cell key={entry.key} fill={entry.color} />
                         ))}
                       </Pie>
-                      <RechartsTooltip content={<ChartTooltip formatUsd={formatUsd} />} />
+                      <RechartsTooltip
+                        content={<ChartTooltip formatUsd={formatUsd} />}
+                        wrapperStyle={{ zIndex: 20 }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <span className="text-lg font-semibold">{formatUsd(overview.mtdTotal)}</span>
+                  <div className="pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-base font-semibold">
+                      {formatWholeUsd(overview.mtdTotal, locale)}
+                    </span>
                     <span className="text-muted-foreground text-xs">{t('dashboard.totalMtd')}</span>
                   </div>
                 </div>
                 <div className="grid content-center gap-2">
-                  {providerBreakdown.map((provider) => (
+                  {costBreakdownMtd.slice(0, COST_BREAKDOWN_LEGEND_LIMIT).map((item) => (
                     <div
-                      key={provider.key}
-                      className="flex items-center justify-between gap-3 text-sm"
+                      key={item.key}
+                      className="grid grid-cols-[0.625rem_16ch_2rem] items-center gap-2 text-sm"
                     >
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 rounded-sm"
-                          style={{ background: provider.color }}
-                        />
-                        {providerDisplayLabel(provider, t)}
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ background: item.color }} />
+                      <span className="block truncate whitespace-nowrap" title={item.value}>
+                        {item.value}
                       </span>
-                      <span className="font-medium">{provider.percent}%</span>
+                      <span className="text-right font-medium">{item.percent}%</span>
                     </div>
                   ))}
                 </div>
@@ -1154,6 +1161,27 @@ function buildTrendData(
   return [...data, forecastRecord];
 }
 
+function buildCostBreakdownMtd(
+  seriesItems: CostBreakdownSeriesMeta[],
+  rows: FocusOverviewDailyRow[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
+) {
+  const currentMonth = monthKey(new Date());
+  const totals = monthlyTotalsBy(rows, keyOf);
+  const breakdownRows = seriesItems
+    .map((series) => ({
+      ...series,
+      cost: totals.get(`${currentMonth}:${series.value}`) ?? 0,
+    }))
+    .filter((series) => series.cost > 0)
+    .sort((a, b) => b.cost - a.cost);
+  const total = breakdownRows.reduce((sum, row) => sum + row.cost, 0);
+  return breakdownRows.map((row) => ({
+    ...row,
+    percent: total > 0 ? Math.round((row.cost / total) * 100) : 0,
+  }));
+}
+
 function costBreakdownValue(row: FocusOverviewDailyRow, dimension: CostBreakdownDimension): string {
   const value = row[dimension]?.trim();
   return value || 'Unknown';
@@ -1169,22 +1197,6 @@ function monthlyTotalsBy(
     totals.set(key, (totals.get(key) ?? 0) + row.costUsd);
   }
   return totals;
-}
-
-function buildProviderBreakdown(providers: ProviderMeta[], dailyRows: FocusOverviewDailyRow[]) {
-  const currentMonth = monthKey(new Date());
-  const totals = monthlyTotalsBy(dailyRows, (row) => normalizeProvider(row.providerName));
-  const breakdownRows = providers
-    .map((provider) => ({
-      ...provider,
-      cost: totals.get(`${currentMonth}:${provider.key}`) ?? 0,
-    }))
-    .filter((provider) => provider.cost > 0);
-  const total = breakdownRows.reduce((sum, row) => sum + row.cost, 0);
-  return breakdownRows.map((row) => ({
-    ...row,
-    percent: total > 0 ? Math.round((row.cost / total) * 100) : 0,
-  }));
 }
 
 function sumRecentDays(rows: FocusOverviewDailyRow[], days: number): number {
@@ -1349,6 +1361,21 @@ function formatLastUpdated(historyUpdatedAt: number, currentUpdatedAt: number, l
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp));
+}
+
+const wholeUsdFormatters = new Map<string, Intl.NumberFormat>();
+function formatWholeUsd(value: number, locale: string): string {
+  let fmt = wholeUsdFormatters.get(locale);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    });
+    wholeUsdFormatters.set(locale, fmt);
+  }
+  return fmt.format(value);
 }
 
 function shortUsd(value: number): string {
