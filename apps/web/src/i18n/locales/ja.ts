@@ -19,6 +19,9 @@ export const ja: Dictionary = {
     explore: '探索',
     genie: 'Genie',
     query: 'クエリ',
+    optimize: '最適化',
+    optimizeDatabricks: 'Databricks',
+    optimizeAws: 'AWS',
     budgets: '予算',
     settings: '設定',
     databricks: 'Databricks',
@@ -57,6 +60,18 @@ export const ja: Dictionary = {
     query: {
       title: 'クエリ',
       desc: 'FinLake データセットに対する探索クエリを作成・実行するための画面です。',
+    },
+  },
+  optimize: {
+    underConstructionTitle: '工事中',
+    underConstructionDesc: 'この最適化画面は準備中です。',
+    databricks: {
+      title: 'Databricks 最適化',
+      desc: 'Databricks の利用量とコストを最適化するための画面です。',
+    },
+    aws: {
+      title: 'AWS 最適化',
+      desc: 'FinLake に連携された AWS コストシグナルを最適化するための画面です。',
     },
   },
   genie: {

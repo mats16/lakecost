@@ -17,6 +17,9 @@ export const en = {
     explore: 'Explore',
     genie: 'Genie',
     query: 'Query',
+    optimize: 'Optimize',
+    optimizeDatabricks: 'Databricks',
+    optimizeAws: 'AWS',
     budgets: 'Budgets',
     settings: 'Settings',
     databricks: 'Databricks',
@@ -55,6 +58,18 @@ export const en = {
     query: {
       title: 'Query',
       desc: 'Build and run exploratory queries against FinLake datasets.',
+    },
+  },
+  optimize: {
+    underConstructionTitle: 'Under construction',
+    underConstructionDesc: 'This Optimize surface is being prepared.',
+    databricks: {
+      title: 'Databricks Optimization',
+      desc: 'Identify opportunities to optimize Databricks usage and spend.',
+    },
+    aws: {
+      title: 'AWS Optimization',
+      desc: 'Identify opportunities to optimize AWS cost signals connected to FinLake.',
     },
   },
   genie: {

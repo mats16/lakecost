@@ -10,6 +10,7 @@ import { GovernedTags } from './pages/Configure/GovernedTags';
 import { Credentials } from './pages/ExternalData/Credentials';
 import { ExploreStub } from './pages/Explore/ExploreStub';
 import { Genie } from './pages/Explore/Genie';
+import { OptimizeStub } from './pages/Optimize/OptimizeStub';
 
 export function App() {
   return (
@@ -22,6 +23,17 @@ export function App() {
         <Route
           path="/query"
           element={<ExploreStub titleKey="explore.query.title" descKey="explore.query.desc" />}
+        />
+        <Route path="/optimize" element={<Navigate to="/optimize/databricks" replace />} />
+        <Route
+          path="/optimize/databricks"
+          element={
+            <OptimizeStub titleKey="optimize.databricks.title" descKey="optimize.databricks.desc" />
+          }
+        />
+        <Route
+          path="/optimize/aws"
+          element={<OptimizeStub titleKey="optimize.aws.title" descKey="optimize.aws.desc" />}
         />
 
         <Route element={<ConfigureLayout />}>

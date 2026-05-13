@@ -123,6 +123,20 @@ const FOCUS_12_BILLING_COLUMNS = [
   { name: 'SubAccountType', type: 'STRING' },
   { name: 'Tags', type: 'MAP<STRING, STRING>' },
 ] as const;
+const AWS_EXTENSION_COLUMNS = [
+  { name: 'x_Discounts', type: 'MAP<STRING, DOUBLE>' },
+  { name: 'x_Operation', type: 'STRING' },
+  { name: 'x_ServiceCode', type: 'STRING' },
+] as const;
+const DATABRICKS_EXTENSION_COLUMNS = [
+  { name: 'x_Serverless', type: 'BOOLEAN' },
+  { name: 'x_Photon', type: 'BOOLEAN' },
+] as const;
+const USAGE_DETAIL_COLUMNS = [
+  ...FOCUS_12_BILLING_COLUMNS,
+  ...AWS_EXTENSION_COLUMNS,
+  ...DATABRICKS_EXTENSION_COLUMNS,
+] as const;
 const USAGE_DIMENSION_COLUMNS = [
   'ChargePeriodStart',
   'BillingPeriodStart',
@@ -781,11 +795,11 @@ export function buildUsageGoldSql({
   goldSchema: string;
   sources: Array<{ tableName: string; providerName: string }>;
 }): string {
-  const focus12UnionSql = sources
+  const usageDetailUnionSql = sources
     .map(
       (source) =>
         `SELECT
-    ${FOCUS_12_BILLING_COLUMNS.map((col) => quoteIdent(col.name)).join(',\n    ')}
+    ${USAGE_DETAIL_COLUMNS.map((column) => usageDetailColumnExpression(source, column)).join(',\n    ')}
   FROM ${quoteIdent(catalog)}.${quoteIdent(silverSchema)}.${quoteIdent(source.tableName)}`,
     )
     .join('\n  UNION ALL\n  ');
@@ -793,10 +807,10 @@ export function buildUsageGoldSql({
 COMMENT 'FOCUS 1.2 compatible usage details managed by FinLake'
 AS
 WITH focus_rows AS (
-  ${focus12UnionSql}
+  ${usageDetailUnionSql}
 )
 SELECT
-  ${FOCUS_12_BILLING_COLUMNS.map((column) => quoteIdent(column.name)).join(',\n  ')}
+  ${USAGE_DETAIL_COLUMNS.map((column) => quoteIdent(column.name)).join(',\n  ')}
 FROM focus_rows;
 
 CREATE OR REFRESH MATERIALIZED VIEW ${quoteIdent(goldSchema)}.${quoteIdent(GOLD_USAGE_TABLES.daily)}
@@ -891,6 +905,27 @@ GROUP BY
   ResourceType,
   ResourceId,
   ResourceName;`;
+}
+
+function usageDetailColumnExpression(
+  source: { providerName: string },
+  column: (typeof USAGE_DETAIL_COLUMNS)[number],
+): string {
+  if (sourceHasUsageDetailColumn(source, column.name)) {
+    return quoteIdent(column.name);
+  }
+  return `CAST(NULL AS ${column.type}) AS ${quoteIdent(column.name)}`;
+}
+
+function sourceHasUsageDetailColumn(source: { providerName: string }, columnName: string): boolean {
+  if (FOCUS_12_BILLING_COLUMNS.some((column) => column.name === columnName)) return true;
+  if (isAwsProvider(source.providerName)) {
+    return AWS_EXTENSION_COLUMNS.some((column) => column.name === columnName);
+  }
+  if (source.providerName === 'Databricks') {
+    return DATABRICKS_EXTENSION_COLUMNS.some((column) => column.name === columnName);
+  }
+  return false;
 }
 
 function stringSetting(value: string | undefined): string | null {
