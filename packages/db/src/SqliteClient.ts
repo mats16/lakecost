@@ -23,7 +23,12 @@ import type {
 } from './repositories/index.js';
 import { ensureParentDir } from './paths.js';
 import { logger } from './logger.js';
-import type { Budget, CreateBudgetInput, SetupCheckResult } from '@finlake/shared';
+import type {
+  Budget,
+  CreateBudgetInput,
+  SetupCheckResult,
+  UpdateBudgetInput,
+} from '@finlake/shared';
 
 type Db = LibSQLDatabase<typeof s>;
 
@@ -213,6 +218,23 @@ class SqliteBudgetsRepo implements BudgetsRepo {
     };
     await this.db.insert(s.budgets).values(row);
     return toBudget(row);
+  }
+
+  async update(id: string, input: UpdateBudgetInput): Promise<Budget | null> {
+    const updated = await this.db
+      .update(s.budgets)
+      .set({
+        name: input.name,
+        scopeType: input.scopeType,
+        scopeValue: input.scopeValue,
+        amountUsd: input.amountUsd,
+        period: input.period,
+        thresholdsPctJson: JSON.stringify(input.thresholdsPct),
+        notifyEmailsJson: JSON.stringify(input.notifyEmails),
+      })
+      .where(eq(s.budgets.id, id))
+      .returning();
+    return updated[0] ? toBudget(updated[0]) : null;
   }
 
   async delete(id: string): Promise<void> {

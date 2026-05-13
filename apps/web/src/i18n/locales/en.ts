@@ -236,6 +236,10 @@ export const en = {
     title: 'Budgets',
     subtitle: 'Set spend limits and alert thresholds',
     newBudget: 'New budget',
+    editBudget: 'Edit budget',
+    editBudgetNamed: 'Edit budget {name}',
+    deleteBudgetNamed: 'Delete budget {name}',
+    confirmDelete: 'Delete budget {name}?',
     namePlaceholder: 'Name',
     amountPlaceholder: 'Amount (USD)',
     scope: {
@@ -258,6 +262,11 @@ export const en = {
       yearly: 'Yearly',
     },
     create: 'Create budget',
+    save: 'Save budget',
+    edit: 'Edit',
+    delete: 'Delete',
+    deleting: 'Deleting…',
+    deleteFailed: 'Budget delete failed',
     existing: 'Existing budgets',
     empty: 'No budgets configured yet.',
     columns: {
@@ -265,6 +274,7 @@ export const en = {
       scope: 'Scope',
       period: 'Period',
       amount: 'Amount',
+      actions: 'Actions',
     },
   },
   settings: {

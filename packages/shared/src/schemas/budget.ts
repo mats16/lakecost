@@ -35,3 +35,6 @@ export const CreateBudgetInputSchema = BudgetSchema.omit({
 });
 
 export type CreateBudgetInput = z.infer<typeof CreateBudgetInputSchema>;
+
+export const UpdateBudgetInputSchema = CreateBudgetInputSchema.omit({ workspaceId: true });
+export type UpdateBudgetInput = z.infer<typeof UpdateBudgetInputSchema>;
