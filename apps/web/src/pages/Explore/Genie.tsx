@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Skeleton,
   Spinner,
@@ -22,7 +23,7 @@ import { useAppSettings, useDeleteGenieSpace, useMe, useSetupGenieSpace } from '
 import { useI18n } from '../../i18n';
 
 export function Genie() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const settings = useAppSettings();
   const setup = useSetupGenieSpace();
   const deleteSpace = useDeleteGenieSpace();
@@ -34,7 +35,7 @@ export function Genie() {
   const workspaceId = me.data?.workspaceId ?? null;
   const genieSpaceUrl = genieSpaceId ? databricksGenieSpaceUrl(workspaceUrl, genieSpaceId) : null;
   const genieEmbedUrl = genieSpaceId
-    ? databricksGenieEmbedUrl(workspaceUrl, workspaceId, genieSpaceId)
+    ? databricksGenieEmbedUrl(workspaceUrl, workspaceId, genieSpaceId, locale)
     : null;
 
   return (
@@ -44,23 +45,14 @@ export function Genie() {
         subtitle={t('explore.genie.desc')}
         actions={
           genieSpaceId ? (
-            <div className="flex items-center gap-2">
-              {genieSpaceUrl ? (
-                <Button type="button" variant="secondary" size="sm" asChild>
-                  <a href={genieSpaceUrl} target="_blank" rel="noreferrer noopener">
-                    <ExternalLink className="size-4" aria-hidden="true" />
-                    {t('genie.openInDatabricks')}
-                  </a>
-                </Button>
-              ) : null}
-              <GenieActions
-                deletePending={deleteSpace.isPending}
-                onDelete={() => {
-                  if (!window.confirm(t('genie.confirmDelete'))) return;
-                  deleteSpace.mutate();
-                }}
-              />
-            </div>
+            <GenieActions
+              genieSpaceUrl={genieSpaceUrl}
+              deletePending={deleteSpace.isPending}
+              onDelete={() => {
+                if (!window.confirm(t('genie.confirmDelete'))) return;
+                deleteSpace.mutate();
+              }}
+            />
           ) : null
         }
       />
@@ -100,6 +92,7 @@ function databricksGenieEmbedUrl(
   workspaceUrl: string | null,
   workspaceId: string | null,
   spaceId: string,
+  locale: string,
 ): string | null {
   if (!workspaceUrl || !workspaceId) return null;
   const url = new URL(
@@ -107,13 +100,20 @@ function databricksGenieEmbedUrl(
     workspaceUrl.replace(/\/$/, ''),
   );
   url.searchParams.set('o', workspaceId);
+  url.searchParams.set('l', databricksEmbedLocale(locale));
   return url.toString();
 }
 
+function databricksEmbedLocale(locale: string): 'en' | 'ja-JP' {
+  return locale === 'ja' ? 'ja-JP' : 'en';
+}
+
 function GenieActions({
+  genieSpaceUrl,
   deletePending,
   onDelete,
 }: {
+  genieSpaceUrl: string | null;
   deletePending: boolean;
   onDelete: () => void;
 }) {
@@ -127,6 +127,15 @@ function GenieActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {genieSpaceUrl ? (
+          <DropdownMenuItem asChild>
+            <a href={genieSpaceUrl} target="_blank" rel="noreferrer noopener">
+              <ExternalLink className="size-4" aria-hidden="true" />
+              <span>{t('genie.openInDatabricks')}</span>
+            </a>
+          </DropdownMenuItem>
+        ) : null}
+        {genieSpaceUrl ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem
           className="text-(--warning) focus:text-(--warning)"
           onClick={onDelete}
