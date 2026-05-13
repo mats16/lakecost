@@ -142,7 +142,9 @@ CREATE OR REFRESH MATERIALIZED VIEW `${table_name}` (
   `SubAccountId` STRING COMMENT 'Provider-assigned identifier of the sub account, project, workspace, or equivalent grouping.',
   `SubAccountName` STRING COMMENT 'Display name of the sub account, project, workspace, or equivalent grouping.',
   `SubAccountType` STRING COMMENT 'Provider-assigned type of the sub account grouping.',
-  `Tags` MAP<STRING, STRING> COMMENT 'Provider-defined and user-defined key-value tags evaluated for the charge.'
+  `Tags` MAP<STRING, STRING> COMMENT 'Provider-defined and user-defined key-value tags evaluated for the charge.',
+  `x_Serverless` BOOLEAN COMMENT 'Databricks extension indicating whether the usage was serverless.',
+  `x_Photon` BOOLEAN COMMENT 'Databricks extension indicating whether the usage used Photon.'
 ) AS
 SELECT
   CAST(NULL AS STRING) AS AvailabilityZone,
@@ -399,20 +401,44 @@ SELECT
   END AS ServiceSubcategory,
   u.sku_name AS SkuId,
   u.usage_type AS SkuMeter,
-  map_from_entries(
-    filter(
-      transform(
-        map_entries(from_json(to_json(u.product_features), 'map<string, string>')),
-        e -> named_struct('key', concat('x_', e.key), 'value', e.value)
-      ),
-      kv -> kv.value IS NOT NULL
+  map_concat(
+    map_from_entries(
+      filter(
+        transform(
+          map_entries(from_json(to_json(u.product_features), 'map<string, string>')),
+          e -> named_struct('key', concat('x_', e.key), 'value', e.value)
+        ),
+        kv -> kv.value IS NOT NULL
+      )
+    ),
+    map_from_entries(
+      filter(
+        array(
+          named_struct('key', 'InstanceType', 'value', CAST(u.usage_metadata.node_type AS STRING)),
+          named_struct(
+            'key',
+            'InstanceSeries',
+            'value',
+            CASE
+              WHEN u.usage_metadata.node_type IS NULL THEN CAST(NULL AS STRING)
+              WHEN instr(CAST(u.usage_metadata.node_type AS STRING), '.') > 0
+                THEN split(CAST(u.usage_metadata.node_type AS STRING), '\\.')[0]
+              -- TODO: Add Azure node type normalization once the desired series format is defined.
+              ELSE CAST(u.usage_metadata.node_type AS STRING)
+            END
+          )
+        ),
+        kv -> kv.value IS NOT NULL
+      )
     )
   ) AS SkuPriceDetails,
   u.sku_name AS SkuPriceId,
   u.workspace_id AS SubAccountId,
   u.workspace_name AS SubAccountName,
   'Workspace' AS SubAccountType,
-  u.custom_tags AS Tags
+  u.custom_tags AS Tags,
+  CAST(u.product_features.is_serverless AS BOOLEAN) AS x_Serverless,
+  CAST(u.product_features.is_photon AS BOOLEAN) AS x_Photon
 FROM usage_with_pricing u;
 
 CREATE OR REFRESH MATERIALIZED VIEW `${gold_schema_name}`.`${table_name}_daily`

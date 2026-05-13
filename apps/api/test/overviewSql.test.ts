@@ -6,7 +6,7 @@ import {
   buildCoverageSql,
   buildDailySql,
   joinedBillingRowsSql,
-} from '../src/routes/overview.js';
+} from '@finlake/shared';
 import type { DataSource } from '@finlake/shared';
 
 function fakeSource(overrides: Partial<DataSource> & { id: number }): DataSource {

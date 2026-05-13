@@ -19,6 +19,9 @@ export const ja: Dictionary = {
     explore: '探索',
     genie: 'Genie',
     query: 'クエリ',
+    optimize: '最適化',
+    optimizeDatabricks: 'Databricks',
+    optimizeAws: 'AWS',
     budgets: '予算',
     settings: '設定',
     databricks: 'Databricks',
@@ -57,6 +60,78 @@ export const ja: Dictionary = {
     query: {
       title: 'クエリ',
       desc: 'FinLake データセットに対する探索クエリを作成・実行するための画面です。',
+    },
+  },
+  optimize: {
+    underConstructionTitle: '工事中',
+    underConstructionDesc: 'この最適化画面は準備中です。',
+    databricks: {
+      title: 'Databricks 最適化',
+      desc: 'サーバレス化の進捗を追跡し、優先的に見直す Databricks ワークロードを特定します。',
+      failedToLoad: 'Databricks 最適化シグナルの読み込みに失敗しました。',
+      workspaces: {
+        all: 'すべてのワークスペース',
+      },
+      period: {
+        last30: '直近30日',
+        last90: '直近90日',
+        last180: '直近180日',
+        last12m: '直近12か月',
+      },
+      kpi: {
+        totalCost: 'Databricks コスト',
+        effectiveCost: '選択期間の EffectiveCost',
+        serverlessRatio: 'サーバレス比率',
+        knownSpendOnly: '分類済みのサーバレス/非サーバレス支出のみ',
+        nonServerlessSpend: '非サーバレス支出',
+        spendToReview: '削減保証ではなく、見直し対象の支出',
+        candidates: '候補リソース',
+        resourceLevel: '非サーバレス支出があるリソース',
+      },
+      monthly: {
+        title: 'サーバレス化推移',
+      },
+      services: {
+        title: 'サービス別サーバレス比率',
+      },
+      recommendations: {
+        title: '優先的に見直すリソース',
+        desc: '非サーバレス支出とサービス適性で重み付けして並べています。',
+      },
+      legend: {
+        serverless: 'サーバレス',
+        nonServerless: '非サーバレス',
+        other: 'その他',
+        ratio: 'サーバレス比率',
+      },
+      priority: {
+        high: '高',
+        medium: '中',
+        low: '低',
+      },
+      table: {
+        priority: '優先度',
+        resource: 'リソース',
+        workspace: 'ワークスペース',
+        service: 'サービス',
+        instanceType: 'インスタンスタイプ',
+        nonServerlessSpend: '非サーバレス支出',
+        serverlessRatio: 'サーバレス比率',
+      },
+      empty: {
+        noData: 'Databricks 最適化データがありません',
+        enableFocus:
+          'Databricks FOCUS データソースを有効化し、共有変換パイプラインを実行してください。',
+        noMonthly: '月次推移データがありません',
+        adjustFilters: '期間またはワークスペース条件を変更してください。',
+        noServices: 'サービス別内訳がありません',
+        noRecommendations: '優先リソースはありません',
+        noNonServerless: 'この期間では、リソース単位の非サーバレス支出は見つかりませんでした。',
+      },
+    },
+    aws: {
+      title: 'AWS 最適化',
+      desc: 'FinLake に連携された AWS コストシグナルを最適化するための画面です。',
     },
   },
   genie: {

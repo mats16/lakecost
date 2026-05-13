@@ -21,6 +21,7 @@ import {
   Globe,
   LayoutDashboard,
   Layers,
+  Gauge,
   Moon,
   Notebook,
   Binoculars,
@@ -79,6 +80,16 @@ const EXPLORE: NavGroup = {
   ],
 };
 
+const OPTIMIZE: NavGroup = {
+  labelKey: 'nav.optimize',
+  icon: Gauge,
+  matchPrefix: '/optimize',
+  items: [
+    { to: '/optimize/databricks', labelKey: 'nav.optimizeDatabricks' },
+    { to: '/optimize/aws', labelKey: 'nav.optimizeAws' },
+  ],
+};
+
 interface ExternalNavItem {
   path: string;
   labelKey: string;
@@ -134,9 +145,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const onExploreRoute = EXPLORE.items.some((item) =>
     item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
   );
+  const onOptimizeRoute = OPTIMIZE.items.some((item) => location.pathname.startsWith(item.to));
   const [informOpen, setInformOpen] = useState(onInformRoute);
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
   const [exploreOpen, setExploreOpen] = useState(onExploreRoute);
+  const [optimizeOpen, setOptimizeOpen] = useState(onOptimizeRoute);
   const [theme, setTheme] = useState<ThemeMode>(detectInitialTheme);
 
   useEffect(() => {
@@ -149,7 +162,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (onExploreRoute) {
       setExploreOpen(true);
     }
-  }, [onConfigureRoute, onExploreRoute, onInformRoute]);
+    if (onOptimizeRoute) {
+      setOptimizeOpen(true);
+    }
+  }, [onConfigureRoute, onExploreRoute, onInformRoute, onOptimizeRoute]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -191,6 +207,43 @@ export function AppShell({ children }: { children: ReactNode }) {
             {informOpen ? (
               <div className="nav-children">
                 {INFORM.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) => (isActive ? 'active' : '')}
+                  >
+                    <span>{t(item.labelKey)}</span>
+                  </NavLink>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div
+            className={`nav-group ${optimizeOpen ? 'open' : ''} ${onOptimizeRoute ? 'active' : ''}`}
+          >
+            <div className="nav-group-row">
+              <NavLink
+                to={OPTIMIZE.items[0]?.to ?? '/optimize/databricks'}
+                className={() => (onOptimizeRoute ? 'group-head active' : 'group-head')}
+              >
+                <OPTIMIZE.icon className="nav-icon" aria-hidden="true" />
+                <span>{t(OPTIMIZE.labelKey)}</span>
+              </NavLink>
+              <button
+                type="button"
+                className="nav-chevron"
+                aria-expanded={optimizeOpen}
+                aria-label={t(OPTIMIZE.labelKey)}
+                onClick={() => setOptimizeOpen((v) => !v)}
+              >
+                <ChevronDown className="nav-icon" aria-hidden="true" />
+              </button>
+            </div>
+            {optimizeOpen ? (
+              <div className="nav-children">
+                {OPTIMIZE.items.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

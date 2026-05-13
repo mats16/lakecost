@@ -56,16 +56,22 @@ import {
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react';
-import { PageHeader } from '../components/PageHeader';
 import {
+  buildOverviewCoverageStatement,
+  buildOverviewDailyStatement,
+  buildOverviewServicesStatement,
+  buildOverviewSkusStatement,
+  enabledFocusSources,
+  type DataSource,
+  type FocusOverviewCoverageRow,
   type FocusOverviewDailyRow,
-  type FocusOverviewResponse,
   type FocusOverviewServiceRow,
   type FocusOverviewSkuRow,
-  useBudgets,
-  useFocusOverview,
-} from '../api/hooks';
+} from '@finlake/shared';
+import { PageHeader } from '../components/PageHeader';
+import { useAppSettings, useBudgets, useDataSources, useSqlStatement } from '../api/hooks';
 import { useCurrencyUsd, useI18n, type TFunction } from '../i18n';
+import { stableTomorrow } from '../lib/dateRanges';
 
 type ProviderKey = 'databricks' | 'aws' | 'azure' | 'gcp' | 'snowflake' | 'other';
 
@@ -168,21 +174,27 @@ const COST_BREAKDOWN_SERIES_LIMIT = 12;
 const COST_BREAKDOWN_OTHER_COLOR = '#718096';
 
 function overviewRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
-  return { start: start.toISOString(), end: now.toISOString() };
+  const end = stableTomorrow();
+  const start = new Date(end.getFullYear() - 1, end.getMonth(), 1);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function monthToDateRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { start: start.toISOString(), end: now.toISOString() };
+  const end = stableTomorrow();
+  const start = new Date(end.getFullYear(), end.getMonth(), 1);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function last30Range() {
-  const end = new Date();
-  const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const end = stableTomorrow();
+  const start = new Date(end);
+  start.setDate(end.getDate() - 30);
   return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function sqlError(name: string, tableName: string, error: unknown) {
+  if (!error) return null;
+  return { name, tableName, message: error instanceof Error ? error.message : String(error) };
 }
 
 export function Dashboard() {
@@ -197,16 +209,53 @@ export function Dashboard() {
   const rollingRange = useMemo(last30Range, []);
   const activeRange = period === 'mtd' ? mtdRange : rollingRange;
 
-  const history = useFocusOverview(wideRange);
-  const current = useFocusOverview(activeRange);
+  const dataSources = useDataSources();
+  const appSettings = useAppSettings();
   const budgets = useBudgets();
 
-  const sources = history.data?.sources ?? current.data?.sources ?? [];
+  const sources = useMemo(
+    () => enabledFocusSources(dataSources.data?.items ?? []),
+    [dataSources.data?.items],
+  );
+  const settings = appSettings.data?.settings ?? {};
+  const historyDailyStatement = useMemo(
+    () => buildOverviewDailyStatement(sources, settings, wideRange),
+    [settings, sources, wideRange],
+  );
+  const currentServicesStatement = useMemo(
+    () => buildOverviewServicesStatement(sources, settings, activeRange),
+    [activeRange, settings, sources],
+  );
+  const currentSkusStatement = useMemo(
+    () => buildOverviewSkusStatement(sources, settings, activeRange),
+    [activeRange, settings, sources],
+  );
+  const coverageStatement = useMemo(
+    () => buildOverviewCoverageStatement(sources, settings),
+    [settings, sources],
+  );
+  const sqlEnabled = dataSources.isSuccess && appSettings.isSuccess;
+  const historyDaily = useSqlStatement<FocusOverviewDailyRow>(historyDailyStatement, {
+    enabled: sqlEnabled && historyDailyStatement !== null,
+    requestKey: ['overview', 'historyDaily', wideRange, sources, settings],
+  });
+  const currentServices = useSqlStatement<FocusOverviewServiceRow>(currentServicesStatement, {
+    enabled: sqlEnabled && currentServicesStatement !== null,
+    requestKey: ['overview', 'currentServices', activeRange, sources, settings],
+  });
+  const currentSkus = useSqlStatement<FocusOverviewSkuRow>(currentSkusStatement, {
+    enabled: sqlEnabled && currentSkusStatement !== null,
+    requestKey: ['overview', 'currentSkus', activeRange, sources, settings],
+  });
+  const coverage = useSqlStatement<FocusOverviewCoverageRow>(coverageStatement, {
+    enabled: sqlEnabled && coverageStatement !== null,
+    requestKey: ['overview', 'coverage', sources, settings],
+  });
   const activeProviders = useMemo(() => uniqueProviders(sources), [sources]);
-  const dailyRows = history.data?.daily ?? [];
-  const skuRows = current.data?.skus ?? [];
-  const serviceRows = current.data?.services ?? [];
-  const coverageRows = current.data?.coverage ?? [];
+  const dailyRows = historyDaily.rows;
+  const skuRows = currentSkus.rows;
+  const serviceRows = currentServices.rows;
+  const coverageRows = coverage.rows;
 
   const overview = useMemo(() => {
     const now = new Date();
@@ -271,14 +320,39 @@ export function Dashboard() {
     [activeProviders, serviceRows, skuRows],
   );
   const lastUpdated = useMemo(
-    () => formatLastUpdated(history.dataUpdatedAt, current.dataUpdatedAt, locale),
-    [current.dataUpdatedAt, history.dataUpdatedAt, locale],
+    () =>
+      formatLastUpdated(
+        historyDaily.dataUpdatedAt,
+        Math.max(currentServices.dataUpdatedAt, currentSkus.dataUpdatedAt, coverage.dataUpdatedAt),
+        locale,
+      ),
+    [
+      coverage.dataUpdatedAt,
+      currentServices.dataUpdatedAt,
+      currentSkus.dataUpdatedAt,
+      historyDaily.dataUpdatedAt,
+      locale,
+    ],
   );
   const hasAnyCostData = dailyRows.length > 0 || skuRows.length > 0;
 
-  const loading = history.isLoading || current.isLoading;
-  const costError = history.isError || current.isError;
-  const sourceErrors = [...(history.data?.errors ?? []), ...(current.data?.errors ?? [])];
+  const loading =
+    dataSources.isLoading ||
+    appSettings.isLoading ||
+    historyDaily.isLoading ||
+    currentServices.isLoading ||
+    currentSkus.isLoading ||
+    coverage.isLoading;
+  const costError =
+    historyDaily.isError || currentServices.isError || currentSkus.isError || coverage.isError;
+  const sourceErrors = [
+    sqlError('historyDaily', 'usage_daily', historyDaily.error),
+    sqlError('currentServices', 'usage_daily', currentServices.error),
+    sqlError('currentSkus', 'usage_daily', currentSkus.error),
+    sqlError('coverage', 'usage_monthly', coverage.error),
+  ].filter((error): error is { name: string; tableName: string; message: string } =>
+    Boolean(error),
+  );
   const tagCoverage = useMemo(() => {
     const totalResources = coverageRows.reduce((sum, row) => sum + row.rowCount, 0);
     if (totalResources <= 0) return null;
@@ -301,6 +375,12 @@ export function Dashboard() {
     coveragePage * coveragePageSize,
     coveragePage * coveragePageSize + coveragePageSize,
   );
+  const refresh = () => {
+    historyDaily.refetch();
+    currentServices.refetch();
+    currentSkus.refetch();
+    coverage.refetch();
+  };
 
   return (
     <>
@@ -319,13 +399,13 @@ export function Dashboard() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => window.location.reload()}>
+          <Button variant="outline" onClick={refresh}>
             <RefreshCcw /> {t('dashboard.refresh')}
           </Button>
         </div>
       </div>
 
-      {history.isSuccess && sources.length === 0 ? (
+      {dataSources.isSuccess && sources.length === 0 ? (
         <Alert className="mb-4">
           <Database />
           <AlertDescription>{t('dashboard.noEnabledSources')}</AlertDescription>
@@ -346,7 +426,7 @@ export function Dashboard() {
             {t('dashboard.someSourcesFailed')}{' '}
             {sourceErrors
               .slice(0, 3)
-              .map((error) => `${error.name} (${error.tableName})`)
+              .map((error) => `${error.name} (${error.tableName}): ${error.message}`)
               .join(', ')}
           </AlertDescription>
         </Alert>
@@ -405,7 +485,7 @@ export function Dashboard() {
           value={formatUsd(0)}
           delta={t('dashboard.commitmentFeedNotConnected')}
           tone="good"
-          loading={history.isLoading}
+          loading={historyDaily.isLoading}
         />
         <KpiCard
           icon={AlertCircle}
@@ -430,7 +510,7 @@ export function Dashboard() {
             amount: formatUsd(overview.recommendationPotential),
           })}
           tone="good"
-          loading={current.isLoading}
+          loading={currentSkus.isLoading}
         />
       </div>
 
@@ -576,7 +656,7 @@ export function Dashboard() {
             <CardDescription>{t('dashboard.topServicesDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
-            {current.isLoading ? (
+            {currentServices.isLoading || currentSkus.isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : topServices.length === 0 ? (
               <EmptyState
@@ -633,7 +713,7 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {current.isLoading ? (
+            {currentSkus.isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : overview.recommendations.length === 0 ? (
               <EmptyState
@@ -674,7 +754,7 @@ export function Dashboard() {
             <CardTitle className="text-sm">{t('dashboard.anomalyAlertsLast7Days')}</CardTitle>
           </CardHeader>
           <CardContent>
-            {history.isLoading ? (
+            {historyDaily.isLoading ? (
               <Skeleton className="h-56 w-full" />
             ) : overview.anomalies.length === 0 ? (
               <EmptyState
@@ -1049,11 +1129,11 @@ function normalizeProvider(value: string): ProviderKey {
   return 'other';
 }
 
-function providerForSource(source: FocusOverviewResponse['sources'][number]): ProviderMeta {
+function providerForSource(source: DataSource): ProviderMeta {
   return PROVIDERS[normalizeProvider(`${source.templateId} ${source.providerName}`)];
 }
 
-function uniqueProviders(sources: FocusOverviewResponse['sources']): ProviderMeta[] {
+function uniqueProviders(sources: DataSource[]): ProviderMeta[] {
   const seen = new Set<ProviderKey>();
   const providers: ProviderMeta[] = [];
   for (const source of sources) {

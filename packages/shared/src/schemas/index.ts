@@ -12,3 +12,5 @@ export * from './serviceCredential.js';
 export * from './governedTags.js';
 export * from './genie.js';
 export * from './admin.js';
+export * from './optimization.js';
+export * from './sql.js';
