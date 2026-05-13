@@ -8,7 +8,6 @@ import { logger } from './config/logger.js';
 import { errorHandler } from './middlewares/error.js';
 import { oboMiddleware } from './middlewares/obo.js';
 import { healthRouter } from './routes/health.js';
-import { overviewRouter } from './routes/overview.js';
 import { usageRouter } from './routes/usage.js';
 import { budgetsRouter } from './routes/budgets.js';
 import { setupRouter } from './routes/setup.js';
@@ -23,6 +22,7 @@ import { transformationsRouter } from './routes/transformations.js';
 import { governedTagsRouter } from './routes/governedTags.js';
 import { genieRouter } from './routes/genie.js';
 import { adminRouter } from './routes/admin.js';
+import { sqlRouter } from './routes/sql.js';
 
 export interface AppDeps {
   env: Env;
@@ -40,7 +40,6 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use(oboMiddleware);
 
   app.use('/api/health', healthRouter(db, env));
-  app.use('/api/overview', overviewRouter(db, env));
   app.use('/api/usage', usageRouter(db, env));
   app.use('/api/budgets', budgetsRouter(db));
   app.use('/api/setup', setupRouter(db, env));
@@ -56,6 +55,7 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/unity-catalog/credentials', serviceCredentialsRouter(env));
   app.use('/api/genie', genieRouter(db, env));
   app.use('/api/admin', adminRouter(db, env));
+  app.use('/api/sql', sqlRouter(env));
 
   if (env.NODE_ENV === 'production') {
     const distDir = resolveWebDistDir(env);

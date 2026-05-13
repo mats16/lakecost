@@ -1,17 +1,30 @@
 import { WorkspaceClient as SdkWorkspaceClient } from '@databricks/sdk-experimental';
 import { createHash } from 'node:crypto';
 import type { ZodType } from 'zod';
-import type { Env } from '@finlake/shared';
+import type { Env, SqlParam } from '@finlake/shared';
 import { logger } from '../config/logger.js';
 import { sleep } from '../utils/sleep.js';
 
 export type WorkspaceClient = SdkWorkspaceClient;
+export type { SqlParam } from '@finlake/shared';
 
-export type SqlParam = {
+export interface RawStatementColumn {
   name: string;
-  value: string | number | null;
-  type?: 'STRING' | 'INT' | 'BIGINT' | 'TIMESTAMP' | 'DATE';
-};
+  typeName: string | null;
+}
+
+export interface RawStatementSubmit {
+  statement_id: string;
+  status: string;
+}
+
+export interface RawStatementResult {
+  statement_id: string;
+  status: string;
+  columns?: RawStatementColumn[];
+  rows?: Record<string, unknown>[];
+  error?: string;
+}
 
 export interface StatementExecutorOpts {
   workspaceClient: WorkspaceClient;
@@ -34,6 +47,63 @@ type StatementResponse = Awaited<
 export class StatementExecutor {
   constructor(private opts: StatementExecutorOpts) {}
 
+  async submitRaw(
+    sqlText: string,
+    params: SqlParam[],
+    warehouseId?: string,
+  ): Promise<RawStatementSubmit> {
+    const wc = this.opts.workspaceClient;
+    const targetWarehouseId = warehouseId ?? this.opts.warehouseId;
+    let response: StatementResponse;
+    try {
+      response = await wc.statementExecution.executeStatement({
+        warehouse_id: targetWarehouseId,
+        statement: sqlText,
+        wait_timeout: '0s',
+        on_wait_timeout: 'CONTINUE',
+        disposition: 'INLINE',
+        format: 'JSON_ARRAY',
+        parameters: statementParameters(params),
+      });
+    } catch (err) {
+      logger.error({ err }, 'executeStatement threw');
+      throw new Error(`Statement Execution failed: ${(err as Error).message}`);
+    }
+    if (!response.statement_id) {
+      throw new Error('Statement Execution returned no statement_id');
+    }
+    return {
+      statement_id: response.statement_id,
+      status: response.status?.state ?? 'UNKNOWN',
+    };
+  }
+
+  async getRaw(statementId: string): Promise<RawStatementResult> {
+    const wc = this.opts.workspaceClient;
+    let response: StatementResponse;
+    try {
+      response = await wc.statementExecution.getStatement({ statement_id: statementId });
+    } catch (err) {
+      logger.error({ err, statementId }, 'getStatement threw');
+      throw new Error(`Statement Execution failed: ${(err as Error).message}`);
+    }
+
+    const status = response.status?.state ?? 'UNKNOWN';
+    const error =
+      response.status?.error?.message ??
+      response.status?.error?.error_code ??
+      (status === 'FAILED' || status === 'CANCELED' ? status : undefined);
+    if (status !== 'SUCCEEDED') {
+      return { statement_id: statementId, status, ...(error ? { error } : {}) };
+    }
+    return {
+      statement_id: statementId,
+      status,
+      columns: statementColumns(response),
+      rows: statementRows(response),
+    };
+  }
+
   async run<T>(sqlText: string, params: SqlParam[], rowSchema: ZodType<T>): Promise<T[]> {
     const wc = this.opts.workspaceClient;
     const waitSec = this.opts.waitTimeoutSec ?? DEFAULT_WAIT_TIMEOUT_SEC;
@@ -48,12 +118,7 @@ export class StatementExecutor {
         on_wait_timeout: 'CONTINUE',
         disposition: 'INLINE',
         format: 'JSON_ARRAY',
-        parameters: params.map((p) => ({
-          name: p.name,
-          // null -> omitted (interpreted as NULL by the API).
-          value: p.value === null ? undefined : String(p.value),
-          type: p.type,
-        })),
+        parameters: statementParameters(params),
       });
     } catch (err) {
       logger.error({ err }, 'executeStatement threw');
@@ -89,16 +154,7 @@ export class StatementExecutor {
       throw new Error(`Statement Execution failed: ${detail}`);
     }
 
-    const columns = response.manifest?.schema?.columns ?? [];
-    const rows = response.result?.data_array ?? [];
-    return rows.map((rawRow) => {
-      const obj: Record<string, unknown> = {};
-      columns.forEach((col, i) => {
-        const name = col.name ?? `column_${i}`;
-        obj[snakeToCamel(name)] = coerce(rawRow[i] ?? null, col.type_name);
-      });
-      return rowSchema.parse(obj);
-    });
+    return statementRows(response).map((row) => rowSchema.parse(row));
   }
 }
 
@@ -154,11 +210,13 @@ export function buildUserWorkspaceClient(env: Env, token: string): WorkspaceClie
 export function buildUserExecutor(
   env: Env,
   token: string | undefined,
+  warehouseId?: string,
 ): StatementExecutor | undefined {
-  if (!token || !env.SQL_WAREHOUSE_ID) return undefined;
+  const resolvedWarehouseId = warehouseId ?? env.SQL_WAREHOUSE_ID;
+  if (!token || !resolvedWarehouseId) return undefined;
   const wc = buildUserWorkspaceClient(env, token);
   if (!wc) return undefined;
-  return new StatementExecutor({ workspaceClient: wc, warehouseId: env.SQL_WAREHOUSE_ID });
+  return new StatementExecutor({ workspaceClient: wc, warehouseId: resolvedWarehouseId });
 }
 
 export function buildAppWorkspaceClient(env: Env): WorkspaceClient | undefined {
@@ -183,14 +241,46 @@ function snakeToCamel(s: string): string {
   return s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
+function statementParameters(params: SqlParam[]) {
+  return params.map((p) => ({
+    name: p.name,
+    // null -> omitted (interpreted as NULL by the API).
+    value: p.value === null ? undefined : String(p.value),
+    type: p.type,
+  }));
+}
+
+function statementColumns(response: StatementResponse): RawStatementColumn[] {
+  return (response.manifest?.schema?.columns ?? []).map((col, i) => ({
+    name: col.name ?? `column_${i}`,
+    typeName: col.type_name ?? null,
+  }));
+}
+
+function statementRows(response: StatementResponse): Record<string, unknown>[] {
+  const columns = response.manifest?.schema?.columns ?? [];
+  const rows = response.result?.data_array ?? [];
+  return rows.map((rawRow) => {
+    const obj: Record<string, unknown> = {};
+    columns.forEach((col, i) => {
+      const name = col.name ?? `column_${i}`;
+      obj[snakeToCamel(name)] = coerce(rawRow[i] ?? null, col.type_name);
+    });
+    return obj;
+  });
+}
+
 function coerce(v: string | number | null | undefined, typeName: string | undefined): unknown {
   if (v === null || v === undefined) return null;
   if (
     typeName === 'INT' ||
     typeName === 'BIGINT' ||
     typeName === 'LONG' ||
+    typeName === 'SHORT' ||
+    typeName === 'BYTE' ||
     typeName === 'DOUBLE' ||
-    typeName === 'FLOAT'
+    typeName === 'FLOAT' ||
+    typeName === 'DECIMAL'
   ) {
     return typeof v === 'number' ? v : Number(v);
   }

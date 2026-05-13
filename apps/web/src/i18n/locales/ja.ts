@@ -67,7 +67,69 @@ export const ja: Dictionary = {
     underConstructionDesc: 'この最適化画面は準備中です。',
     databricks: {
       title: 'Databricks 最適化',
-      desc: 'Databricks の利用量とコストを最適化するための画面です。',
+      desc: 'サーバレス化の進捗を追跡し、優先的に見直す Databricks ワークロードを特定します。',
+      failedToLoad: 'Databricks 最適化シグナルの読み込みに失敗しました。',
+      workspaces: {
+        all: 'すべてのワークスペース',
+      },
+      period: {
+        last30: '直近30日',
+        last90: '直近90日',
+        last180: '直近180日',
+        last12m: '直近12か月',
+      },
+      kpi: {
+        totalCost: 'Databricks コスト',
+        effectiveCost: '選択期間の EffectiveCost',
+        serverlessRatio: 'サーバレス比率',
+        knownSpendOnly: '分類済みのサーバレス/非サーバレス支出のみ',
+        nonServerlessSpend: '非サーバレス支出',
+        spendToReview: '削減保証ではなく、見直し対象の支出',
+        candidates: '候補リソース',
+        resourceLevel: '非サーバレス支出があるリソース',
+      },
+      monthly: {
+        title: 'サーバレス化推移',
+        desc: 'サーバレス、非サーバレス、不明に分けたコスト推移です。',
+      },
+      services: {
+        title: 'サービス別サーバレス比率',
+        desc: 'サーバレス化の検討対象サービスを Databricks EffectiveCost で表示します。',
+      },
+      recommendations: {
+        title: '優先的に見直すリソース',
+        desc: '非サーバレス支出とサービス適性で重み付けして並べています。',
+      },
+      legend: {
+        serverless: 'サーバレス',
+        nonServerless: '非サーバレス',
+        unknown: '不明',
+        ratio: 'サーバレス比率',
+      },
+      priority: {
+        high: '高',
+        medium: '中',
+        low: '低',
+      },
+      table: {
+        priority: '優先度',
+        resource: 'リソース',
+        workspace: 'ワークスペース',
+        service: 'サービス',
+        nonServerlessSpend: '非サーバレス支出',
+        serverlessRatio: 'サーバレス比率',
+        action: '推奨アクション',
+      },
+      empty: {
+        noData: 'Databricks 最適化データがありません',
+        enableFocus:
+          'Databricks FOCUS データソースを有効化し、共有変換パイプラインを実行してください。',
+        noMonthly: '月次推移データがありません',
+        adjustFilters: '期間またはワークスペース条件を変更してください。',
+        noServices: 'サービス別内訳がありません',
+        noRecommendations: '優先リソースはありません',
+        noNonServerless: 'この期間では、リソース単位の非サーバレス支出は見つかりませんでした。',
+      },
     },
     aws: {
       title: 'AWS 最適化',

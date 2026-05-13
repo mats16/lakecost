@@ -65,7 +65,69 @@ export const en = {
     underConstructionDesc: 'This Optimize surface is being prepared.',
     databricks: {
       title: 'Databricks Optimization',
-      desc: 'Identify opportunities to optimize Databricks usage and spend.',
+      desc: 'Track serverless adoption and prioritize Databricks workloads to review.',
+      failedToLoad: 'Failed to load Databricks optimization signals.',
+      workspaces: {
+        all: 'All workspaces',
+      },
+      period: {
+        last30: 'Last 30 days',
+        last90: 'Last 90 days',
+        last180: 'Last 180 days',
+        last12m: 'Last 12 months',
+      },
+      kpi: {
+        totalCost: 'Databricks Cost',
+        effectiveCost: 'EffectiveCost in selected period',
+        serverlessRatio: 'Serverless Ratio',
+        knownSpendOnly: 'Known serverless/non-serverless spend only',
+        nonServerlessSpend: 'Non-Serverless Spend',
+        spendToReview: 'Spend to review, not guaranteed savings',
+        candidates: 'Candidate Resources',
+        resourceLevel: 'Resources with non-serverless spend',
+      },
+      monthly: {
+        title: 'Serverless adoption trend',
+        desc: 'Cost trend split by serverless, non-serverless, and unknown classification.',
+      },
+      services: {
+        title: 'Serverless ratio by service',
+        desc: 'Serverless migration target services using Databricks EffectiveCost.',
+      },
+      recommendations: {
+        title: 'Priority resources to review',
+        desc: 'Ranked by non-serverless spend with service eligibility weighting.',
+      },
+      legend: {
+        serverless: 'Serverless',
+        nonServerless: 'Non-serverless',
+        unknown: 'Unknown',
+        ratio: 'Serverless ratio',
+      },
+      priority: {
+        high: 'High',
+        medium: 'Medium',
+        low: 'Low',
+      },
+      table: {
+        priority: 'Priority',
+        resource: 'Resource',
+        workspace: 'Workspace',
+        service: 'Service',
+        nonServerlessSpend: 'Non-serverless spend',
+        serverlessRatio: 'Serverless ratio',
+        action: 'Recommended action',
+      },
+      empty: {
+        noData: 'No Databricks optimization data',
+        enableFocus:
+          'Enable the Databricks FOCUS data source and run the shared transformation pipeline.',
+        noMonthly: 'No monthly trend data',
+        adjustFilters: 'Adjust the period or workspace filter.',
+        noServices: 'No service breakdown',
+        noRecommendations: 'No priority resources',
+        noNonServerless: 'No resource-level non-serverless spend was found in this period.',
+      },
     },
     aws: {
       title: 'AWS Optimization',

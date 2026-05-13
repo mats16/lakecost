@@ -1,4 +1,6 @@
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isTerminalSqlStatus } from '@finlake/shared';
 import type {
   Budget,
   AdminCleanupResponse,
@@ -29,6 +31,9 @@ import type {
   ServiceCredentialCreateBody,
   ServiceCredentialCreateResponse,
   ServiceCredentialListResponse,
+  SqlStatementColumn,
+  SqlStatementResultResponse,
+  SqlStatementSubmitRequest,
   StorageCredentialCreateBody,
   StorageCredentialCreateResponse,
   StorageCredentialListResponse,
@@ -40,6 +45,7 @@ import type {
   UpdateBudgetInput,
 } from '@finlake/shared';
 import { apiFetch } from './client';
+import { getSqlStatement, submitSqlStatement } from './sql';
 
 interface RangeParams {
   start: string;
@@ -78,65 +84,90 @@ export function useUsageTopWorkloads(range: RangeParams, enabled = true) {
   });
 }
 
-export interface FocusOverviewSource {
-  id: number;
-  templateId: string;
-  name: string;
-  providerName: string;
-  tableName: string;
-  focusVersion: string | null;
-  updatedAt: string;
+export interface UseSqlStatementOptions {
+  enabled?: boolean;
+  /** Minimum poll interval (ms). Backoff doubles up to 5s. */
+  initialPollIntervalMs?: number;
+  requestKey?: unknown;
+  /** How long results stay fresh in cache before being eligible for refetch. */
+  staleTimeMs?: number;
 }
 
-export interface FocusOverviewDailyRow {
-  dataSourceId: number;
-  usageDate: string;
-  providerName: string;
-  serviceCategory: string;
-  serviceName: string;
-  costUsd: number;
-}
+const POLL_INITIAL_DELAY_MS = 600;
+const POLL_MAX_DELAY_MS = 5_000;
+const EMPTY_ROWS: ReadonlyArray<Record<string, unknown>> = [];
 
-export interface FocusOverviewServiceRow {
-  dataSourceId: number;
-  providerName: string;
-  serviceName: string;
-  costUsd: number;
-}
+export function useSqlStatement<T = Record<string, unknown>>(
+  input: SqlStatementSubmitRequest | null | undefined,
+  options: UseSqlStatementOptions = {},
+) {
+  const {
+    enabled = true,
+    initialPollIntervalMs = POLL_INITIAL_DELAY_MS,
+    requestKey,
+    staleTimeMs = 60_000,
+  } = options;
+  const [refreshIndex, setRefreshIndex] = useState(0);
+  const statementKey = requestKey ?? input ?? null;
+  const canSubmit = enabled && input !== null && input !== undefined;
 
-export interface FocusOverviewSkuRow {
-  dataSourceId: number;
-  providerName: string;
-  skuName: string;
-  costUsd: number;
-}
-
-export interface FocusOverviewCoverageRow {
-  dataSourceId: number;
-  providerName: string;
-  subAccountId: string | null;
-  subAccountName: string | null;
-  rowCount: number;
-  taggedRows: number;
-  tagCoveragePct: number;
-  lastChargeAt: string | null;
-}
-
-export interface FocusOverviewResponse {
-  sources: FocusOverviewSource[];
-  daily: FocusOverviewDailyRow[];
-  services: FocusOverviewServiceRow[];
-  skus: FocusOverviewSkuRow[];
-  coverage: FocusOverviewCoverageRow[];
-  errors: Array<{ dataSourceId: number; name: string; tableName: string; message: string }>;
-  generatedAt: string;
-}
-
-export function useFocusOverview(range: RangeParams) {
-  return useQuery({
-    queryKey: ['overview', 'focus', range],
-    queryFn: () => apiFetch<FocusOverviewResponse>(`/api/overview/focus?${rangeQuery(range)}`),
+  const submitQuery = useQuery({
+    queryKey: ['sql', 'submit', statementKey, refreshIndex],
+    queryFn: () => submitSqlStatement(input!),
+    enabled: canSubmit,
+    retry: false,
+    staleTime: staleTimeMs,
   });
+
+  const statement_id = submitQuery.data?.statement_id;
+  const resultQuery = useQuery({
+    queryKey: ['sql', 'result', statement_id],
+    queryFn: () => getSqlStatement(statement_id!),
+    enabled: canSubmit && Boolean(statement_id),
+    retry: false,
+    staleTime: staleTimeMs,
+    refetchInterval: (query) => {
+      const data = query.state.data as SqlStatementResultResponse | undefined;
+      if (isTerminalSqlStatus(data?.status)) return false;
+      const fetchCount = query.state.dataUpdateCount + query.state.errorUpdateCount;
+      return Math.min(initialPollIntervalMs * 2 ** fetchCount, POLL_MAX_DELAY_MS);
+    },
+    refetchIntervalInBackground: false,
+  });
+
+  const rows = useMemo(
+    () => (resultQuery.data?.rows ?? EMPTY_ROWS) as T[],
+    [resultQuery.data?.rows],
+  );
+
+  const refetch = useCallback(() => {
+    setRefreshIndex((index) => index + 1);
+  }, []);
+
+  const resultError =
+    resultQuery.data?.error !== undefined ? new Error(resultQuery.data.error) : resultQuery.error;
+  const error = submitQuery.error ?? resultError ?? null;
+  const status = resultQuery.data?.status ?? submitQuery.data?.status ?? null;
+  const isPolling =
+    Boolean(statement_id) &&
+    Boolean(status) &&
+    !isTerminalSqlStatus(status) &&
+    !resultQuery.isError;
+
+  return {
+    statement_id,
+    status,
+    rows,
+    columns: (resultQuery.data?.columns ?? []) as SqlStatementColumn[],
+    error,
+    isSubmitting: submitQuery.isLoading,
+    isPolling,
+    isLoading: submitQuery.isLoading || resultQuery.isLoading || isPolling,
+    isError: submitQuery.isError || resultQuery.isError || Boolean(resultQuery.data?.error),
+    isSuccess: resultQuery.data?.status === 'SUCCEEDED',
+    dataUpdatedAt: resultQuery.dataUpdatedAt,
+    refetch,
+  };
 }
 
 export function useBudgets(workspaceId?: string) {
