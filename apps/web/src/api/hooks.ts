@@ -37,6 +37,7 @@ import type {
   UsageBySkuRow,
   UsageDailyResponse,
   UsageTopWorkloadRow,
+  UpdateBudgetInput,
 } from '@finlake/shared';
 import { apiFetch } from './client';
 
@@ -155,6 +156,27 @@ export function useCreateBudget() {
   return useMutation({
     mutationFn: (input: CreateBudgetInput) =>
       apiFetch<Budget>('/api/budgets', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+  });
+}
+
+export function useUpdateBudget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateBudgetInput }) =>
+      apiFetch<Budget>(`/api/budgets/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
+  });
+}
+
+export function useDeleteBudget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<void>(`/api/budgets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['budgets'] }),
   });
 }

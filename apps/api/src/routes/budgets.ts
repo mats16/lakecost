@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { DatabaseClient } from '@finlake/db';
-import { CreateBudgetInputSchema } from '@finlake/shared';
+import { CreateBudgetInputSchema, UpdateBudgetInputSchema } from '@finlake/shared';
 
 export function budgetsRouter(db: DatabaseClient): Router {
   const router = Router();
@@ -25,6 +25,24 @@ export function budgetsRouter(db: DatabaseClient): Router {
       const createdBy = req.user?.email ?? 'unknown';
       const budget = await db.repos.budgets.create(parsed.data, createdBy);
       res.status(201).json(budget);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put('/:id', async (req, res, next) => {
+    try {
+      const parsed = UpdateBudgetInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
+        return;
+      }
+      const budget = await db.repos.budgets.update(req.params.id, parsed.data);
+      if (!budget) {
+        res.status(404).json({ error: { message: 'Budget not found' } });
+        return;
+      }
+      res.json(budget);
     } catch (err) {
       next(err);
     }

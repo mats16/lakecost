@@ -1,8 +1,14 @@
-import type { Budget, CreateBudgetInput, SetupCheckResult } from '@finlake/shared';
+import type {
+  Budget,
+  CreateBudgetInput,
+  SetupCheckResult,
+  UpdateBudgetInput,
+} from '@finlake/shared';
 
 export interface BudgetsRepo {
   list(workspaceId: string | null): Promise<Budget[]>;
   create(input: CreateBudgetInput, createdBy: string): Promise<Budget>;
+  update(id: string, input: UpdateBudgetInput): Promise<Budget | null>;
   delete(id: string): Promise<void>;
 }
 

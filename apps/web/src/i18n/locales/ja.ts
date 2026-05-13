@@ -240,6 +240,12 @@ export const ja: Dictionary = {
     title: '予算',
     subtitle: '上限額とアラート閾値を設定します',
     newBudget: '予算を作成',
+    editBudget: '予算を編集',
+    editBudgetNamed: '予算 {name} を編集',
+    deleteBudgetNamed: '予算 {name} を削除',
+    deleteConfirmTitle: '予算を削除しますか？',
+    deleteConfirmDescription: 'この操作は取り消せません。予算 {name} は完全に削除されます。',
+    confirmDeleteAction: '削除する',
     namePlaceholder: '名前',
     amountPlaceholder: '金額 (USD)',
     scope: {
@@ -262,6 +268,11 @@ export const ja: Dictionary = {
       yearly: '年次',
     },
     create: '予算を作成する',
+    save: '予算を保存',
+    edit: '編集',
+    delete: '削除',
+    deleting: '削除中…',
+    deleteFailed: '予算の削除に失敗しました',
     existing: '登録済みの予算',
     empty: 'まだ予算が設定されていません。',
     columns: {
@@ -269,6 +280,7 @@ export const ja: Dictionary = {
       scope: 'スコープ',
       period: '期間',
       amount: '金額',
+      actions: '操作',
     },
   },
   settings: {

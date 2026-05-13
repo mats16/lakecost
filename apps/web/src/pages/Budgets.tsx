@@ -1,10 +1,24 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
   AlertDescription,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
   Card,
   CardContent,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -26,10 +40,15 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import { AlertCircle, Plus, X } from 'lucide-react';
+import { AlertCircle, Pencil, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
-import { useBudgets, useCreateBudget } from '../api/hooks';
-import { BudgetScopeTypeSchema, BudgetPeriodSchema, type CreateBudgetInput } from '@finlake/shared';
+import { useBudgets, useCreateBudget, useDeleteBudget, useUpdateBudget } from '../api/hooks';
+import {
+  BudgetScopeTypeSchema,
+  BudgetPeriodSchema,
+  type Budget,
+  type UpdateBudgetInput,
+} from '@finlake/shared';
 import { useCurrencyUsd, useI18n } from '../i18n';
 
 const SCOPE_OPTIONS = BudgetScopeTypeSchema.options;
@@ -40,7 +59,35 @@ export function Budgets() {
   const formatUsd = useCurrencyUsd();
   const list = useBudgets();
   const create = useCreateBudget();
+  const update = useUpdateBudget();
+  const deleteBudget = useDeleteBudget();
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Budget | null>(null);
+
+  const openCreateModal = () => {
+    create.reset();
+    setCreateModalOpen(true);
+  };
+
+  const openEditModal = (budget: Budget) => {
+    update.reset();
+    setEditingBudget(budget);
+  };
+
+  const requestDelete = (budget: Budget) => {
+    deleteBudget.reset();
+    setPendingDelete(budget);
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    deleteBudget.mutate(pendingDelete.id, {
+      onSettled: () => setPendingDelete(null),
+    });
+  };
+
+  const isDeleting = (id: string) => deleteBudget.isPending && deleteBudget.variables === id;
 
   return (
     <>
@@ -48,7 +95,7 @@ export function Budgets() {
         title={t('budgets.title')}
         subtitle={t('budgets.subtitle')}
         actions={
-          <Button type="button" onClick={() => setCreateModalOpen(true)}>
+          <Button type="button" onClick={openCreateModal}>
             <Plus /> {t('budgets.newBudget')}
           </Button>
         }
@@ -59,6 +106,14 @@ export function Budgets() {
           <h3 className="text-muted-foreground mt-0 mb-3 text-sm font-medium">
             {t('budgets.existing')}
           </h3>
+          {deleteBudget.isError ? (
+            <Alert variant="destructive" className="mb-3">
+              <AlertCircle />
+              <AlertDescription>
+                {t('budgets.deleteFailed')}: {(deleteBudget.error as Error).message}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {list.isLoading ? (
             <div className="text-muted-foreground inline-flex items-center gap-2 text-sm">
               <Spinner /> {t('common.loading')}
@@ -78,6 +133,9 @@ export function Budgets() {
                   <TableHead>{t('budgets.columns.scope')}</TableHead>
                   <TableHead>{t('budgets.columns.period')}</TableHead>
                   <TableHead className="text-right">{t('budgets.columns.amount')}</TableHead>
+                  <TableHead className="text-right">
+                    <span className="sr-only">{t('budgets.columns.actions')}</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -89,6 +147,36 @@ export function Budgets() {
                     </TableCell>
                     <TableCell>{t(`budgets.period.${b.period}`)}</TableCell>
                     <TableCell className="text-right">{formatUsd(b.amountUsd)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="inline-flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          aria-label={t('budgets.editBudgetNamed', { name: b.name })}
+                          onClick={() => openEditModal(b)}
+                          disabled={isDeleting(b.id)}
+                        >
+                          <Pencil className="size-4" />
+                          {t('budgets.edit')}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          aria-label={t('budgets.deleteBudgetNamed', { name: b.name })}
+                          onClick={() => requestDelete(b)}
+                          disabled={isDeleting(b.id)}
+                        >
+                          {isDeleting(b.id) ? (
+                            <Spinner className="size-4" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                          {isDeleting(b.id) ? t('budgets.deleting') : t('budgets.delete')}
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -97,104 +185,152 @@ export function Budgets() {
         </CardContent>
       </Card>
 
-      <CreateBudgetModal
+      <BudgetFormDialog
         open={createModalOpen}
+        budget={null}
+        title={t('budgets.newBudget')}
+        submitLabel={t('budgets.create')}
+        pending={create.isPending}
+        error={create.isError ? (create.error as Error).message : null}
         onClose={() => setCreateModalOpen(false)}
-        onCreate={create.mutateAsync}
-        createPending={create.isPending}
-        createError={create.isError ? (create.error as Error).message : null}
+        onSubmit={async (values) => {
+          await create.mutateAsync({ workspaceId: null, ...values });
+        }}
       />
+      <BudgetFormDialog
+        open={editingBudget !== null}
+        budget={editingBudget}
+        title={t('budgets.editBudget')}
+        submitLabel={t('budgets.save')}
+        pending={update.isPending}
+        error={update.isError ? (update.error as Error).message : null}
+        onClose={() => setEditingBudget(null)}
+        onSubmit={async (values) => {
+          if (!editingBudget) return;
+          await update.mutateAsync({ id: editingBudget.id, input: values });
+        }}
+      />
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next && !deleteBudget.isPending) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('budgets.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? t('budgets.deleteConfirmDescription', { name: pendingDelete.name })
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBudget.isPending}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                confirmDelete();
+              }}
+              disabled={deleteBudget.isPending}
+            >
+              {deleteBudget.isPending ? (
+                <>
+                  <Spinner /> {t('budgets.deleting')}
+                </>
+              ) : (
+                t('budgets.confirmDeleteAction')
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
 
-function CreateBudgetModal({
+function BudgetFormDialog({
   open,
+  budget,
+  title,
+  submitLabel,
+  pending,
+  error,
   onClose,
-  onCreate,
-  createPending,
-  createError,
+  onSubmit,
 }: {
   open: boolean;
+  budget: Budget | null;
+  title: string;
+  submitLabel: string;
+  pending: boolean;
+  error: string | null;
   onClose: () => void;
-  onCreate: (input: CreateBudgetInput) => Promise<unknown>;
-  createPending: boolean;
-  createError: string | null;
+  onSubmit: (values: UpdateBudgetInput) => Promise<unknown>;
 }) {
   const { t } = useI18n();
 
   const [name, setName] = useState('');
   const [amountUsd, setAmountUsd] = useState(1000);
-  const [scopeType, setScopeType] = useState<CreateBudgetInput['scopeType']>('provider');
+  const [scopeType, setScopeType] = useState<UpdateBudgetInput['scopeType']>('provider');
   const [scopeValue, setScopeValue] = useState('*');
-  const [period, setPeriod] = useState<CreateBudgetInput['period']>('monthly');
+  const [period, setPeriod] = useState<UpdateBudgetInput['period']>('monthly');
   const scopeValuePlaceholder = t(`budgets.scope.placeholder.${scopeType}`);
-
-  const close = useCallback(() => {
-    if (!createPending) onClose();
-  }, [createPending, onClose]);
-
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    await onCreate({
-      workspaceId: null,
-      name,
-      scopeType,
-      scopeValue,
-      amountUsd,
-      period,
-      thresholdsPct: [80, 100],
-      notifyEmails: [],
-    });
-    onClose();
-    setName('');
-  };
 
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [close, open]);
+    setName(budget?.name ?? '');
+    setAmountUsd(budget?.amountUsd ?? 1000);
+    setScopeType(budget?.scopeType ?? 'provider');
+    setScopeValue(budget?.scopeValue ?? '*');
+    setPeriod(budget?.period ?? 'monthly');
+  }, [budget, open]);
 
-  if (!open) return null;
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    try {
+      await onSubmit({
+        name,
+        scopeType,
+        scopeValue,
+        amountUsd,
+        period,
+        thresholdsPct: budget?.thresholdsPct ?? [80, 100],
+        notifyEmails: budget?.notifyEmails ?? [],
+      });
+      onClose();
+    } catch {
+      // Surface via parent mutation.isError; keep dialog open.
+    }
+  };
+
+  const blockWhilePending = (event: Event) => {
+    if (pending) event.preventDefault();
+  };
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4"
-      role="presentation"
-      onMouseDown={close}
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !pending) onClose();
+      }}
     >
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-budget-modal-title"
-        className="bg-background border-border w-full max-w-2xl rounded-lg border shadow-xl"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={onSubmit}
+      <DialogContent
+        className="sm:max-w-2xl"
+        onEscapeKeyDown={blockWhilePending}
+        onPointerDownOutside={blockWhilePending}
+        onInteractOutside={blockWhilePending}
       >
-        <div className="flex items-start justify-between gap-4 p-5">
-          <div className="min-w-0">
-            <h3 id="create-budget-modal-title" className="text-base font-semibold">
-              {t('budgets.newBudget')}
-            </h3>
-            <p className="text-muted-foreground mt-1 mb-0 text-sm">{t('budgets.subtitle')}</p>
-          </div>
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors disabled:opacity-50"
-            aria-label={t('common.close')}
-            onClick={close}
-            disabled={createPending}
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
-        </div>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{t('budgets.subtitle')}</DialogDescription>
+          </DialogHeader>
 
-        <div className="p-5">
-          <FieldGroup>
+          <FieldGroup className="py-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="budget-name">{t('budgets.namePlaceholder')}</FieldLabel>
@@ -203,7 +339,7 @@ function CreateBudgetModal({
                   required
                   placeholder={t('budgets.namePlaceholder')}
                   value={name}
-                  disabled={createPending}
+                  disabled={pending}
                   onChange={(e) => setName(e.target.value)}
                 />
               </Field>
@@ -217,7 +353,7 @@ function CreateBudgetModal({
                   min={1}
                   placeholder={t('budgets.amountPlaceholder')}
                   value={amountUsd}
-                  disabled={createPending}
+                  disabled={pending}
                   onChange={(e) => setAmountUsd(Number(e.target.value))}
                 />
               </Field>
@@ -228,13 +364,13 @@ function CreateBudgetModal({
                 <FieldLabel>{t('budgets.columns.scope')}</FieldLabel>
                 <Select
                   value={scopeType}
-                  disabled={createPending}
-                  onValueChange={(v) => setScopeType(v as CreateBudgetInput['scopeType'])}
+                  disabled={pending}
+                  onValueChange={(v) => setScopeType(v as UpdateBudgetInput['scopeType'])}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="z-[90]">
+                  <SelectContent>
                     {SCOPE_OPTIONS.map((option) => (
                       <SelectItem key={option} value={option}>
                         {t(`budgets.scope.${option}`)}
@@ -248,13 +384,13 @@ function CreateBudgetModal({
                 <FieldLabel>{t('budgets.columns.period')}</FieldLabel>
                 <Select
                   value={period}
-                  disabled={createPending}
-                  onValueChange={(v) => setPeriod(v as CreateBudgetInput['period'])}
+                  disabled={pending}
+                  onValueChange={(v) => setPeriod(v as UpdateBudgetInput['period'])}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="z-[90]">
+                  <SelectContent>
                     {PERIOD_OPTIONS.map((option) => (
                       <SelectItem key={option} value={option}>
                         {t(`budgets.period.${option}`)}
@@ -272,35 +408,35 @@ function CreateBudgetModal({
                 required
                 placeholder={scopeValuePlaceholder}
                 value={scopeValue}
-                disabled={createPending}
+                disabled={pending}
                 onChange={(e) => setScopeValue(e.target.value)}
               />
             </Field>
 
-            {createError ? (
+            {error ? (
               <Alert variant="destructive">
                 <AlertCircle />
-                <AlertDescription>{createError}</AlertDescription>
+                <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
           </FieldGroup>
-        </div>
 
-        <div className="flex justify-end gap-2 p-5 pt-0">
-          <Button type="button" variant="secondary" onClick={close} disabled={createPending}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={createPending}>
-            {createPending ? (
-              <>
-                <Spinner /> {t('common.saving')}
-              </>
-            ) : (
-              t('budgets.create')
-            )}
-          </Button>
-        </div>
-      </form>
-    </div>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? (
+                <>
+                  <Spinner /> {t('common.saving')}
+                </>
+              ) : (
+                submitLabel
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
