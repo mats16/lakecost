@@ -9,7 +9,6 @@ import type { SqlParam } from '../schemas/sql.js';
 import { quoteIdent } from './focusView.sql.js';
 import type { SqlStatementInput } from './overviewQueries.js';
 
-const DEFAULT_CATALOG = 'finops';
 const DEFAULT_DATABRICKS_TABLE = 'databricks_usage';
 const KNOWN_COST_DENOMINATOR = '(serverless_cost_usd + non_serverless_cost_usd)';
 
@@ -25,7 +24,7 @@ export function resolveDatabricksOptimizeSources(
   dataSources: DataSource[],
   settings: Record<string, string | undefined>,
 ): DatabricksOptimizeSource[] {
-  const catalog = (settings[CATALOG_SETTING_KEY] ?? '').trim() || DEFAULT_CATALOG;
+  const catalog = (settings[CATALOG_SETTING_KEY] ?? '').trim();
   const silverSchema =
     medallionSchemaNamesFromSettings(settings).silver || MEDALLION_SCHEMA_DEFAULTS.silver;
   const configured = dataSources
@@ -137,6 +136,8 @@ export function buildDatabricksOptimizeCte(sources: DatabricksOptimizeSource[]):
     CAST(${quoteIdent('x_Serverless')} AS BOOLEAN) AS x_serverless
   FROM ${source.tableSql}
   WHERE ProviderName = 'Databricks'
+    AND CAST(ChargePeriodStart AS TIMESTAMP) >= :start_ts
+    AND CAST(ChargePeriodStart AS TIMESTAMP) < :end_ts
     AND (:billing_account_id_${index} IS NULL OR BillingAccountId = :billing_account_id_${index})`,
     )
     .join('\n  UNION ALL\n');
@@ -376,10 +377,13 @@ function databricksOptimizeSource(
   silverSchema: string,
   source: Pick<DataSource, 'tableName' | 'billingAccountId'>,
 ): DatabricksOptimizeSource {
-  const tableDisplay = `${catalog}.${silverSchema}.${source.tableName}`;
+  const parts = catalog
+    ? [catalog, silverSchema, source.tableName]
+    : [silverSchema, source.tableName];
+  const tableDisplay = parts.join('.');
   return {
     tableDisplay,
-    tableSql: `${quoteIdent(catalog)}.${quoteIdent(silverSchema)}.${quoteIdent(source.tableName)}`,
+    tableSql: parts.map((part) => quoteIdent(part)).join('.'),
     billingAccountId: source.billingAccountId,
   };
 }

@@ -101,7 +101,7 @@ export const ja: Dictionary = {
       legend: {
         serverless: 'サーバレス',
         nonServerless: '非サーバレス',
-        unknown: 'その他',
+        other: 'その他',
         ratio: 'サーバレス比率',
       },
       priority: {

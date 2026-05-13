@@ -55,7 +55,7 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/unity-catalog/credentials', serviceCredentialsRouter(env));
   app.use('/api/genie', genieRouter(db, env));
   app.use('/api/admin', adminRouter(db, env));
-  app.use('/api/sql', sqlRouter(env));
+  app.use('/api/sql', sqlRouter(db, env));
 
   if (env.NODE_ENV === 'production') {
     const distDir = resolveWebDistDir(env);

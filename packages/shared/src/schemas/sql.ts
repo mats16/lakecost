@@ -34,14 +34,6 @@ export const SqlStatementSubmitRequestSchema = z.object({
 
 export type SqlStatementSubmitRequest = z.infer<typeof SqlStatementSubmitRequestSchema>;
 
-export const SqlStatementSubmitResponseSchema = z.object({
-  statement_id: z.string().min(1),
-  status: z.string().min(1),
-  generatedAt: z.string().datetime(),
-});
-
-export type SqlStatementSubmitResponse = z.infer<typeof SqlStatementSubmitResponseSchema>;
-
 export const SqlStatementColumnSchema = z.object({
   name: z.string(),
   typeName: z.string().nullable(),
@@ -49,11 +41,26 @@ export const SqlStatementColumnSchema = z.object({
 
 export type SqlStatementColumn = z.infer<typeof SqlStatementColumnSchema>;
 
+export const SqlStatementDataSchema = z.object({
+  columns: z.array(SqlStatementColumnSchema).optional(),
+  rows: z.array(z.record(z.unknown())).optional(),
+});
+
+export type SqlStatementData = z.infer<typeof SqlStatementDataSchema>;
+
+export const SqlStatementSubmitResponseSchema = z.object({
+  statement_id: z.string().min(1).optional(),
+  status: z.string().min(1),
+  result: SqlStatementDataSchema.optional(),
+  generatedAt: z.string().datetime(),
+});
+
+export type SqlStatementSubmitResponse = z.infer<typeof SqlStatementSubmitResponseSchema>;
+
 export const SqlStatementResultResponseSchema = z.object({
   statement_id: z.string().min(1),
   status: z.string().min(1),
-  columns: z.array(SqlStatementColumnSchema).optional(),
-  rows: z.array(z.record(z.unknown())).optional(),
+  result: SqlStatementDataSchema.optional(),
   error: z.string().optional(),
   generatedAt: z.string().datetime(),
 });

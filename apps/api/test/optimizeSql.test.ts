@@ -9,6 +9,7 @@ import {
   buildDatabricksTrendSql,
   buildDatabricksWorkspacesSql,
   databricksOptimizeParams,
+  resolveDatabricksOptimizeSources,
   type DatabricksOptimizeSource,
 } from '@finlake/shared';
 
@@ -28,7 +29,22 @@ test('buildDatabricksOptimizeCte reads x_Serverless and EffectiveCost from quote
   assert.match(sql, /CAST\(`x_Serverless` AS BOOLEAN\) AS x_serverless/);
   assert.match(sql, /NULLIF\(TRIM\(SkuPriceDetails\['InstanceType'\]\), ''\) AS instance_type/);
   assert.match(sql, /ProviderName = 'Databricks'/);
+  assert.match(sql, /CAST\(ChargePeriodStart AS TIMESTAMP\) >= :start_ts/);
+  assert.match(sql, /CAST\(ChargePeriodStart AS TIMESTAMP\) < :end_ts/);
+  assert.match(sql, /charge_period_start >= :start_ts/);
+  assert.match(sql, /charge_period_start < :end_ts/);
+  assert.doesNotMatch(sql, /x_BillingMonth/);
   assert.doesNotMatch(sql, /finops\.focus\.databricks_usage/);
+});
+
+test('resolveDatabricksOptimizeSources follows overview catalog defaults', () => {
+  const [withoutCatalog] = resolveDatabricksOptimizeSources([], {});
+  assert.equal(withoutCatalog?.tableDisplay, 'focus.databricks_usage');
+  assert.equal(withoutCatalog?.tableSql, '`focus`.`databricks_usage`');
+
+  const [withCatalog] = resolveDatabricksOptimizeSources([], { catalog_name: 'finops' });
+  assert.equal(withCatalog?.tableDisplay, 'finops.focus.databricks_usage');
+  assert.equal(withCatalog?.tableSql, '`finops`.`focus`.`databricks_usage`');
 });
 
 test('databricks optimization params include date, workspace, and billing account filters', () => {

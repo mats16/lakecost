@@ -99,7 +99,7 @@ export const en = {
       legend: {
         serverless: 'Serverless',
         nonServerless: 'Non-serverless',
-        unknown: 'Other',
+        other: 'Other',
         ratio: 'Serverless ratio',
       },
       priority: {

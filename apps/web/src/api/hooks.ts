@@ -120,10 +120,11 @@ export function useSqlStatement<T = Record<string, unknown>>(
   });
 
   const statement_id = submitQuery.data?.statement_id;
+  const submitResult = submitQuery.data?.result;
   const resultQuery = useQuery({
     queryKey: ['sql', 'result', statement_id],
     queryFn: () => getSqlStatement(statement_id!),
-    enabled: canSubmit && Boolean(statement_id),
+    enabled: canSubmit && Boolean(statement_id) && !submitResult,
     retry: false,
     staleTime: staleTimeMs,
     refetchInterval: (query) => {
@@ -134,11 +135,9 @@ export function useSqlStatement<T = Record<string, unknown>>(
     },
     refetchIntervalInBackground: false,
   });
+  const resultData = submitResult ?? resultQuery.data?.result;
 
-  const rows = useMemo(
-    () => (resultQuery.data?.rows ?? EMPTY_ROWS) as T[],
-    [resultQuery.data?.rows],
-  );
+  const rows = useMemo(() => (resultData?.rows ?? EMPTY_ROWS) as T[], [resultData?.rows]);
 
   const refetch = useCallback(() => {
     setRefreshIndex((index) => index + 1);
@@ -158,14 +157,17 @@ export function useSqlStatement<T = Record<string, unknown>>(
     statement_id,
     status,
     rows,
-    columns: (resultQuery.data?.columns ?? []) as SqlStatementColumn[],
+    columns: (resultData?.columns ?? []) as SqlStatementColumn[],
     error,
     isSubmitting: submitQuery.isLoading,
     isPolling,
     isLoading: submitQuery.isLoading || resultQuery.isLoading || isPolling,
     isError: submitQuery.isError || resultQuery.isError || Boolean(resultQuery.data?.error),
-    isSuccess: resultQuery.data?.status === 'SUCCEEDED',
-    dataUpdatedAt: resultQuery.dataUpdatedAt,
+    isSuccess: submitQuery.data?.result !== undefined || resultQuery.data?.status === 'SUCCEEDED',
+    dataUpdatedAt:
+      submitQuery.data?.result !== undefined
+        ? submitQuery.dataUpdatedAt
+        : resultQuery.dataUpdatedAt,
     refetch,
   };
 }

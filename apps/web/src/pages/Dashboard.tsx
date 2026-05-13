@@ -71,6 +71,7 @@ import {
 import { PageHeader } from '../components/PageHeader';
 import { useAppSettings, useBudgets, useDataSources, useSqlStatement } from '../api/hooks';
 import { useCurrencyUsd, useI18n, type TFunction } from '../i18n';
+import { stableTomorrow } from '../lib/dateRanges';
 
 type ProviderKey = 'databricks' | 'aws' | 'azure' | 'gcp' | 'snowflake' | 'other';
 
@@ -173,26 +174,27 @@ const COST_BREAKDOWN_SERIES_LIMIT = 12;
 const COST_BREAKDOWN_OTHER_COLOR = '#718096';
 
 function overviewRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
-  return { start: start.toISOString(), end: now.toISOString() };
+  const end = stableTomorrow();
+  const start = new Date(end.getFullYear() - 1, end.getMonth(), 1);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function monthToDateRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { start: start.toISOString(), end: now.toISOString() };
+  const end = stableTomorrow();
+  const start = new Date(end.getFullYear(), end.getMonth(), 1);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function last30Range() {
-  const end = new Date();
-  const start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const end = stableTomorrow();
+  const start = new Date(end);
+  start.setDate(end.getDate() - 30);
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function sqlError(name: string, tableName: string, error: unknown) {
   if (!error) return null;
-  return { name, tableName };
+  return { name, tableName, message: error instanceof Error ? error.message : String(error) };
 }
 
 export function Dashboard() {
@@ -348,7 +350,9 @@ export function Dashboard() {
     sqlError('currentServices', 'usage_daily', currentServices.error),
     sqlError('currentSkus', 'usage_daily', currentSkus.error),
     sqlError('coverage', 'usage_monthly', coverage.error),
-  ].filter((error): error is { name: string; tableName: string } => Boolean(error));
+  ].filter((error): error is { name: string; tableName: string; message: string } =>
+    Boolean(error),
+  );
   const tagCoverage = useMemo(() => {
     const totalResources = coverageRows.reduce((sum, row) => sum + row.rowCount, 0);
     if (totalResources <= 0) return null;
@@ -422,7 +426,7 @@ export function Dashboard() {
             {t('dashboard.someSourcesFailed')}{' '}
             {sourceErrors
               .slice(0, 3)
-              .map((error) => `${error.name} (${error.tableName})`)
+              .map((error) => `${error.name} (${error.tableName}): ${error.message}`)
               .join(', ')}
           </AlertDescription>
         </Alert>

@@ -63,6 +63,7 @@ import {
 import { PageHeader } from '../../components/PageHeader';
 import { useAppSettings, useDataSources, useMe, useSqlStatement } from '../../api/hooks';
 import { useCurrencyUsd, useI18n } from '../../i18n';
+import { stableTomorrow } from '../../lib/dateRanges';
 
 const PERIODS = ['last30', 'last90', 'last180', 'last12m'] as const;
 type Period = (typeof PERIODS)[number];
@@ -82,7 +83,7 @@ interface DatabricksOptimizationTrendRow {
 }
 
 function rangeForPeriod(period: Period) {
-  const end = new Date();
+  const end = stableTomorrow();
   const start = new Date(end);
   if (period === 'last12m') {
     start.setFullYear(end.getFullYear() - 1, end.getMonth(), 1);
@@ -367,7 +368,7 @@ export function DatabricksOptimize() {
                       yAxisId="cost"
                       dataKey="unknownCostUsd"
                       stackId="cost"
-                      name={t('optimize.databricks.legend.unknown')}
+                      name={t('optimize.databricks.legend.other')}
                       fill={UNKNOWN_COLOR}
                     />
                     <Line
