@@ -38,7 +38,15 @@ import {
   TableHeader,
   TableRow,
 } from '@databricks/appkit-ui/react';
-import { AlertCircle, DollarSign, Gauge, ListChecks, RefreshCcw, Server } from 'lucide-react';
+import {
+  AlertCircle,
+  DollarSign,
+  ExternalLink,
+  Gauge,
+  ListChecks,
+  RefreshCcw,
+  Server,
+} from 'lucide-react';
 import {
   buildDatabricksRecommendationsStatement,
   buildDatabricksServicesStatement,
@@ -53,7 +61,7 @@ import {
   type DatabricksTrendGrain,
 } from '@finlake/shared';
 import { PageHeader } from '../../components/PageHeader';
-import { useAppSettings, useDataSources, useSqlStatement } from '../../api/hooks';
+import { useAppSettings, useDataSources, useMe, useSqlStatement } from '../../api/hooks';
 import { useCurrencyUsd, useI18n } from '../../i18n';
 
 const PERIODS = ['last30', 'last90', 'last180', 'last12m'] as const;
@@ -100,6 +108,7 @@ export function DatabricksOptimize() {
   const trendGrain: DatabricksTrendGrain = period === 'last30' ? 'day' : 'month';
   const dataSources = useDataSources();
   const appSettings = useAppSettings();
+  const me = useMe();
   const sourceTables = useMemo(
     () =>
       resolveDatabricksOptimizeSources(
@@ -428,8 +437,8 @@ export function DatabricksOptimize() {
                 <TableRow>
                   <TableHead>{t('optimize.databricks.table.priority')}</TableHead>
                   <TableHead>{t('optimize.databricks.table.resource')}</TableHead>
-                  <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
                   <TableHead>{t('optimize.databricks.table.service')}</TableHead>
+                  <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
                   <TableHead className="text-right">
                     {t('optimize.databricks.table.nonServerlessSpend')}
                   </TableHead>
@@ -438,7 +447,12 @@ export function DatabricksOptimize() {
               </TableHeader>
               <TableBody>
                 {recommendationsQuery.rows.map((row) => (
-                  <RecommendationRow key={`${row.rank}-${row.resourceId}`} row={row} />
+                  <RecommendationRow
+                    key={`${row.rank}-${row.resourceId}`}
+                    row={row}
+                    workspaceUrl={me.data?.workspaceUrl ?? null}
+                    currentWorkspaceId={me.data?.workspaceId ?? null}
+                  />
                 ))}
               </TableBody>
             </Table>
@@ -523,11 +537,21 @@ function ServiceRatioRow({ row }: { row: DatabricksOptimizationServiceRow }) {
   );
 }
 
-function RecommendationRow({ row }: { row: DatabricksOptimizationRecommendation }) {
+function RecommendationRow({
+  row,
+  workspaceUrl,
+  currentWorkspaceId,
+}: {
+  row: DatabricksOptimizationRecommendation;
+  workspaceUrl: string | null;
+  currentWorkspaceId: string | null;
+}) {
   const { t } = useI18n();
   const formatUsd = useCurrencyUsd();
   const resourceName = row.resourceName || row.resourceId;
-  const workspace = row.workspaceName || row.workspaceId || t('dashboard.notAvailable');
+  const resourceUrl = databricksResourceUrl(row, workspaceUrl, currentWorkspaceId);
+  const workspacePrimary = row.workspaceName || row.workspaceId || t('dashboard.notAvailable');
+  const workspaceSecondary = row.workspaceName ? row.workspaceId : null;
   return (
     <TableRow>
       <TableCell>
@@ -535,17 +559,24 @@ function RecommendationRow({ row }: { row: DatabricksOptimizationRecommendation 
       </TableCell>
       <TableCell className="min-w-56">
         <div className="grid gap-0.5">
-          <span className="font-medium">{resourceName}</span>
+          <ResourceNameLink href={resourceUrl} name={resourceName} />
           <span className="text-muted-foreground text-xs">
             {row.resourceType ?? t('dashboard.notAvailable')} · {row.resourceId}
           </span>
         </div>
       </TableCell>
-      <TableCell className="min-w-40">{workspace}</TableCell>
       <TableCell>
         <div className="grid gap-0.5">
           <span>{row.serviceName}</span>
           <span className="text-muted-foreground text-xs">{row.serviceCategory}</span>
+        </div>
+      </TableCell>
+      <TableCell className="min-w-40">
+        <div className="grid gap-0.5">
+          <span>{workspacePrimary}</span>
+          {workspaceSecondary ? (
+            <span className="text-muted-foreground text-xs">{workspaceSecondary}</span>
+          ) : null}
         </div>
       </TableCell>
       <TableCell className="text-right font-medium">
@@ -559,6 +590,49 @@ function RecommendationRow({ row }: { row: DatabricksOptimizationRecommendation 
       </TableCell>
     </TableRow>
   );
+}
+
+function ResourceNameLink({ href, name }: { href: string | null; name: string }) {
+  if (!href) {
+    return <span className="font-medium">{name}</span>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-primary inline-flex min-w-0 items-center gap-1 font-medium hover:underline"
+    >
+      <span className="min-w-0 truncate">{name}</span>
+      <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+    </a>
+  );
+}
+
+function databricksResourceUrl(
+  row: DatabricksOptimizationRecommendation,
+  workspaceUrl: string | null,
+  currentWorkspaceId: string | null,
+): string | null {
+  if (!workspaceUrl || !row.workspaceId || row.workspaceId !== currentWorkspaceId) return null;
+  const path = databricksResourcePath(row.serviceName, row.resourceId);
+  return path ? `${workspaceUrl}${path}` : null;
+}
+
+function databricksResourcePath(serviceName: string, resourceId: string): string | null {
+  const id = encodeURIComponent(resourceId);
+  switch (serviceName) {
+    case 'ALL_PURPOSE':
+      return `/compute/clusters/${id}`;
+    case 'JOBS':
+      return `/jobs/${id}`;
+    case 'DLT':
+      return `/pipelines/${id}`;
+    case 'SQL':
+      return `/sql/warehouses/${id}`;
+    default:
+      return null;
+  }
 }
 
 function PriorityBadge({
