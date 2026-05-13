@@ -217,13 +217,8 @@ matched AS (
 `;
 }
 
-async function queryDaily(
-  executor: StatementExecutor,
-  cte: string,
-  params: SqlParam[],
-): Promise<FocusDailyRow[]> {
-  return executor.run(
-    /* sql */ `
+export function buildDailySql(cte: string): string {
+  return /* sql */ `
 ${cte}
 SELECT
   data_source_id,
@@ -236,12 +231,16 @@ FROM matched
 WHERE CAST(x_ChargeDate AS TIMESTAMP) >= :start_ts
   AND CAST(x_ChargeDate AS TIMESTAMP) <  :end_ts
 GROUP BY 1, 2, 3, 4, 5
-ORDER BY 6 DESC
-LIMIT 50000
-`,
-    params,
-    FocusDailyRowSchema,
-  );
+ORDER BY 2
+`;
+}
+
+async function queryDaily(
+  executor: StatementExecutor,
+  cte: string,
+  params: SqlParam[],
+): Promise<FocusDailyRow[]> {
+  return executor.run(buildDailySql(cte), params, FocusDailyRowSchema);
 }
 
 async function queryServices(
@@ -294,13 +293,8 @@ LIMIT 50
   );
 }
 
-async function queryCoverage(
-  executor: StatementExecutor,
-  cte: string,
-  params: SqlParam[],
-): Promise<FocusCoverageRow[]> {
-  return executor.run(
-    /* sql */ `
+export function buildCoverageSql(cte: string): string {
+  return /* sql */ `
 ${cte}
 , resources AS (
   SELECT
@@ -317,6 +311,13 @@ ${cte}
     AND TRIM(ResourceId) <> ''
   GROUP BY 1, 2, 3, 5, 6, 7
 )
+, latest_month_per_source AS (
+  SELECT
+    data_source_id,
+    MAX(x_BillingMonth) AS max_month
+  FROM resources
+  GROUP BY data_source_id
+)
 SELECT
   r.data_source_id,
   r.provider_name,
@@ -331,13 +332,20 @@ SELECT
   END AS tag_coverage_pct,
   CAST(MAX(r.x_BillingMonth) AS STRING) AS last_charge_at
 FROM resources r
-WHERE r.x_BillingMonth = (SELECT MAX(x_BillingMonth) FROM resources)
+JOIN latest_month_per_source lm
+  ON r.data_source_id = lm.data_source_id
+  AND r.x_BillingMonth = lm.max_month
 GROUP BY 1, 2, 3, 4
 ORDER BY tag_coverage_pct DESC, row_count DESC
-`,
-    params,
-    FocusCoverageRowSchema,
-  );
+`;
+}
+
+async function queryCoverage(
+  executor: StatementExecutor,
+  cte: string,
+  params: SqlParam[],
+): Promise<FocusCoverageRow[]> {
+  return executor.run(buildCoverageSql(cte), params, FocusCoverageRowSchema);
 }
 
 function sourceSummary(source: DataSource, catalog?: string, goldSchema?: string) {

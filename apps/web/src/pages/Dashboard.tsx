@@ -164,7 +164,8 @@ const periodOptions = ['mtd', 'last30'] as const;
 type Period = (typeof periodOptions)[number];
 const costBreakdownDimensions = ['providerName', 'serviceCategory', 'serviceName'] as const;
 type CostBreakdownDimension = (typeof costBreakdownDimensions)[number];
-const COST_BREAKDOWN_LEGEND_LIMIT = 10;
+const COST_BREAKDOWN_SERIES_LIMIT = 12;
+const COST_BREAKDOWN_OTHER_COLOR = '#718096';
 
 function overviewRange() {
   const now = new Date();
@@ -244,25 +245,26 @@ export function Dashboard() {
     () => (row: FocusOverviewDailyRow) => costBreakdownValue(row, costBreakdownDimension),
     [costBreakdownDimension],
   );
-  const costBreakdownSeries = useMemo(
-    () => buildCostBreakdownSeries(dailyRows, costBreakdownKeyOf),
-    [costBreakdownKeyOf, dailyRows],
+  const otherLabel = t('dashboard.costBreakdownOther');
+  const { series: costBreakdownSeries, bucketKeyOf: costBreakdownBucketKeyOf } = useMemo(
+    () => buildCostBreakdownSeries(dailyRows, costBreakdownKeyOf, otherLabel),
+    [costBreakdownKeyOf, dailyRows, otherLabel],
   );
   const trendData = useMemo(
     () =>
       buildTrendData(
         dailyRows,
         costBreakdownSeries,
-        costBreakdownKeyOf,
+        costBreakdownBucketKeyOf,
         overview.forecast,
         locale,
         t,
       ),
-    [costBreakdownKeyOf, costBreakdownSeries, dailyRows, locale, overview.forecast, t],
+    [costBreakdownBucketKeyOf, costBreakdownSeries, dailyRows, locale, overview.forecast, t],
   );
   const costBreakdownMtd = useMemo(
-    () => buildCostBreakdownMtd(costBreakdownSeries, dailyRows, costBreakdownKeyOf),
-    [costBreakdownKeyOf, costBreakdownSeries, dailyRows],
+    () => buildCostBreakdownMtd(costBreakdownSeries, dailyRows, costBreakdownBucketKeyOf),
+    [costBreakdownBucketKeyOf, costBreakdownSeries, dailyRows],
   );
   const topServices = useMemo(
     () => buildTopServices(serviceRows, skuRows, activeProviders),
@@ -546,11 +548,11 @@ export function Dashboard() {
                     <span className="text-muted-foreground text-xs">{t('dashboard.totalMtd')}</span>
                   </div>
                 </div>
-                <div className="grid content-center gap-2">
-                  {costBreakdownMtd.slice(0, COST_BREAKDOWN_LEGEND_LIMIT).map((item) => (
+                <div className="grid max-w-[14rem] content-center gap-2">
+                  {costBreakdownMtd.map((item) => (
                     <div
                       key={item.key}
-                      className="grid grid-cols-[0.625rem_16ch_2rem] items-center gap-2 text-sm"
+                      className="grid grid-cols-[0.625rem_minmax(0,1fr)_2rem] items-center gap-2 text-sm"
                     >
                       <span className="h-2.5 w-2.5 rounded-sm" style={{ background: item.color }} />
                       <span className="block truncate whitespace-nowrap" title={item.value}>
@@ -1103,22 +1105,48 @@ function monthlyTotals(rows: FocusOverviewDailyRow[]): Map<string, number> {
   return totals;
 }
 
+interface CostBreakdownSeriesResult {
+  series: CostBreakdownSeriesMeta[];
+  bucketKeyOf: (row: FocusOverviewDailyRow) => string;
+}
+
 function buildCostBreakdownSeries(
   rows: FocusOverviewDailyRow[],
   keyOf: (row: FocusOverviewDailyRow) => string,
-): CostBreakdownSeriesMeta[] {
+  otherLabel: string,
+): CostBreakdownSeriesResult {
   const totals = new Map<string, number>();
   for (const row of rows) {
     const value = keyOf(row);
     totals.set(value, (totals.get(value) ?? 0) + row.costUsd);
   }
-  return Array.from(totals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([value], index) => ({
-      key: `series_${index}`,
-      value,
-      color: COST_BREAKDOWN_PALETTE[index % COST_BREAKDOWN_PALETTE.length] ?? '#718096',
-    }));
+  const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
+  const topEntries = sorted.slice(0, COST_BREAKDOWN_SERIES_LIMIT);
+  const restEntries = sorted.slice(COST_BREAKDOWN_SERIES_LIMIT);
+  const topValues = new Set(topEntries.map(([v]) => v));
+
+  const series: CostBreakdownSeriesMeta[] = topEntries.map(([value], index) => ({
+    key: `series_${index}`,
+    value,
+    color:
+      COST_BREAKDOWN_PALETTE[index % COST_BREAKDOWN_PALETTE.length] ?? COST_BREAKDOWN_OTHER_COLOR,
+  }));
+
+  const restTotal = restEntries.reduce((sum, [, cost]) => sum + cost, 0);
+  if (restTotal > 0) {
+    series.push({
+      key: 'series_other',
+      value: otherLabel,
+      color: COST_BREAKDOWN_OTHER_COLOR,
+    });
+  }
+
+  const bucketKeyOf = (row: FocusOverviewDailyRow): string => {
+    const value = keyOf(row);
+    return topValues.has(value) ? value : otherLabel;
+  };
+
+  return { series, bucketKeyOf };
 }
 
 function buildTrendData(

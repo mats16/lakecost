@@ -134,6 +134,7 @@ export const ja: Dictionary = {
       serviceCategory: 'ServiceCategory',
       serviceName: 'ServiceName',
     },
+    costBreakdownOther: 'その他',
     providers: {
       other: 'その他',
     },

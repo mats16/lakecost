@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { requestedSourcesSql, baseParams, joinedBillingRowsSql } from '../src/routes/overview.js';
+import {
+  requestedSourcesSql,
+  baseParams,
+  buildCoverageSql,
+  buildDailySql,
+  joinedBillingRowsSql,
+} from '../src/routes/overview.js';
 import type { DataSource } from '@finlake/shared';
 
 function fakeSource(overrides: Partial<DataSource> & { id: number }): DataSource {
@@ -65,4 +71,34 @@ test('joinedBillingRowsSql generates CTE with requested + matched', () => {
   assert.ok(sql.includes('`catalog`.`gold`.`usage_daily`'));
   assert.ok(sql.includes('r.billing_account_id IS NOT NULL'));
   assert.ok(sql.includes('r.billing_account_id IS NULL'));
+});
+
+test('buildDailySql preserves all months and groups by 5 dimensions', () => {
+  const sql = buildDailySql('-- cte --');
+
+  assert.ok(sql.includes('-- cte --'));
+  assert.ok(sql.includes('service_category'));
+  assert.ok(sql.includes('service_name'));
+  assert.ok(sql.includes('GROUP BY 1, 2, 3, 4, 5'));
+  assert.ok(sql.includes('ORDER BY 2'));
+  assert.ok(
+    !/LIMIT\s+\d+/i.test(sql),
+    'queryDaily must not LIMIT — would silently drop older months',
+  );
+});
+
+test('buildCoverageSql filters by per-source latest billing month', () => {
+  const sql = buildCoverageSql('-- cte --');
+
+  assert.ok(sql.includes('-- cte --'));
+  assert.ok(sql.includes('resources AS'));
+  assert.ok(sql.includes('latest_month_per_source AS'));
+  assert.ok(sql.includes('GROUP BY data_source_id'));
+  assert.ok(sql.includes('JOIN latest_month_per_source'));
+  assert.ok(sql.includes('r.data_source_id = lm.data_source_id'));
+  assert.ok(sql.includes('r.x_BillingMonth = lm.max_month'));
+  assert.ok(
+    !sql.includes('WHERE r.x_BillingMonth = (SELECT MAX(x_BillingMonth) FROM resources)'),
+    'cross-source MAX would drop data sources whose latest month lags behind',
+  );
 });

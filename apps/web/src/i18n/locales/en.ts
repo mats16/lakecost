@@ -132,6 +132,7 @@ export const en = {
       serviceCategory: 'ServiceCategory',
       serviceName: 'ServiceName',
     },
+    costBreakdownOther: 'Other',
     providers: {
       other: 'Other',
     },
