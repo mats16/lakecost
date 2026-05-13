@@ -91,6 +91,8 @@ export interface FocusOverviewDailyRow {
   dataSourceId: number;
   usageDate: string;
   providerName: string;
+  serviceCategory: string;
+  serviceName: string;
   costUsd: number;
 }
 
@@ -111,6 +113,8 @@ export interface FocusOverviewSkuRow {
 export interface FocusOverviewCoverageRow {
   dataSourceId: number;
   providerName: string;
+  subAccountId: string | null;
+  subAccountName: string | null;
   rowCount: number;
   taggedRows: number;
   tagCoveragePct: number;

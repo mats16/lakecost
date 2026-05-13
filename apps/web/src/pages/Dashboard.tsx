@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -38,11 +38,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '@databricks/appkit-ui/react';
 import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Database,
   DollarSign,
   RefreshCcw,
@@ -84,6 +89,30 @@ interface Anomaly {
   impactUsd: number;
   severity: 'high' | 'medium' | 'resolved';
   when: string;
+}
+
+const COST_BREAKDOWN_PALETTE = [
+  '#3B82F6',
+  '#49A078',
+  '#F2A72B',
+  '#9B59B6',
+  '#20C7A8',
+  '#EC4899',
+  '#6366F1',
+  '#EAB308',
+  '#EF4444',
+  '#0EA5E9',
+  '#84CC16',
+  '#F97316',
+  '#718096',
+];
+
+interface CostBreakdownSeriesMeta {
+  // Synthetic id used as Recharts dataKey — values like "Other", "AWS S3"
+  // can't be used directly because Recharts treats dataKey as a lodash path.
+  key: string;
+  value: string;
+  color: string;
 }
 
 const PROVIDERS: Record<ProviderKey, ProviderMeta> = {
@@ -131,23 +160,12 @@ const PROVIDERS: Record<ProviderKey, ProviderMeta> = {
   },
 };
 
-const SKU_BUCKETS = [
-  {
-    label: 'All-Purpose',
-    match: (s: string) => s.includes('ALL_PURPOSE') || s.includes('INTERACTIVE'),
-  },
-  { label: 'Jobs', match: (s: string) => s.includes('JOB') },
-  { label: 'SQL Warehouse', match: (s: string) => s.includes('SQL') || s.includes('WAREHOUSE') },
-  {
-    label: 'ML / Model Serving',
-    match: (s: string) =>
-      s.includes('MODEL') || s.includes('SERVING') || s.includes('AI_') || s.includes('VECTOR'),
-  },
-  { label: 'Serverless', match: (s: string) => s.includes('SERVERLESS') },
-];
-
 const periodOptions = ['mtd', 'last30'] as const;
 type Period = (typeof periodOptions)[number];
+const costBreakdownDimensions = ['providerName', 'serviceCategory', 'serviceName'] as const;
+type CostBreakdownDimension = (typeof costBreakdownDimensions)[number];
+const COST_BREAKDOWN_SERIES_LIMIT = 12;
+const COST_BREAKDOWN_OTHER_COLOR = '#718096';
 
 function overviewRange() {
   const now = new Date();
@@ -171,6 +189,9 @@ export function Dashboard() {
   const { t, locale } = useI18n();
   const formatUsd = useCurrencyUsd();
   const [period, setPeriod] = useState<Period>('mtd');
+  const [costBreakdownDimension, setCostBreakdownDimension] =
+    useState<CostBreakdownDimension>('providerName');
+  const [coveragePage, setCoveragePage] = useState(0);
   const wideRange = useMemo(overviewRange, []);
   const mtdRange = useMemo(monthToDateRange, []);
   const rollingRange = useMemo(last30Range, []);
@@ -220,19 +241,35 @@ export function Dashboard() {
     };
   }, [activeProviders, budgets.data?.items, dailyRows, locale, period, skuRows, t]);
 
-  const trendData = useMemo(
-    () => buildTrendData(dailyRows, activeProviders, overview.forecast, locale, t),
-    [activeProviders, dailyRows, locale, overview.forecast, t],
+  const costBreakdownKeyOf = useMemo(
+    () => (row: FocusOverviewDailyRow) => costBreakdownValue(row, costBreakdownDimension),
+    [costBreakdownDimension],
   );
-  const providerBreakdown = useMemo(
-    () => buildProviderBreakdown(activeProviders, dailyRows),
-    [activeProviders, dailyRows],
+  const otherLabel = t('dashboard.costBreakdownOther');
+  const { series: costBreakdownSeries, bucketKeyOf: costBreakdownBucketKeyOf } = useMemo(
+    () => buildCostBreakdownSeries(dailyRows, costBreakdownKeyOf, otherLabel),
+    [costBreakdownKeyOf, dailyRows, otherLabel],
+  );
+  const trendData = useMemo(
+    () =>
+      buildTrendData(
+        dailyRows,
+        costBreakdownSeries,
+        costBreakdownBucketKeyOf,
+        overview.forecast,
+        locale,
+        t,
+      ),
+    [costBreakdownBucketKeyOf, costBreakdownSeries, dailyRows, locale, overview.forecast, t],
+  );
+  const costBreakdownMtd = useMemo(
+    () => buildCostBreakdownMtd(costBreakdownSeries, dailyRows, costBreakdownBucketKeyOf),
+    [costBreakdownBucketKeyOf, costBreakdownSeries, dailyRows],
   );
   const topServices = useMemo(
     () => buildTopServices(serviceRows, skuRows, activeProviders),
     [activeProviders, serviceRows, skuRows],
   );
-  const skuBuckets = useMemo(() => bucketSkus(skuRows, t), [skuRows, t]);
   const lastUpdated = useMemo(
     () => formatLastUpdated(history.dataUpdatedAt, current.dataUpdatedAt, locale),
     [current.dataUpdatedAt, history.dataUpdatedAt, locale],
@@ -242,10 +279,28 @@ export function Dashboard() {
   const loading = history.isLoading || current.isLoading;
   const costError = history.isError || current.isError;
   const sourceErrors = [...(history.data?.errors ?? []), ...(current.data?.errors ?? [])];
-  const tagCoverage =
-    coverageRows.length > 0
-      ? coverageRows.reduce((sum, row) => sum + row.tagCoveragePct, 0) / coverageRows.length
-      : null;
+  const tagCoverage = useMemo(() => {
+    const totalResources = coverageRows.reduce((sum, row) => sum + row.rowCount, 0);
+    if (totalResources <= 0) return null;
+    const taggedResources = coverageRows.reduce((sum, row) => sum + row.taggedRows, 0);
+    return (taggedResources / totalResources) * 100;
+  }, [coverageRows]);
+  const sortedCoverage = useMemo(
+    () =>
+      [...coverageRows].sort(
+        (a, b) => b.tagCoveragePct - a.tagCoveragePct || b.rowCount - a.rowCount,
+      ),
+    [coverageRows],
+  );
+  const coveragePageSize = 5;
+  const coveragePageCount = Math.max(1, Math.ceil(sortedCoverage.length / coveragePageSize));
+  useEffect(() => {
+    setCoveragePage((p) => Math.min(p, coveragePageCount - 1));
+  }, [coveragePageCount]);
+  const visibleCoverage = sortedCoverage.slice(
+    coveragePage * coveragePageSize,
+    coveragePage * coveragePageSize + coveragePageSize,
+  );
 
   return (
     <>
@@ -379,16 +434,34 @@ export function Dashboard() {
         />
       </div>
 
-      <SectionTitle title={t('dashboard.sections.costTrendsBreakdown')} />
+      <div className="mt-5 mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="m-0 text-base font-semibold">
+          {t('dashboard.sections.costTrendsBreakdown')}
+        </h3>
+        <Select
+          value={costBreakdownDimension}
+          onValueChange={(value) => setCostBreakdownDimension(value as CostBreakdownDimension)}
+        >
+          <SelectTrigger className="w-full sm:w-[220px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {costBreakdownDimensions.map((dimension) => (
+              <SelectItem key={dimension} value={dimension}>
+                {t(`dashboard.costBreakdownDimensions.${dimension}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.monthlyCostByProvider')}</CardTitle>
-            <CardDescription>
-              {t('dashboard.connectedProviders')}{' '}
-              {activeProviders.map((p) => providerDisplayLabel(p, t)).join(', ') ||
-                t('dashboard.none')}
-            </CardDescription>
+            <CardTitle className="text-sm">
+              {t('dashboard.monthlyCostByDimension', {
+                dimension: t(`dashboard.costBreakdownDimensions.${costBreakdownDimension}`),
+              })}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -410,12 +483,13 @@ export function Dashboard() {
                       tickFormatter={shortUsd}
                     />
                     <RechartsTooltip content={<ChartTooltip formatUsd={formatUsd} />} />
-                    {activeProviders.map((provider) => (
+                    {costBreakdownSeries.map((series) => (
                       <Bar
-                        key={provider.key}
-                        dataKey={provider.key}
+                        key={series.key}
+                        dataKey={series.key}
+                        name={series.value}
                         stackId="cost"
-                        fill={provider.color}
+                        fill={series.color}
                         radius={[3, 3, 0, 0]}
                       />
                     ))}
@@ -428,57 +502,63 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.providerBreakdownMtd')}</CardTitle>
-            <CardDescription>{t('dashboard.providerBreakdownDesc')}</CardDescription>
+            <CardTitle className="text-sm">
+              {t('dashboard.breakdownMtdByDimension', {
+                dimension: t(`dashboard.costBreakdownDimensions.${costBreakdownDimension}`),
+              })}
+            </CardTitle>
+            <CardDescription>{t('dashboard.breakdownMtdDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-80 w-full" />
-            ) : providerBreakdown.length === 0 ? (
+            ) : costBreakdownMtd.length === 0 ? (
               <EmptyState
-                title={t('dashboard.empty.noMeasuredProviderSpend')}
+                title={t('dashboard.empty.noMeasuredBreakdownSpend')}
                 description={t('dashboard.empty.configuredSourcesAfterFacts')}
               />
             ) : (
-              <div className="grid gap-4 lg:grid-cols-[1fr_160px] xl:grid-cols-1 2xl:grid-cols-[1fr_160px]">
-                <div className="relative h-56">
+              <div className="grid gap-3 lg:grid-cols-[minmax(10rem,1fr)_max-content]">
+                <div className="relative h-56 w-full">
                   <ResponsiveContainer>
                     <PieChart>
                       <Pie
-                        data={providerBreakdown}
-                        innerRadius={58}
-                        outerRadius={88}
+                        data={costBreakdownMtd}
+                        innerRadius="60%"
+                        outerRadius="90%"
                         dataKey="cost"
-                        nameKey="label"
+                        nameKey="value"
                         stroke="var(--card)"
                         strokeWidth={2}
                       >
-                        {providerBreakdown.map((entry) => (
+                        {costBreakdownMtd.map((entry) => (
                           <Cell key={entry.key} fill={entry.color} />
                         ))}
                       </Pie>
-                      <RechartsTooltip content={<ChartTooltip formatUsd={formatUsd} />} />
+                      <RechartsTooltip
+                        content={<ChartTooltip formatUsd={formatUsd} />}
+                        wrapperStyle={{ zIndex: 20 }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <span className="text-lg font-semibold">{formatUsd(overview.mtdTotal)}</span>
+                  <div className="pointer-events-none absolute inset-0 z-0 flex flex-col items-center justify-center text-center">
+                    <span className="text-base font-semibold">
+                      {formatWholeUsd(overview.mtdTotal, locale)}
+                    </span>
                     <span className="text-muted-foreground text-xs">{t('dashboard.totalMtd')}</span>
                   </div>
                 </div>
-                <div className="grid content-center gap-2">
-                  {providerBreakdown.map((provider) => (
+                <div className="grid max-w-[14rem] content-center gap-2">
+                  {costBreakdownMtd.map((item) => (
                     <div
-                      key={provider.key}
-                      className="flex items-center justify-between gap-3 text-sm"
+                      key={item.key}
+                      className="grid grid-cols-[0.625rem_minmax(0,1fr)_2rem] items-center gap-2 text-sm"
                     >
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 rounded-sm"
-                          style={{ background: provider.color }}
-                        />
-                        {providerDisplayLabel(provider, t)}
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ background: item.color }} />
+                      <span className="block truncate whitespace-nowrap" title={item.value}>
+                        {item.value}
                       </span>
-                      <span className="font-medium">{provider.percent}%</span>
+                      <span className="text-right font-medium">{item.percent}%</span>
                     </div>
                   ))}
                 </div>
@@ -633,21 +713,6 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <SectionTitle title={t('dashboard.sections.databricksCostDetail')} />
-      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {skuBuckets.map((bucket) => (
-          <SkuCard
-            key={bucket.label}
-            label={bucket.label}
-            costUsd={bucket.costUsd}
-            percent={bucket.percent}
-            color={PROVIDERS.databricks.color}
-            formatUsd={formatUsd}
-            loading={current.isLoading}
-          />
-        ))}
-      </div>
-
       <SectionTitle title={t('dashboard.sections.budgetTrackingTaggingHealth')} />
       <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         <Card>
@@ -702,8 +767,37 @@ export function Dashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">{t('dashboard.taggingCoverage')}</CardTitle>
-            <CardDescription>{t('dashboard.taggingCoverageDesc')}</CardDescription>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm">{t('dashboard.taggingCoverage')}</CardTitle>
+                <CardDescription>{t('dashboard.taggingCoverageDesc')}</CardDescription>
+              </div>
+              {sortedCoverage.length > coveragePageSize ? (
+                <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setCoveragePage((p) => Math.max(0, p - 1))}
+                    disabled={coveragePage === 0}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="whitespace-nowrap tabular-nums">
+                    {coveragePage + 1} / {coveragePageCount}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setCoveragePage((p) => Math.min(coveragePageCount - 1, p + 1))}
+                    disabled={coveragePage >= coveragePageCount - 1}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3">
@@ -712,25 +806,52 @@ export function Dashboard() {
                   title={t('dashboard.empty.noProviders')}
                   description={t('dashboard.empty.enableSourcesForCoverage')}
                 />
+              ) : visibleCoverage.length === 0 ? (
+                activeProviders.map((provider) => (
+                  <div key={provider.key}>
+                    <div className="mb-1 flex items-center justify-between text-sm">
+                      <span className="inline-flex items-center gap-2">
+                        <Tags className="h-3.5 w-3.5" />
+                        {providerDisplayLabel(provider, t)}
+                      </span>
+                      <span className="text-muted-foreground">{t('dashboard.notMeasured')}</span>
+                    </div>
+                    <Progress value={0} />
+                  </div>
+                ))
               ) : (
-                activeProviders.map((provider) => {
-                  const providerCoverage = coverageRows.find(
-                    (row) => normalizeProvider(row.providerName) === provider.key,
-                  );
+                visibleCoverage.map((row) => {
+                  const providerKey = normalizeProvider(row.providerName);
+                  const provider =
+                    activeProviders.find((p) => p.key === providerKey) ?? PROVIDERS[providerKey];
+                  const subId = row.subAccountId?.trim() || '';
+                  const subName = row.subAccountName?.trim() || '';
+                  const subLabel = subId || subName || t('dashboard.notAvailable');
+                  const tooltipText = subName && subName !== subId ? subName : null;
+                  const label = `${providerDisplayLabel(provider, t)} (${subLabel})`;
                   return (
-                    <div key={provider.key}>
+                    <div
+                      key={`${row.dataSourceId}-${row.providerName}-${row.subAccountId ?? 'na'}`}
+                    >
                       <div className="mb-1 flex items-center justify-between text-sm">
                         <span className="inline-flex items-center gap-2">
                           <Tags className="h-3.5 w-3.5" />
-                          {providerDisplayLabel(provider, t)}
+                          {tooltipText ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-help">{label}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{tooltipText}</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            label
+                          )}
                         </span>
                         <span className="text-muted-foreground">
-                          {providerCoverage
-                            ? `${Math.round(providerCoverage.tagCoveragePct)}%`
-                            : t('dashboard.notMeasured')}
+                          {`${Math.round(row.tagCoveragePct)}%`}
                         </span>
                       </div>
-                      <Progress value={providerCoverage?.tagCoveragePct ?? 0} />
+                      <Progress value={row.tagCoveragePct} />
                     </div>
                   );
                 })
@@ -918,38 +1039,6 @@ function SeverityBadge({ severity }: { severity: Anomaly['severity'] }) {
   return <Badge variant="outline">{t('dashboard.severity.medium')}</Badge>;
 }
 
-function SkuCard({
-  label,
-  costUsd,
-  percent,
-  color,
-  formatUsd,
-  loading,
-}: {
-  label: string;
-  costUsd: number;
-  percent: number;
-  color: string;
-  formatUsd: (value: number) => string;
-  loading?: boolean;
-}) {
-  return (
-    <Card className="overflow-hidden">
-      <div className="h-1" style={{ background: color }} />
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl">
-          {loading ? <Skeleton className="h-7 w-20" /> : formatUsd(costUsd)}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Progress value={percent} />
-        <p className="text-muted-foreground mt-2 mb-0 text-right text-xs">{Math.round(percent)}%</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function normalizeProvider(value: string): ProviderKey {
   const lower = value.toLowerCase();
   if (lower.includes('databricks')) return 'databricks';
@@ -1016,15 +1105,60 @@ function monthlyTotals(rows: FocusOverviewDailyRow[]): Map<string, number> {
   return totals;
 }
 
+interface CostBreakdownSeriesResult {
+  series: CostBreakdownSeriesMeta[];
+  bucketKeyOf: (row: FocusOverviewDailyRow) => string;
+}
+
+function buildCostBreakdownSeries(
+  rows: FocusOverviewDailyRow[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
+  otherLabel: string,
+): CostBreakdownSeriesResult {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const value = keyOf(row);
+    totals.set(value, (totals.get(value) ?? 0) + row.costUsd);
+  }
+  const sorted = Array.from(totals.entries()).sort((a, b) => b[1] - a[1]);
+  const topEntries = sorted.slice(0, COST_BREAKDOWN_SERIES_LIMIT);
+  const restEntries = sorted.slice(COST_BREAKDOWN_SERIES_LIMIT);
+  const topValues = new Set(topEntries.map(([v]) => v));
+
+  const series: CostBreakdownSeriesMeta[] = topEntries.map(([value], index) => ({
+    key: `series_${index}`,
+    value,
+    color:
+      COST_BREAKDOWN_PALETTE[index % COST_BREAKDOWN_PALETTE.length] ?? COST_BREAKDOWN_OTHER_COLOR,
+  }));
+
+  const restTotal = restEntries.reduce((sum, [, cost]) => sum + cost, 0);
+  if (restTotal > 0) {
+    series.push({
+      key: 'series_other',
+      value: otherLabel,
+      color: COST_BREAKDOWN_OTHER_COLOR,
+    });
+  }
+
+  const bucketKeyOf = (row: FocusOverviewDailyRow): string => {
+    const value = keyOf(row);
+    return topValues.has(value) ? value : otherLabel;
+  };
+
+  return { series, bucketKeyOf };
+}
+
 function buildTrendData(
   rows: FocusOverviewDailyRow[],
-  providers: ProviderMeta[],
+  seriesItems: CostBreakdownSeriesMeta[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
   forecast: number,
   locale: string,
   t: TFunction,
 ) {
   const now = new Date();
-  const totals = monthlyTotalsByProvider(rows);
+  const totals = monthlyTotalsBy(rows, keyOf);
   const months = Array.from({ length: 12 }, (_, index) => {
     const date = new Date(now.getFullYear(), now.getMonth() - 11 + index, 1);
     return monthKey(date);
@@ -1034,8 +1168,8 @@ function buildTrendData(
       label: monthLabel(key, locale),
       forecast: false,
     };
-    for (const provider of providers) {
-      record[provider.key] = totals.get(`${key}:${provider.key}`) ?? 0;
+    for (const series of seriesItems) {
+      record[series.key] = totals.get(`${key}:${series.value}`) ?? 0;
     }
     return record;
   });
@@ -1043,40 +1177,54 @@ function buildTrendData(
     label: t('dashboard.forecast'),
     forecast: true,
   };
-  for (const provider of providers) {
-    const currentMonthCost = totals.get(`${monthKey(now)}:${provider.key}`) ?? 0;
-    const totalMtd = providers.reduce(
-      (sum, item) => sum + (totals.get(`${monthKey(now)}:${item.key}`) ?? 0),
-      0,
-    );
-    forecastRecord[provider.key] = totalMtd > 0 ? forecast * (currentMonthCost / totalMtd) : 0;
+  const currentMonthKey = monthKey(now);
+  const totalMtd = seriesItems.reduce(
+    (sum, item) => sum + (totals.get(`${currentMonthKey}:${item.value}`) ?? 0),
+    0,
+  );
+  for (const series of seriesItems) {
+    const currentMonthCost = totals.get(`${currentMonthKey}:${series.value}`) ?? 0;
+    forecastRecord[series.key] = totalMtd > 0 ? forecast * (currentMonthCost / totalMtd) : 0;
   }
   return [...data, forecastRecord];
 }
 
-function monthlyTotalsByProvider(rows: FocusOverviewDailyRow[]): Map<string, number> {
-  const totals = new Map<string, number>();
-  for (const row of rows) {
-    const key = `${row.usageDate.slice(0, 7)}:${normalizeProvider(row.providerName)}`;
-    totals.set(key, (totals.get(key) ?? 0) + row.costUsd);
-  }
-  return totals;
-}
-
-function buildProviderBreakdown(providers: ProviderMeta[], dailyRows: FocusOverviewDailyRow[]) {
+function buildCostBreakdownMtd(
+  seriesItems: CostBreakdownSeriesMeta[],
+  rows: FocusOverviewDailyRow[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
+) {
   const currentMonth = monthKey(new Date());
-  const totals = monthlyTotalsByProvider(dailyRows);
-  const breakdownRows = providers
-    .map((provider) => ({
-      ...provider,
-      cost: totals.get(`${currentMonth}:${provider.key}`) ?? 0,
+  const totals = monthlyTotalsBy(rows, keyOf);
+  const breakdownRows = seriesItems
+    .map((series) => ({
+      ...series,
+      cost: totals.get(`${currentMonth}:${series.value}`) ?? 0,
     }))
-    .filter((provider) => provider.cost > 0);
+    .filter((series) => series.cost > 0)
+    .sort((a, b) => b.cost - a.cost);
   const total = breakdownRows.reduce((sum, row) => sum + row.cost, 0);
   return breakdownRows.map((row) => ({
     ...row,
     percent: total > 0 ? Math.round((row.cost / total) * 100) : 0,
   }));
+}
+
+function costBreakdownValue(row: FocusOverviewDailyRow, dimension: CostBreakdownDimension): string {
+  const value = row[dimension]?.trim();
+  return value || 'Unknown';
+}
+
+function monthlyTotalsBy(
+  rows: FocusOverviewDailyRow[],
+  keyOf: (row: FocusOverviewDailyRow) => string,
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    const key = `${row.usageDate.slice(0, 7)}:${keyOf(row)}`;
+    totals.set(key, (totals.get(key) ?? 0) + row.costUsd);
+  }
+  return totals;
 }
 
 function sumRecentDays(rows: FocusOverviewDailyRow[], days: number): number {
@@ -1132,21 +1280,6 @@ function cleanSkuName(value: string): string {
     .replace(/^ENTERPRISE_/, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function bucketSkus(rows: FocusOverviewSkuRow[], t: TFunction) {
-  const databricksRows = rows.filter((row) => normalizeProvider(row.providerName) === 'databricks');
-  const total = databricksRows.reduce((sum, row) => sum + row.costUsd, 0);
-  return SKU_BUCKETS.map((bucket) => {
-    const costUsd = databricksRows
-      .filter((row) => bucket.match(row.skuName.toUpperCase()))
-      .reduce((sum, row) => sum + row.costUsd, 0);
-    return {
-      label: t(`dashboard.skuBuckets.${bucket.label}`),
-      costUsd,
-      percent: total > 0 ? (costUsd / total) * 100 : 0,
-    };
-  });
 }
 
 function buildRecommendations(
@@ -1256,6 +1389,21 @@ function formatLastUpdated(historyUpdatedAt: number, currentUpdatedAt: number, l
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(timestamp));
+}
+
+const wholeUsdFormatters = new Map<string, Intl.NumberFormat>();
+function formatWholeUsd(value: number, locale: string): string {
+  let fmt = wholeUsdFormatters.get(locale);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    });
+    wholeUsdFormatters.set(locale, fmt);
+  }
+  return fmt.format(value);
 }
 
 function shortUsd(value: number): string {
