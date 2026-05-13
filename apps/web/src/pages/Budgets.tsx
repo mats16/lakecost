@@ -2,6 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import {
   Alert,
   AlertDescription,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Button,
   Card,
   CardContent,
@@ -39,23 +47,12 @@ import {
   BudgetScopeTypeSchema,
   BudgetPeriodSchema,
   type Budget,
-  type CreateBudgetInput,
   type UpdateBudgetInput,
 } from '@finlake/shared';
 import { useCurrencyUsd, useI18n } from '../i18n';
 
 const SCOPE_OPTIONS = BudgetScopeTypeSchema.options;
 const PERIOD_OPTIONS = BudgetPeriodSchema.options;
-
-type BudgetFormValues = {
-  name: string;
-  amountUsd: number;
-  scopeType: CreateBudgetInput['scopeType'];
-  scopeValue: string;
-  period: CreateBudgetInput['period'];
-  thresholdsPct: number[];
-  notifyEmails: string[];
-};
 
 export function Budgets() {
   const { t } = useI18n();
@@ -66,6 +63,7 @@ export function Budgets() {
   const deleteBudget = useDeleteBudget();
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Budget | null>(null);
 
   const openCreateModal = () => {
     create.reset();
@@ -77,10 +75,16 @@ export function Budgets() {
     setEditingBudget(budget);
   };
 
-  const onDeleteBudget = (budget: Budget) => {
-    if (!window.confirm(t('budgets.confirmDelete', { name: budget.name }))) return;
+  const requestDelete = (budget: Budget) => {
     deleteBudget.reset();
-    deleteBudget.mutate(budget.id);
+    setPendingDelete(budget);
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDelete) return;
+    deleteBudget.mutate(pendingDelete.id, {
+      onSettled: () => setPendingDelete(null),
+    });
   };
 
   const isDeleting = (id: string) => deleteBudget.isPending && deleteBudget.variables === id;
@@ -129,7 +133,9 @@ export function Budgets() {
                   <TableHead>{t('budgets.columns.scope')}</TableHead>
                   <TableHead>{t('budgets.columns.period')}</TableHead>
                   <TableHead className="text-right">{t('budgets.columns.amount')}</TableHead>
-                  <TableHead className="text-right" aria-label={t('budgets.columns.actions')} />
+                  <TableHead className="text-right">
+                    <span className="sr-only">{t('budgets.columns.actions')}</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -159,7 +165,7 @@ export function Budgets() {
                           variant="secondary"
                           size="sm"
                           aria-label={t('budgets.deleteBudgetNamed', { name: b.name })}
-                          onClick={() => onDeleteBudget(b)}
+                          onClick={() => requestDelete(b)}
                           disabled={isDeleting(b.id)}
                         >
                           {isDeleting(b.id) ? (
@@ -204,6 +210,44 @@ export function Budgets() {
           await update.mutateAsync({ id: editingBudget.id, input: values });
         }}
       />
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(next) => {
+          if (!next && !deleteBudget.isPending) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('budgets.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? t('budgets.deleteConfirmDescription', { name: pendingDelete.name })
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteBudget.isPending}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                confirmDelete();
+              }}
+              disabled={deleteBudget.isPending}
+            >
+              {deleteBudget.isPending ? (
+                <>
+                  <Spinner /> {t('budgets.deleting')}
+                </>
+              ) : (
+                t('budgets.confirmDeleteAction')
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -231,9 +275,9 @@ function BudgetFormDialog({
 
   const [name, setName] = useState('');
   const [amountUsd, setAmountUsd] = useState(1000);
-  const [scopeType, setScopeType] = useState<BudgetFormValues['scopeType']>('provider');
+  const [scopeType, setScopeType] = useState<UpdateBudgetInput['scopeType']>('provider');
   const [scopeValue, setScopeValue] = useState('*');
-  const [period, setPeriod] = useState<BudgetFormValues['period']>('monthly');
+  const [period, setPeriod] = useState<UpdateBudgetInput['period']>('monthly');
   const scopeValuePlaceholder = t(`budgets.scope.placeholder.${scopeType}`);
 
   useEffect(() => {
@@ -247,16 +291,20 @@ function BudgetFormDialog({
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await onSubmit({
-      name,
-      scopeType,
-      scopeValue,
-      amountUsd,
-      period,
-      thresholdsPct: budget?.thresholdsPct ?? [80, 100],
-      notifyEmails: budget?.notifyEmails ?? [],
-    });
-    onClose();
+    try {
+      await onSubmit({
+        name,
+        scopeType,
+        scopeValue,
+        amountUsd,
+        period,
+        thresholdsPct: budget?.thresholdsPct ?? [80, 100],
+        notifyEmails: budget?.notifyEmails ?? [],
+      });
+      onClose();
+    } catch {
+      // Surface via parent mutation.isError; keep dialog open.
+    }
   };
 
   const blockWhilePending = (event: Event) => {
@@ -317,7 +365,7 @@ function BudgetFormDialog({
                 <Select
                   value={scopeType}
                   disabled={pending}
-                  onValueChange={(v) => setScopeType(v as BudgetFormValues['scopeType'])}
+                  onValueChange={(v) => setScopeType(v as UpdateBudgetInput['scopeType'])}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -337,7 +385,7 @@ function BudgetFormDialog({
                 <Select
                   value={period}
                   disabled={pending}
-                  onValueChange={(v) => setPeriod(v as BudgetFormValues['period'])}
+                  onValueChange={(v) => setPeriod(v as UpdateBudgetInput['period'])}
                 >
                   <SelectTrigger>
                     <SelectValue />

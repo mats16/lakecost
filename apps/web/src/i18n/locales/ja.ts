@@ -243,7 +243,9 @@ export const ja: Dictionary = {
     editBudget: '予算を編集',
     editBudgetNamed: '予算 {name} を編集',
     deleteBudgetNamed: '予算 {name} を削除',
-    confirmDelete: '予算 {name} を削除しますか？',
+    deleteConfirmTitle: '予算を削除しますか？',
+    deleteConfirmDescription: 'この操作は取り消せません。予算 {name} は完全に削除されます。',
+    confirmDeleteAction: '削除する',
     namePlaceholder: '名前',
     amountPlaceholder: '金額 (USD)',
     scope: {

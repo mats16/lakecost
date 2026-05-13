@@ -239,7 +239,10 @@ export const en = {
     editBudget: 'Edit budget',
     editBudgetNamed: 'Edit budget {name}',
     deleteBudgetNamed: 'Delete budget {name}',
-    confirmDelete: 'Delete budget {name}?',
+    deleteConfirmTitle: 'Delete budget?',
+    deleteConfirmDescription:
+      'This action cannot be undone. Budget {name} will be permanently deleted.',
+    confirmDeleteAction: 'Delete budget',
     namePlaceholder: 'Name',
     amountPlaceholder: 'Amount (USD)',
     scope: {

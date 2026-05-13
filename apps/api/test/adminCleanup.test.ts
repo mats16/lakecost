@@ -119,6 +119,7 @@ function fakeDb(settings: Record<string, string>): DatabaseClient {
         create: async () => {
           throw new Error('not implemented');
         },
+        update: async () => null,
         delete: async () => {},
       },
       userPreferences: {
