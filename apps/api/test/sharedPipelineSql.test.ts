@@ -91,10 +91,7 @@ test('buildFocusSilverPipelineSql keeps Databricks SkuPriceDetails as a map', ()
     sql,
     /`x_Photon` BOOLEAN COMMENT 'Databricks extension indicating whether the usage used Photon\.'/,
   );
-  assert.match(
-    sql,
-    /`x_NodeType` STRING COMMENT 'Databricks extension containing the node type from usage metadata when available\.'/,
-  );
+  assert.doesNotMatch(sql, /`x_NodeType`/);
   assert.match(sql, /map_from_entries\(/);
   assert.match(sql, /map_concat\(/);
   assert.match(sql, /\) AS SkuPriceDetails/);
@@ -111,7 +108,6 @@ test('buildFocusSilverPipelineSql keeps Databricks SkuPriceDetails as a map', ()
   assert.match(sql, /kv -> kv\.value IS NOT NULL/);
   assert.match(sql, /CAST\(u\.product_features\.is_serverless AS BOOLEAN\) AS x_Serverless/);
   assert.match(sql, /CAST\(u\.product_features\.is_photon AS BOOLEAN\) AS x_Photon/);
-  assert.match(sql, /CAST\(u\.usage_metadata\.node_type AS STRING\) AS x_NodeType/);
   assert.doesNotMatch(sql, /to_json\(\s*map_from_entries/);
   assert.doesNotMatch(sql, /HostProviderName/);
   assert.doesNotMatch(sql, /ServiceProviderName/);
@@ -251,15 +247,15 @@ test('buildUsageGoldSql unions source silver tables with provider extension colu
   assert.match(sql, /`x_Operation`,/);
   assert.match(sql, /`x_ServiceCode`,/);
   assert.match(sql, /`x_Serverless`,/);
-  assert.match(sql, /`x_Photon`,/);
-  assert.match(sql, /`x_NodeType`/);
+  assert.match(sql, /`x_Photon`/);
+  assert.doesNotMatch(sql, /`x_NodeType`/);
   assert.match(
     sql,
-    /CAST\(NULL AS MAP<STRING, DOUBLE>\) AS `x_Discounts`,\s+CAST\(NULL AS STRING\) AS `x_Operation`,\s+CAST\(NULL AS STRING\) AS `x_ServiceCode`,\s+`x_Serverless`,\s+`x_Photon`,\s+`x_NodeType`\s+FROM `finops`\.`silver`\.`databricks_usage`/,
+    /CAST\(NULL AS MAP<STRING, DOUBLE>\) AS `x_Discounts`,\s+CAST\(NULL AS STRING\) AS `x_Operation`,\s+CAST\(NULL AS STRING\) AS `x_ServiceCode`,\s+`x_Serverless`,\s+`x_Photon`\s+FROM `finops`\.`silver`\.`databricks_usage`/,
   );
   assert.match(
     sql,
-    /`x_Discounts`,\s+`x_Operation`,\s+`x_ServiceCode`,\s+CAST\(NULL AS BOOLEAN\) AS `x_Serverless`,\s+CAST\(NULL AS BOOLEAN\) AS `x_Photon`,\s+CAST\(NULL AS STRING\) AS `x_NodeType`\s+FROM `finops`\.`silver`\.`aws_123456789012_usage`/,
+    /`x_Discounts`,\s+`x_Operation`,\s+`x_ServiceCode`,\s+CAST\(NULL AS BOOLEAN\) AS `x_Serverless`,\s+CAST\(NULL AS BOOLEAN\) AS `x_Photon`\s+FROM `finops`\.`silver`\.`aws_123456789012_usage`/,
   );
   assert.match(sql, /CREATE OR REFRESH MATERIALIZED VIEW `gold`\.`usage_daily`/);
   assert.match(sql, /FROM `finops`\.`silver`\.`databricks_usage`/);

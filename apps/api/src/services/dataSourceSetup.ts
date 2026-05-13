@@ -131,7 +131,6 @@ const AWS_EXTENSION_COLUMNS = [
 const DATABRICKS_EXTENSION_COLUMNS = [
   { name: 'x_Serverless', type: 'BOOLEAN' },
   { name: 'x_Photon', type: 'BOOLEAN' },
-  { name: 'x_NodeType', type: 'STRING' },
 ] as const;
 const USAGE_DETAIL_COLUMNS = [
   ...FOCUS_12_BILLING_COLUMNS,

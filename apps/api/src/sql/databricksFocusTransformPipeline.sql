@@ -144,8 +144,7 @@ CREATE OR REFRESH MATERIALIZED VIEW `${table_name}` (
   `SubAccountType` STRING COMMENT 'Provider-assigned type of the sub account grouping.',
   `Tags` MAP<STRING, STRING> COMMENT 'Provider-defined and user-defined key-value tags evaluated for the charge.',
   `x_Serverless` BOOLEAN COMMENT 'Databricks extension indicating whether the usage was serverless.',
-  `x_Photon` BOOLEAN COMMENT 'Databricks extension indicating whether the usage used Photon.',
-  `x_NodeType` STRING COMMENT 'Databricks extension containing the node type from usage metadata when available.'
+  `x_Photon` BOOLEAN COMMENT 'Databricks extension indicating whether the usage used Photon.'
 ) AS
 SELECT
   CAST(NULL AS STRING) AS AvailabilityZone,
@@ -439,8 +438,7 @@ SELECT
   'Workspace' AS SubAccountType,
   u.custom_tags AS Tags,
   CAST(u.product_features.is_serverless AS BOOLEAN) AS x_Serverless,
-  CAST(u.product_features.is_photon AS BOOLEAN) AS x_Photon,
-  CAST(u.usage_metadata.node_type AS STRING) AS x_NodeType
+  CAST(u.product_features.is_photon AS BOOLEAN) AS x_Photon
 FROM usage_with_pricing u;
 
 CREATE OR REFRESH MATERIALIZED VIEW `${gold_schema_name}`.`${table_name}_daily`
