@@ -79,6 +79,10 @@ export const ja: Dictionary = {
     send: '送信',
     newConversation: '新しい会話',
     openInDatabricks: 'Genie Space を開く',
+    iframeTitle: 'FinLake Genie Space',
+    workspaceUrlMissingTitle: 'ワークスペース URL を取得できません',
+    workspaceUrlMissingDesc:
+      'Genie Space ID は保存されていますが、Databricks ワークスペース URL を取得できません。',
     actions: {
       open: 'Genie の操作メニューを開く',
     },

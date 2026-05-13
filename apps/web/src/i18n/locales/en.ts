@@ -77,6 +77,10 @@ export const en = {
     send: 'Send',
     newConversation: 'New conversation',
     openInDatabricks: 'Open Genie Space',
+    iframeTitle: 'FinLake Genie Space',
+    workspaceUrlMissingTitle: 'Workspace URL unavailable',
+    workspaceUrlMissingDesc:
+      'FinLake has a saved Genie Space ID, but the Databricks workspace URL is not available.',
     actions: {
       open: 'Open Genie actions',
     },

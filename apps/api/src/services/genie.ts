@@ -42,6 +42,18 @@ const GENIE_POLL_TIMEOUT_MS = 2 * 60 * 1000;
 const GENIE_POLL_INITIAL_DELAY_MS = 1_000;
 const GENIE_POLL_MAX_DELAY_MS = 5_000;
 const GENIE_TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED']);
+const GENIE_TEXT_INSTRUCTIONS = [
+  'You are FinOps Agent, a FinOps and billing analytics specialist for finance, platform, engineering, and product teams. Use only the attached FinLake tables plus general FinOps knowledge; do not claim internet access or rely on external facts. Answer in the same language as the user.',
+  'Use the FinOps Framework as the operating model. Apply its principles: teams collaborate, everyone takes ownership of cloud usage, reports are accessible and timely, decisions are driven by business value, a central FinOps practice enables teams, and teams take advantage of the variable cloud cost model.',
+  'Frame analysis through Inform, Optimize, and Operate. Inform: allocation, showback/chargeback, trends, forecasts, anomalies, and unit economics. Optimize: identify major cost drivers, waste, rate/commitment opportunities, rightsizing candidates, and architecture tradeoffs. Operate: recommend governance, ownership, budgets, alerts, recurring KPIs, and data-quality improvements.',
+  'For cost metrics, default to EffectiveCost as the primary FinOps measure. Use ListCost for public or undiscounted price analysis, ContractedCost for negotiated-rate analysis, and BilledCost for invoice-oriented questions. Report BillingCurrency; if multiple currencies appear, group or caveat by BillingCurrency and do not convert unless the data supports conversion.',
+  'Table selection: start with the gold usage_daily table for cost summaries, day-level trends, anomalies, month-over-month comparisons, provider/service/SKU breakdowns, and workspace or sub-account analysis. It has x_ChargeDate, x_BillingMonth, BillingAccountId, BillingAccountName, BillingCurrency, SubAccountId, SubAccountName, SubAccountType, ProviderName, ServiceCategory, ServiceSubcategory, ServiceName, SkuId, SkuMeter, ListCost, BilledCost, ContractedCost, and EffectiveCost.',
+  'Use the gold usage_monthly table when the question needs resource-level or ownership context: ResourceType, ResourceId, ResourceName, Tags, top resources, showback, chargeback, unallocated spend, or tag-based analysis. It is monthly-grain; do not use it for daily trend questions.',
+  'Use the silver usage table for record-level drill-down, audit or troubleshooting questions, fields missing from gold tables, charge-period detail, or validating a gold aggregate. This table can be large, so filter by date, account, provider, service, SKU, resource, or tag and avoid SELECT *.',
+  "Tags is a MAP<STRING, STRING>; default governed tag keys are CostCenter, Project, and Environment. Read or filter tags with expressions such as Tags['CostCenter'], Tags['Project'], or Tags['Environment']. Treat null, empty, or missing values for these keys as unallocated spend and recommend ownership/tagging remediation when relevant.",
+  'When producing SQL, always bound cost queries by date or billing month, aggregate before ranking, order top-N results by the selected cost metric, and use LIMIT for detail lists. Do not invent column names; if needed fields are absent, state the limitation and suggest the data needed.',
+  'When answering, lead with the direct answer and quantified numbers, then show the main drivers, assumptions/date range, and concrete next actions. Separate observed facts from recommendations. Do not infer utilization, performance, or contractual commitment inventory from billing tables alone.',
+] as const;
 
 export async function setupFinLakeGenieSpace(
   env: Env,
@@ -421,11 +433,21 @@ function buildSerializedSpace(tableIdentifiers: string[]) {
       sample_questions: [
         {
           id: '01f1a100000000000000000000000001',
-          question: ['What was total cost last month?'],
+          question: ['What drove EffectiveCost last month?'],
         },
         {
           id: '01f1a100000000000000000000000002',
-          question: ['Show daily usage cost by provider for the last 30 days.'],
+          question: ['Show daily EffectiveCost by provider and service for the last 30 days.'],
+        },
+        {
+          id: '01f1a100000000000000000000000003',
+          question: ['Which unallocated or poorly tagged resources should we prioritize?'],
+        },
+        {
+          id: '01f1a100000000000000000000000004',
+          question: [
+            'List top resources by EffectiveCost this month with recommended next actions.',
+          ],
         },
       ],
     },
@@ -438,13 +460,8 @@ function buildSerializedSpace(tableIdentifiers: string[]) {
     instructions: {
       text_instructions: [
         {
-          id: '01f1a100000000000000000000000003',
-          content: [
-            'Use the gold usage_daily table for trend and cost summary questions across day-level dimensions. ',
-            'Use the gold usage_monthly table for resource-level (ResourceType/ResourceId/ResourceName) cost questions and Tag-based showback/chargeback. ',
-            'Use the silver usage table when the user asks for record-level usage details. ',
-            'Treat cost values as USD unless the user explicitly asks otherwise.',
-          ],
+          id: '01f1a100000000000000000000000005',
+          content: [...GENIE_TEXT_INSTRUCTIONS],
         },
       ],
     },
@@ -453,12 +470,12 @@ function buildSerializedSpace(tableIdentifiers: string[]) {
 
 function descriptionForTable(identifier: string): string {
   if (identifier.endsWith(`.${GOLD_USAGE_TABLES.monthly}`)) {
-    return 'Gold monthly usage cost facts aggregated at the resource level (ResourceType, ResourceId, ResourceName) with the latest Tags per resource.';
+    return 'Gold FOCUS monthly usage rollup with provider, service, SKU, account, resource identifiers, latest Tags, and List/Billed/Contracted/Effective cost columns. Best for resource-level analysis, ownership, showback, chargeback, and tag allocation.';
   }
   if (identifier.endsWith(`.${GOLD_USAGE_TABLES.daily}`)) {
-    return 'Gold daily usage cost facts aggregated for FinOps analysis.';
+    return 'Gold FOCUS daily usage rollup with x_ChargeDate, x_BillingMonth, provider, service, SKU, account, sub-account, and List/Billed/Contracted/Effective cost columns. Best for trends, anomalies, summaries, and service/provider breakdowns.';
   }
-  return 'Silver usage facts normalized for FinLake exploration.';
+  return 'Silver FOCUS 1.2 usage detail view unifying enabled billing data sources. Best for record-level drill-down, audit, troubleshooting, detailed charge-period analysis, and validation of gold aggregates.';
 }
 
 async function emitQueryResultsForMessage(
