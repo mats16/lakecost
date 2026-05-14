@@ -5,7 +5,7 @@ export const en = {
     inform: 'Inform',
     overview: 'Overview',
     configure: 'Configure',
-    dataSources: 'Data sources',
+    dataSources: 'Integration',
     credentials: 'Credentials',
     externalData: 'External Data',
     externalLocations: 'External Locations',

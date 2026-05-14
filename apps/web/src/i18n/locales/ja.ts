@@ -7,7 +7,7 @@ export const ja: Dictionary = {
     inform: '可視化',
     overview: '概要',
     configure: '構成',
-    dataSources: 'データソース',
+    dataSources: 'Integration',
     credentials: '資格情報',
     externalData: 'External Data',
     externalLocations: 'External Locations',
