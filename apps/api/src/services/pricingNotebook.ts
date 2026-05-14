@@ -3,9 +3,9 @@ import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
   AWS_EC2_PRICING_TABLE_DEFAULT,
   AWS_RDS_PRICING_TABLE_DEFAULT,
-  CATALOG_SETTING_KEY,
   DOWNLOADS_VOLUME_DEFAULT,
   PRICING_SCHEMA_DEFAULT,
+  catalogFromSettings,
   isActivePricingRunStatus,
   medallionSchemaNamesFromSettings,
   quoteIdent,
@@ -115,21 +115,15 @@ export async function pricingNotebookState(
   env: Env,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookListResponse> {
-  const [settingsRows, pricingRows] = await Promise.all([
-    db.repos.appSettings.list(),
-    Promise.all(
-      AWS_PRICING_SERVICES.map((service) =>
-        db.repos.pricingData.get(AWS_PROVIDER, service.service),
-      ),
-    ),
-  ]);
+  const pricingRows = await Promise.all(
+    AWS_PRICING_SERVICES.map((service) => db.repos.pricingData.get(AWS_PROVIDER, service.service)),
+  );
   const resolvedRows = await Promise.all(
     pricingRows.map((row) => syncActivePricingRun(env, db, row ?? null, deps)),
   );
-  const settings = settingsToRecord(settingsRows);
   return {
     items: AWS_PRICING_SERVICES.map((service, index) =>
-      stateFromSettings(settings, resolvedRows[index] ?? null, service),
+      stateFromPricingData(resolvedRows[index] ?? null, service),
     ),
   };
 }
@@ -141,12 +135,9 @@ export async function pricingNotebookStateById(
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookState> {
   const service = awsPricingServiceById(id);
-  const [settingsRows, pricingRow] = await Promise.all([
-    db.repos.appSettings.list(),
-    db.repos.pricingData.get(AWS_PROVIDER, service.service),
-  ]);
+  const pricingRow = await db.repos.pricingData.get(AWS_PROVIDER, service.service);
   const resolvedRow = await syncActivePricingRun(env, db, pricingRow, deps);
-  return stateFromSettings(settingsToRecord(settingsRows), resolvedRow, service);
+  return stateFromPricingData(resolvedRow, service);
 }
 
 interface PricingNotebookDeps {
@@ -171,7 +162,7 @@ export async function setupPricingNotebookWithDeps(
   id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookSetupResult> {
-  const { settings, service, pricingData, notebookWorkspacePath } = await upsertPricingNotebook(
+  const { service, pricingData, notebookWorkspacePath } = await upsertPricingNotebook(
     env,
     db,
     userToken,
@@ -179,7 +170,7 @@ export async function setupPricingNotebookWithDeps(
     deps,
   );
   return {
-    ...stateFromSettings(settings, pricingData, service),
+    ...stateFromPricingData(pricingData, service),
     notebookWorkspacePath,
     warnings: [],
   };
@@ -222,7 +213,6 @@ export async function deletePricingNotebookData(
 }
 
 interface UpsertPricingNotebookResult {
-  settings: Record<string, string | undefined>;
   service: AwsPricingService;
   pricingData: PricingData;
   notebookWorkspacePath: string;
@@ -240,17 +230,17 @@ async function upsertPricingNotebook(
     db.repos.appSettings.list().then(settingsToRecord),
     db.repos.pricingData.get(AWS_PROVIDER, service.service),
   ]);
-  const state = stateFromSettings(settings, current, service);
-  if (!state.catalog) {
+  const catalog = catalogFromSettings(settings);
+  if (!catalog) {
     throw new DataSourceSetupError('Main catalog is not configured.', 400);
   }
   const medallion = medallionSchemaNamesFromSettings(settings);
   const targetTable =
-    current?.table ?? unquotedFqn(state.catalog, PRICING_SCHEMA_DEFAULT, service.tableName);
+    current?.table ?? unquotedFqn(catalog, PRICING_SCHEMA_DEFAULT, service.tableName);
   const rawDataPath =
-    current?.rawDataPath ?? pricingDownloadFilePath(state.catalog, medallion.bronze, service);
+    current?.rawDataPath ?? pricingDownloadFilePath(catalog, medallion.bronze, service);
   const rawDataTable =
-    current?.rawDataTable ?? pricingRawTableFqn(state.catalog, medallion.bronze, service);
+    current?.rawDataTable ?? pricingRawTableFqn(catalog, medallion.bronze, service);
   if (!userToken) {
     throw new DataSourceSetupError('OBO access token required', 401);
   }
@@ -292,13 +282,13 @@ async function upsertPricingNotebook(
     notebookPath: notebookWorkspacePath,
     notebookId,
     metadata: {
-      ...state.metadata,
+      ...(current?.metadata ?? {}),
       source: service.source,
     },
     ...runFieldsFromPricingData(current),
   });
 
-  return { settings, service, pricingData, notebookWorkspacePath };
+  return { service, pricingData, notebookWorkspacePath };
 }
 
 export async function ensurePricingDataForId(
@@ -327,17 +317,14 @@ function isRunnablePricingData(pricingData: PricingData | null): pricingData is 
   );
 }
 
-function stateFromSettings(
-  settings: Record<string, string | undefined>,
+function stateFromPricingData(
   pricingData: Awaited<ReturnType<DatabaseClient['repos']['pricingData']['get']>>,
   service: AwsPricingService,
 ): PricingNotebookState {
-  const catalog = settings[CATALOG_SETTING_KEY]?.trim() || null;
   return {
     id: pricingData?.id ?? service.id,
     provider: pricingData?.provider ?? AWS_PROVIDER,
     service: pricingData?.service ?? service.service,
-    catalog,
     table: pricingData?.table ?? null,
     rawDataTable: pricingData?.rawDataTable ?? null,
     rawDataPath: pricingData?.rawDataPath ?? null,

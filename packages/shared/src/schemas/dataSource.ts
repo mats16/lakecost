@@ -56,6 +56,10 @@ export function catalogUserGroupFromSettings(settings: Record<string, string | u
   return settings[CATALOG_USER_GROUP_SETTING_KEY]?.trim() || CATALOG_USER_GROUP_DEFAULT;
 }
 
+export function catalogFromSettings(settings: Record<string, string | undefined>): string | null {
+  return settings[CATALOG_SETTING_KEY]?.trim() || null;
+}
+
 export const DataSourceIdentifierSchema = z
   .string()
   .min(1)

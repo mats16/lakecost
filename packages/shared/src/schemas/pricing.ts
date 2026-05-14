@@ -39,7 +39,6 @@ export const PricingNotebookStateSchema = z.object({
   id: z.string(),
   provider: z.string(),
   service: z.string(),
-  catalog: z.string().nullable(),
   table: z.string().nullable(),
   rawDataTable: z.string().nullable(),
   rawDataPath: z.string().nullable(),

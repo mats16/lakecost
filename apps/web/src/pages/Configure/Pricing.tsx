@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  CATALOG_SETTING_KEY,
   isActivePricingRunStatus,
   type PricingNotebookState,
   type PricingRunStatus,
@@ -39,6 +40,7 @@ import {
 } from '@databricks/appkit-ui/react';
 import { AlertCircle, ExternalLink, Trash2, UploadCloud } from 'lucide-react';
 import {
+  useAppSettings,
   useMe,
   useDeletePricingNotebook,
   useGetJobRunLink,
@@ -57,12 +59,16 @@ import {
 export function Pricing() {
   const { t } = useI18n();
   const me = useMe();
+  const appSettings = useAppSettings();
   const pricing = usePricingNotebook();
   const runNotebook = useRunNotebook();
   const deletePricing = useDeletePricingNotebook();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const workspaceUrl = me.data?.workspaceUrl ?? null;
+  const catalogConfigured = Boolean(appSettings.data?.settings[CATALOG_SETTING_KEY]?.trim());
+  const isLoading = pricing.isLoading || appSettings.isLoading;
+  const loadError = pricing.error ?? appSettings.error;
   const rows = pricing.data?.items ?? [];
   const selected = rows.find((row) => row.id === selectedId) ?? null;
   const pendingDelete = rows.find((row) => row.id === pendingDeleteId) ?? null;
@@ -102,7 +108,9 @@ export function Pricing() {
         </CardHeader>
         <CardContent>
           <PricingBody
-            pricing={pricing}
+            isLoading={isLoading}
+            loadError={loadError}
+            catalogConfigured={catalogConfigured}
             rows={rows}
             workspaceUrl={workspaceUrl}
             runError={runError}
@@ -170,10 +178,10 @@ export function Pricing() {
   );
 }
 
-type PricingHook = ReturnType<typeof usePricingNotebook>;
-
 function PricingBody({
-  pricing,
+  isLoading,
+  loadError,
+  catalogConfigured,
   rows,
   workspaceUrl,
   runError,
@@ -184,7 +192,9 @@ function PricingBody({
   onRunNotebook,
   onRequestDelete,
 }: {
-  pricing: PricingHook;
+  isLoading: boolean;
+  loadError: unknown;
+  catalogConfigured: boolean;
   rows: PricingNotebookState[];
   workspaceUrl: string | null;
   runError: string | null;
@@ -197,7 +207,7 @@ function PricingBody({
 }) {
   const { t } = useI18n();
 
-  if (pricing.isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-2">
         <Skeleton className="h-10 w-full" />
@@ -206,16 +216,16 @@ function PricingBody({
       </div>
     );
   }
-  if (pricing.error) {
+  if (loadError) {
     return (
       <Alert variant="destructive">
         <AlertCircle />
         <AlertTitle>{t('pricing.loadFailed')}</AlertTitle>
-        <AlertDescription>{messageOf(pricing.error)}</AlertDescription>
+        <AlertDescription>{messageOf(loadError)}</AlertDescription>
       </Alert>
     );
   }
-  if (rows.every((row) => !row.catalog)) {
+  if (!catalogConfigured) {
     return (
       <Alert variant="destructive">
         <AlertCircle />
