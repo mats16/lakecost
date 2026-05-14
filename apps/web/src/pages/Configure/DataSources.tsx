@@ -1,5 +1,11 @@
-import { useMemo, useState } from 'react';
-import { tableLeafName, type DataSource } from '@finlake/shared';
+import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  dataSourceKeyString,
+  isAwsProvider,
+  isDatabricksProvider,
+  type DataSource,
+} from '@finlake/shared';
 import {
   Button,
   cn,
@@ -13,7 +19,6 @@ import {
 import { Pencil } from 'lucide-react';
 import { useCreateDataSource, useDataSources, useDataSourceTemplates } from '../../api/hooks';
 import { DataSourceTile, type TileBadge } from './DataSourceTile';
-import { DataSourceDrawer } from './DataSourceDrawer';
 import { VendorLogo } from './VendorLogo';
 import {
   DATA_SOURCE_TEMPLATES,
@@ -25,7 +30,7 @@ import {
   type DataSourceTemplate,
 } from './dataSourceCatalog';
 import { useI18n } from '../../i18n';
-import type { AwsFocusDraft } from './useAwsFocusForm';
+import { nextTableName } from './utils';
 
 export interface DatabricksFocusDraft {
   templateId: string;
@@ -58,24 +63,20 @@ function canAddMultiple(template: DataSourceTemplate): boolean {
   return template.id === 'aws';
 }
 
-function nextTableName(base: string, rows: DataSource[]): string {
-  const used = new Set(rows.map((row) => tableLeafName(row.tableName)));
-  if (!used.has(base)) return base;
+function detailPathForTemplate(template: DataSourceTemplate): string | null {
+  if (template.id === 'databricks_focus13') return '/integrations/databricks';
+  if (template.id === 'aws') return '/integrations/aws';
+  return null;
+}
 
-  for (let i = 2; i < 1000; i += 1) {
-    const candidate = `${base}_${i}`;
-    if (!used.has(candidate)) return candidate;
-  }
-  return `${base}_${Date.now()}`;
+function detailPathForRow(row: DataSource): string | null {
+  const template = findTemplateForRow(row);
+  return template ? detailPathForTemplate(template) : null;
 }
 
 export function DataSources() {
   const { t } = useI18n();
-  const [openId, setOpenId] = useState<number | null>(null);
-  const [draftAwsSource, setDraftAwsSource] = useState<AwsFocusDraft | null>(null);
-  const [draftDatabricksSource, setDraftDatabricksSource] = useState<DatabricksFocusDraft | null>(
-    null,
-  );
+  const navigate = useNavigate();
   const dataSources = useDataSources();
   const templates = useDataSourceTemplates();
   const createDs = useCreateDataSource();
@@ -87,7 +88,13 @@ export function DataSources() {
   );
 
   const candidates = availableTemplates.filter((tpl) => {
-    if (tpl.id === 'databricks_focus13' && rows.some((row) => row.providerName === 'Databricks')) {
+    if (
+      tpl.id === 'databricks_focus13' &&
+      rows.some((row) => isDatabricksProvider(row.providerName))
+    ) {
+      return false;
+    }
+    if (tpl.id === 'aws' && rows.some((row) => isAwsProvider(row.providerName))) {
       return false;
     }
     return true;
@@ -108,44 +115,25 @@ export function DataSources() {
     }
     const existing = rows.find((row) => rowMatchesTemplate(row, tpl));
     if (existing && !canAddMultiple(tpl)) {
-      setOpenId(existing.id);
+      navigate(detailPathForRow(existing) ?? '/integrations');
+      return;
+    }
+    const detailPath = detailPathForTemplate(tpl);
+    if (detailPath) {
+      navigate(detailPath);
       return;
     }
     const tableName = canAddMultiple(tpl)
       ? nextTableName(input.defaultTableName, rows)
       : input.defaultTableName;
-    if (tpl.id === 'aws') {
-      setOpenId(null);
-      setDraftDatabricksSource(null);
-      setDraftAwsSource({
-        templateId: tpl.id,
-        name: tpl.name,
-        providerName: input.providerName,
-        tableName,
-      });
-      return;
-    }
-    if (tpl.id === 'databricks_focus13') {
-      setOpenId(null);
-      setDraftAwsSource(null);
-      setDraftDatabricksSource({
-        templateId: tpl.id,
-        name: tpl.name,
-        providerName: input.providerName,
-        tableName,
-      });
-      return;
-    }
-    const created = await createDs.mutateAsync({
+    await createDs.mutateAsync({
       templateId: tpl.id,
       name: tpl.name,
       providerName: input.providerName,
       tableName,
       enabled: false,
     });
-    setDraftAwsSource(null);
-    setDraftDatabricksSource(null);
-    setOpenId(created.id);
+    navigate('/integrations');
   };
 
   return (
@@ -177,17 +165,14 @@ export function DataSources() {
                 const registryEntry = getTemplateRegistryEntry(tpl);
                 return (
                   <TableRow
-                    key={row.id}
+                    key={dataSourceKeyString(row)}
                     className="cursor-pointer"
-                    onClick={() => setOpenId(row.id)}
+                    onClick={() => navigate(detailPathForRow(row) ?? '/integrations')}
                   >
                     <TableCell>
                       <div className="flex min-w-56 items-center gap-3">
                         <VendorLogo source={tpl} logo={registryEntry?.logo} size={32} />
-                        <div>
-                          <div className="font-medium">{displayNameForRow(row, tpl)}</div>
-                          <div className="text-muted-foreground text-xs">{row.providerName}</div>
-                        </div>
+                        <div className="font-medium">{displayNameForRow(row, tpl)}</div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -255,22 +240,6 @@ export function DataSources() {
           );
         })}
       </div>
-
-      <DataSourceDrawer
-        dataSourceId={openId}
-        draftAwsSource={draftAwsSource}
-        draftDatabricksSource={draftDatabricksSource}
-        onClose={() => {
-          setOpenId(null);
-          setDraftAwsSource(null);
-          setDraftDatabricksSource(null);
-        }}
-        onCreated={(row) => {
-          setDraftAwsSource(null);
-          setDraftDatabricksSource(null);
-          setOpenId(row.id);
-        }}
-      />
     </>
   );
 }
@@ -283,9 +252,7 @@ function ConnectionStatus({ enabled, label }: { enabled: boolean; label: string 
         enabled ? 'text-(--success)' : 'text-(--warning)',
       )}
     >
-      <span
-        className={cn('h-2 w-2 rounded-full', enabled ? 'bg-(--success)' : 'bg-(--warning)')}
-      />
+      <span className={cn('h-2 w-2 rounded-full', enabled ? 'bg-(--success)' : 'bg-(--warning)')} />
       {label}
     </span>
   );

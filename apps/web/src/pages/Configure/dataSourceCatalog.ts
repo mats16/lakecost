@@ -30,7 +30,7 @@ export interface DataSourceTemplateRegistryEntry {
 }
 
 const DATABRICKS_FOCUS13_INPUT: DataSourceTemplateInputConfig = {
-  providerName: 'Databricks',
+  providerName: 'databricks',
   defaultTableName: 'databricks_usage',
   setupSteps: ['systemTables', 'permissions'],
 };
@@ -38,17 +38,21 @@ const DATABRICKS_FOCUS13_INPUT: DataSourceTemplateInputConfig = {
 export const DATA_SOURCE_TEMPLATE_REGISTRY: Record<string, DataSourceTemplateRegistryEntry> = {
   databricks_focus13: {
     input: DATABRICKS_FOCUS13_INPUT,
-    matches: [DATABRICKS_FOCUS13_INPUT],
+    matches: [
+      DATABRICKS_FOCUS13_INPUT,
+      { ...DATABRICKS_FOCUS13_INPUT, providerName: 'Databricks' },
+    ],
     logo: { kind: 'databricks' },
   },
   aws: {
     input: {
-      providerName: 'AWS',
+      providerName: 'aws',
       defaultTableName: 'aws_usage',
       setupSteps: ['awsCur'],
     },
-    // 'Amazon Web Services' is kept for legacy DB rows created before providerName was standardized to 'AWS'.
+    // Uppercase/display names are kept for legacy DB rows created before providerName was standardized to lowercase URL slugs.
     matches: [
+      { providerName: 'aws', defaultTableName: 'aws_usage' },
       { providerName: 'Amazon Web Services', defaultTableName: 'aws_usage' },
       { providerName: 'AWS', defaultTableName: 'aws_usage' },
     ],
@@ -101,9 +105,16 @@ export function findTemplateForRow(row: {
     if (byId) return byId;
   }
   const leaf = tableLeafName(row.tableName);
-  return DATA_SOURCE_TEMPLATES.find((template) =>
+  const exactMatch = DATA_SOURCE_TEMPLATES.find((template) =>
     (DATA_SOURCE_TEMPLATE_REGISTRY[template.id]?.matches ?? []).some(
       (match) => match.providerName === row.providerName && match.defaultTableName === leaf,
+    ),
+  );
+  if (exactMatch) return exactMatch;
+
+  return DATA_SOURCE_TEMPLATES.find((template) =>
+    (DATA_SOURCE_TEMPLATE_REGISTRY[template.id]?.matches ?? []).some(
+      (match) => match.providerName === row.providerName,
     ),
   );
 }

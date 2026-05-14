@@ -30,6 +30,7 @@ import { logger } from './logger.js';
 import type {
   Budget,
   CreateBudgetInput,
+  DataSourceKey,
   SetupCheckResult,
   UpdateBudgetInput,
 } from '@finlake/shared';
@@ -67,6 +68,7 @@ export class SqliteClient implements DatabaseClient {
   }
 
   private async bootstrapSchema(): Promise<void> {
+    await this.dropLegacyDataSourcesTable();
     const statements = [
       `CREATE TABLE IF NOT EXISTS budgets (
         id TEXT PRIMARY KEY,
@@ -118,17 +120,15 @@ export class SqliteClient implements DatabaseClient {
         updated_at TEXT NOT NULL
       )`,
       `CREATE TABLE IF NOT EXISTS data_sources (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        template_id TEXT NOT NULL,
         name TEXT NOT NULL,
         provider_name TEXT NOT NULL,
-        billing_account_id TEXT,
+        account_id TEXT NOT NULL,
         table_name TEXT NOT NULL,
         focus_version TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
         config_json TEXT NOT NULL DEFAULT '{}',
         updated_at TEXT NOT NULL,
-        UNIQUE(provider_name, billing_account_id)
+        PRIMARY KEY(provider_name, account_id)
       )`,
       `CREATE TABLE IF NOT EXISTS pricing_data (
         id TEXT PRIMARY KEY,
@@ -182,6 +182,20 @@ export class SqliteClient implements DatabaseClient {
       sql: 'DELETE FROM app_settings WHERE key = ?',
       args: [oldKey],
     });
+  }
+
+  private async dropLegacyDataSourcesTable(): Promise<void> {
+    const info = await this.raw.execute('PRAGMA table_info(data_sources)');
+    const columns = new Set(info.rows.map((row) => String(row.name)));
+    if (columns.size === 0) return;
+    if (
+      columns.has('id') ||
+      columns.has('template_id') ||
+      columns.has('billing_account_id') ||
+      !columns.has('account_id')
+    ) {
+      await this.raw.execute('DROP TABLE data_sources');
+    }
   }
 
   private async dropColumnIfExists(table: string, column: string): Promise<void> {
@@ -471,11 +485,16 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     return rows.map(toDataSource);
   }
 
-  async get(id: number): Promise<DataSourceValue | null> {
+  async get(key: DataSourceKey): Promise<DataSourceValue | null> {
     const rows = await this.db
       .select()
       .from(s.dataSources)
-      .where(eq(s.dataSources.id, id))
+      .where(
+        and(
+          eq(s.dataSources.providerName, key.providerName),
+          eq(s.dataSources.accountId, key.accountId),
+        ),
+      )
       .limit(1);
     const row = rows[0];
     return row ? toDataSource(row) : null;
@@ -485,10 +504,9 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     const inserted = await this.db
       .insert(s.dataSources)
       .values({
-        templateId: input.templateId,
         name: input.name,
         providerName: input.providerName,
-        billingAccountId: input.billingAccountId ?? null,
+        accountId: input.accountId,
         tableName: input.tableName,
         focusVersion: input.focusVersion ?? null,
         enabled: input.enabled,
@@ -501,13 +519,11 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     return toDataSource(row);
   }
 
-  async update(id: number, patch: DataSourceUpdatePatch): Promise<DataSourceValue> {
+  async update(key: DataSourceKey, patch: DataSourceUpdatePatch): Promise<DataSourceValue> {
     const set: Partial<typeof s.dataSources.$inferInsert> = {
       updatedAt: new Date().toISOString(),
     };
     if (patch.name !== undefined) set.name = patch.name;
-    if (patch.providerName !== undefined) set.providerName = patch.providerName;
-    if (patch.billingAccountId !== undefined) set.billingAccountId = patch.billingAccountId;
     if (patch.tableName !== undefined) set.tableName = patch.tableName;
     if (patch.focusVersion !== undefined) set.focusVersion = patch.focusVersion;
     if (patch.enabled !== undefined) set.enabled = patch.enabled;
@@ -516,15 +532,27 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
     const updated = await this.db
       .update(s.dataSources)
       .set(set)
-      .where(eq(s.dataSources.id, id))
+      .where(
+        and(
+          eq(s.dataSources.providerName, key.providerName),
+          eq(s.dataSources.accountId, key.accountId),
+        ),
+      )
       .returning();
     const row = updated[0];
-    if (!row) throw new Error(`Data source ${id} not found`);
+    if (!row) throw new Error(`Data source ${key.providerName}/${key.accountId} not found`);
     return toDataSource(row);
   }
 
-  async delete(id: number): Promise<void> {
-    await this.db.delete(s.dataSources).where(eq(s.dataSources.id, id));
+  async delete(key: DataSourceKey): Promise<void> {
+    await this.db
+      .delete(s.dataSources)
+      .where(
+        and(
+          eq(s.dataSources.providerName, key.providerName),
+          eq(s.dataSources.accountId, key.accountId),
+        ),
+      );
   }
 
   async clear(): Promise<number> {
@@ -535,11 +563,9 @@ class SqliteDataSourcesRepo implements DataSourcesRepo {
 
 function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
   return {
-    id: row.id,
-    templateId: row.templateId,
     name: row.name,
     providerName: row.providerName,
-    billingAccountId: row.billingAccountId,
+    accountId: row.accountId,
     tableName: row.tableName,
     focusVersion: row.focusVersion,
     enabled: row.enabled,

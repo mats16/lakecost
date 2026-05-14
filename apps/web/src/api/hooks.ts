@@ -10,6 +10,7 @@ import type {
   CreateBudgetInput,
   DataSource,
   DataSourceCreateBody,
+  DataSourceKey,
   DataSourceRunResult,
   DataSourceSetupBody,
   DataSourceSetupResult,
@@ -471,7 +472,7 @@ export function useDeleteCredential() {
 export function useDataSources() {
   return useQuery({
     queryKey: ['dataSources'],
-    queryFn: () => apiFetch<{ items: DataSource[] }>('/api/integration/configurations'),
+    queryFn: () => apiFetch<{ items: DataSource[] }>('/api/integrations/configurations'),
     staleTime: 60 * 1000,
   });
 }
@@ -479,7 +480,7 @@ export function useDataSources() {
 export function useDataSourceTemplates() {
   return useQuery({
     queryKey: ['dataSourceTemplates'],
-    queryFn: () => apiFetch<{ items: DataSourceTemplate[] }>('/api/integration/templates'),
+    queryFn: () => apiFetch<{ items: DataSourceTemplate[] }>('/api/integrations/templates'),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -507,15 +508,21 @@ export function useSyncGovernedTags() {
   });
 }
 
-function dsConfigPath(id: number, suffix = '') {
-  return `/api/integration/configurations/${id}${suffix}`;
+function dataSourceQueryKey(key: DataSourceKey | undefined) {
+  return key ? ['dataSources', key.providerName, key.accountId] : ['dataSources', undefined];
 }
 
-export function useDataSource(id: number | undefined) {
+function dsConfigPath(key: DataSourceKey, suffix = '') {
+  return `/api/integrations/configurations/${encodeURIComponent(key.providerName)}/${encodeURIComponent(
+    key.accountId,
+  )}${suffix}`;
+}
+
+export function useDataSource(key: DataSourceKey | undefined) {
   return useQuery({
-    queryKey: ['dataSources', id],
-    enabled: typeof id === 'number',
-    queryFn: () => apiFetch<DataSource>(dsConfigPath(id!)),
+    queryKey: dataSourceQueryKey(key),
+    enabled: Boolean(key),
+    queryFn: () => apiFetch<DataSource>(dsConfigPath(key!)),
     staleTime: 60 * 1000,
   });
 }
@@ -524,12 +531,12 @@ export function useCreateDataSource() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: DataSourceCreateBody) =>
-      apiFetch<DataSource>('/api/integration/configurations', {
+      apiFetch<DataSource>('/api/integrations/configurations', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
     onSuccess: (data) => {
-      qc.setQueryData(['dataSources', data.id], data);
+      qc.setQueryData(dataSourceQueryKey(data), data);
       qc.invalidateQueries({ queryKey: ['dataSources'] });
     },
   });
@@ -538,13 +545,13 @@ export function useCreateDataSource() {
 export function useUpdateDataSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: DataSourceUpdateBody }) =>
-      apiFetch<DataSource>(dsConfigPath(id), {
+    mutationFn: ({ key, body }: { key: DataSourceKey; body: DataSourceUpdateBody }) =>
+      apiFetch<DataSource>(dsConfigPath(key), {
         method: 'PATCH',
         body: JSON.stringify(body),
       }),
     onSuccess: (data) => {
-      qc.setQueryData(['dataSources', data.id], data);
+      qc.setQueryData(dataSourceQueryKey(data), data);
       qc.invalidateQueries({ queryKey: ['dataSources'] });
     },
   });
@@ -553,12 +560,12 @@ export function useUpdateDataSource() {
 export function useDeleteDataSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) =>
-      apiFetch<void>(dsConfigPath(id), {
+    mutationFn: (key: DataSourceKey) =>
+      apiFetch<void>(dsConfigPath(key), {
         method: 'DELETE',
       }),
-    onSuccess: (_data, id) => {
-      qc.removeQueries({ queryKey: ['dataSources', id] });
+    onSuccess: (_data, key) => {
+      qc.removeQueries({ queryKey: dataSourceQueryKey(key) });
       qc.invalidateQueries({ queryKey: ['dataSources'] });
       qc.invalidateQueries({ queryKey: ['appSettings'] });
       qc.invalidateQueries({ queryKey: ['transformations'] });
@@ -569,13 +576,13 @@ export function useDeleteDataSource() {
 export function useSetupDataSource() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: number; body: DataSourceSetupBody }) =>
-      apiFetch<DataSourceSetupResult>(dsConfigPath(id, '/setup'), {
+    mutationFn: ({ key, body }: { key: DataSourceKey; body: DataSourceSetupBody }) =>
+      apiFetch<DataSourceSetupResult>(dsConfigPath(key, '/setup'), {
         method: 'POST',
         body: JSON.stringify(body),
       }),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['dataSources', data.dataSourceId] });
+      qc.invalidateQueries({ queryKey: dataSourceQueryKey(data.dataSourceKey) });
       qc.invalidateQueries({ queryKey: ['dataSources'] });
       qc.invalidateQueries({ queryKey: ['appSettings'] });
       qc.invalidateQueries({ queryKey: ['transformations'] });
@@ -585,8 +592,8 @@ export function useSetupDataSource() {
 
 export function useRunDataSourceJob() {
   return useMutation({
-    mutationFn: (id: number) =>
-      apiFetch<DataSourceRunResult>(dsConfigPath(id, '/run'), {
+    mutationFn: (key: DataSourceKey) =>
+      apiFetch<DataSourceRunResult>(dsConfigPath(key, '/run'), {
         method: 'POST',
         body: JSON.stringify({}),
       }),

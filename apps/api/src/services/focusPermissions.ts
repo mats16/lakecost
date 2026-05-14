@@ -5,12 +5,14 @@ import {
   FOCUS_REFRESH_TIMEZONE_DEFAULT,
   focusSourceTables,
   focusViewFqn,
+  isDatabricksProvider,
   medallionSchemaNamesFromSettings,
   quoteIdent,
   quotePrincipal,
   tableLeafName,
   validateAccountPricesTable,
   type DataSourcePermissionStep,
+  type DataSourceKey,
   type DataSourcePreflightBody,
   type DataSourcePreflightResult,
   type DataSourceSystemTableGrantsBody,
@@ -41,22 +43,22 @@ export async function grantFocusSystemTables(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: number,
+  key: DataSourceKey,
   body: DataSourceSystemTableGrantsBody,
 ): Promise<DataSourceSystemTableGrantsResult> {
-  const source = await getDatabricksSource(db, dataSourceId);
-  return applyFocusSystemTableGrants('grant', env, userToken, dataSourceId, source, body);
+  const source = await getDatabricksSource(db, key);
+  return applyFocusSystemTableGrants('grant', env, userToken, key, source, body);
 }
 
 export async function revokeFocusSystemTables(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: number,
+  key: DataSourceKey,
 ): Promise<DataSourceSystemTableGrantsResult> {
-  const source = await getDatabricksSource(db, dataSourceId);
+  const source = await getDatabricksSource(db, key);
   const existing = readFocusConfig(source.config);
-  return applyFocusSystemTableGrants('revoke', env, userToken, dataSourceId, source, {
+  return applyFocusSystemTableGrants('revoke', env, userToken, key, source, {
     accountPricesTable: existing.accountPricesTable,
   });
 }
@@ -65,7 +67,7 @@ async function applyFocusSystemTableGrants(
   mode: 'grant' | 'revoke',
   env: Env,
   userToken: string | undefined,
-  dataSourceId: number,
+  key: DataSourceKey,
   source: Awaited<ReturnType<typeof getDatabricksSource>>,
   body: DataSourceSystemTableGrantsBody,
 ): Promise<DataSourceSystemTableGrantsResult> {
@@ -79,7 +81,7 @@ async function applyFocusSystemTableGrants(
   if (!sp) {
     warnings.push('DATABRICKS_CLIENT_ID is not set.');
     return {
-      dataSourceId,
+      dataSourceKey: key,
       servicePrincipalId: null,
       tables: tables.map((t) => t.fqn),
       steps: [
@@ -117,7 +119,7 @@ async function applyFocusSystemTableGrants(
   }
 
   return {
-    dataSourceId,
+    dataSourceKey: key,
     servicePrincipalId: sp,
     tables: tables.map((t) => t.fqn),
     steps,
@@ -129,11 +131,11 @@ async function applyFocusSystemTableGrants(
 export async function preflightFocusDataSource(
   env: Env,
   db: DatabaseClient,
-  dataSourceId: number,
+  key: DataSourceKey,
   body: DataSourcePreflightBody,
 ): Promise<DataSourcePreflightResult> {
   const [source, settingsRows] = await Promise.all([
-    getDatabricksSource(db, dataSourceId),
+    getDatabricksSource(db, key),
     db.repos.appSettings.list(),
   ]);
   const appSettings = settingsToRecord(settingsRows);
@@ -168,7 +170,7 @@ export async function preflightFocusDataSource(
     });
   }
   if (steps.some((s) => s.status === 'error')) {
-    return preflightResult(dataSourceId, sp || null, steps, warnings, tables);
+    return preflightResult(key, sp || null, steps, warnings, tables);
   }
 
   const appClient = buildAppWorkspaceClient(env);
@@ -179,7 +181,7 @@ export async function preflightFocusDataSource(
       status: 'error',
       message: 'Failed to build app service-principal Databricks clients.',
     });
-    return preflightResult(dataSourceId, sp || null, steps, warnings, tables);
+    return preflightResult(key, sp || null, steps, warnings, tables);
   }
 
   await pushStep(steps, 'App service principal authentication', async () => {
@@ -216,7 +218,7 @@ export async function preflightFocusDataSource(
       accountPricesTable,
     });
     focusViewFqn({ catalog, schema: medallionSchemas.silver, table: tableName });
-    const workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, dataSourceId);
+    const workspacePath = workspacePathFor(env.DATABRICKS_APP_NAME, key);
     await pushStep(steps, 'Pipeline SQL upload', async () => {
       await uploadPipelineFile(appClient, workspacePath, pipelineSql);
       return 'pipeline source file uploaded by app service principal';
@@ -245,7 +247,7 @@ export async function preflightFocusDataSource(
     });
   }
 
-  return preflightResult(dataSourceId, sp, steps, warnings, tables);
+  return preflightResult(key, sp, steps, warnings, tables);
 }
 
 export function assertPreflightOk(result: DataSourcePreflightResult): void {
@@ -260,14 +262,14 @@ export function assertPreflightOk(result: DataSourcePreflightResult): void {
 }
 
 function preflightResult(
-  dataSourceId: number,
+  key: DataSourceKey,
   sp: string | null,
   steps: DataSourcePermissionStep[],
   warnings: string[],
   tables: FocusSourceTableRef[],
 ): DataSourcePreflightResult {
   return {
-    dataSourceId,
+    dataSourceKey: key,
     servicePrincipalId: sp,
     ok: steps.every((s) => s.status === 'ok'),
     steps,
@@ -276,12 +278,12 @@ function preflightResult(
   };
 }
 
-async function getDatabricksSource(db: DatabaseClient, dataSourceId: number) {
-  const source = await db.repos.dataSources.get(dataSourceId);
+async function getDatabricksSource(db: DatabaseClient, key: DataSourceKey) {
+  const source = await db.repos.dataSources.get(key);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
-  if (source.providerName !== 'Databricks') {
+  if (!isDatabricksProvider(source.providerName)) {
     throw new DataSourceSetupError(
-      `Setup is only supported for providerName='Databricks' (got '${source.providerName}')`,
+      `Setup is only supported for providerName='databricks' (got '${source.providerName}')`,
       400,
     );
   }

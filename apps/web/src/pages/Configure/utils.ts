@@ -1,3 +1,21 @@
+import { tableLeafName, type DataSource } from '@finlake/shared';
+
+export function nextTableName(base: string, rows: DataSource[]): string {
+  const used = new Set(rows.map((row) => tableLeafName(row.tableName)));
+  if (!used.has(base)) return base;
+
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base}_${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base}_${Date.now()}`;
+}
+
+export function configString(config: Record<string, unknown>, key: string): string {
+  const value = config[key];
+  return typeof value === 'string' ? value : '';
+}
+
 export function messageOf(err: unknown): string | null {
   return err && typeof err === 'object' ? ((err as { message?: string }).message ?? null) : null;
 }

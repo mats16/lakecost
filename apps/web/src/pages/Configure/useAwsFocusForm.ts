@@ -30,13 +30,15 @@ import {
   storageCredentialNameForBucket,
   ucNameSuffixFromBucket,
   unquotedFqn,
+  toDataSourceKey,
   type DataSource,
   type DataSourceCreateBody,
+  type DataSourceKey,
   type DataSourceSetupResult,
   type ExternalLocationSummary,
   type StorageCredentialSummary,
 } from '@finlake/shared';
-import { messageOf, numberSetting } from './utils';
+import { configString, messageOf, numberSetting } from './utils';
 
 const AWS_BCM_REGION = 'us-east-1';
 const AWS_EXPORT_NAME_DEFAULT = 'finlake-focus-1-2';
@@ -49,7 +51,7 @@ const AWS_BCM_DATA_EXPORTS_URL =
 const S3_PREFIX_PREVIEW_PLACEHOLDER = '{prefix}';
 const EXPORT_NAME_PREVIEW_PLACEHOLDER = '{export_name}';
 
-type AwsSetupMode = 'existing' | 'create';
+export type AwsSetupMode = 'existing' | 'create';
 type CreateResourceStepId =
   | 'bucket'
   | 'storageCredential'
@@ -79,11 +81,6 @@ export type AwsFocusDraft = Pick<
   DataSourceCreateBody,
   'templateId' | 'name' | 'providerName' | 'tableName'
 >;
-
-function configString(config: Record<string, unknown>, key: string): string {
-  const value = config[key];
-  return typeof value === 'string' ? value : '';
-}
 
 function s3PrefixFromUrl(url: string): string {
   const match = /^s3:\/\/[^/]+\/?(.*)$/i.exec(url.trim());
@@ -291,6 +288,8 @@ async function upsertAwsDataExportBucketPolicy({
 interface UseAwsFocusFormOptions {
   draft?: AwsFocusDraft;
   onCreated?: (row: DataSource) => void;
+  excludedAccountIds?: string[];
+  initialSetupMode?: AwsSetupMode;
 }
 
 export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusFormOptions = {}) {
@@ -306,10 +305,14 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   const settings = useAppSettings();
   const setupDs = useSetupDataSource();
   const runJob = useRunDataSourceJob();
+  const excludedAccountIds = useMemo(
+    () => new Set(row ? [] : (options.excludedAccountIds ?? [])),
+    [options.excludedAccountIds, row],
+  );
 
   // --- Remote (server) values ---
   const remoteConfig = row?.config ?? {};
-  const remoteAwsAccountId = row?.billingAccountId ?? configString(remoteConfig, 'awsAccountId');
+  const remoteAwsAccountId = row?.accountId ?? configString(remoteConfig, 'awsAccountId');
   const remoteExternalLocationName = configString(remoteConfig, 'externalLocationName');
   const remoteExternalLocationUrl = configString(remoteConfig, 'externalLocationUrl');
   const remoteExportName = configString(remoteConfig, 'exportName');
@@ -336,7 +339,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   const [creatingExport, setCreatingExport] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [setupMode, setSetupMode] = useState<AwsSetupMode>('create');
+  const [setupMode, setSetupMode] = useState<AwsSetupMode>(options.initialSetupMode ?? 'create');
   const [createResourceSteps, setCreateResourceSteps] = useState<CreateResourceStep[]>(
     initialCreateResourceSteps,
   );
@@ -369,8 +372,11 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     [storageCredentials.data],
   );
   const existingAccountOptions = useMemo(
-    () => Array.from(new Set(awsCredentials.map((cred) => cred.awsAccountId))).sort(),
-    [awsCredentials],
+    () =>
+      Array.from(new Set(awsCredentials.map((cred) => cred.awsAccountId)))
+        .filter((accountId) => !excludedAccountIds.has(accountId))
+        .sort(),
+    [awsCredentials, excludedAccountIds],
   );
   const serviceAccountOptions = useMemo(
     () =>
@@ -381,8 +387,10 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
             .map((cred) => cred.awsAccountId)
             .filter((accountId): accountId is string => typeof accountId === 'string'),
         ),
-      ).sort(),
-    [serviceCredentials.data],
+      )
+        .filter((accountId) => !excludedAccountIds.has(accountId))
+        .sort(),
+    [excludedAccountIds, serviceCredentials.data],
   );
   const serviceStorageCredentials = useMemo(
     () =>
@@ -650,15 +658,15 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   ): Promise<DataSource | null> => {
     if (row) {
       const updated = await updateDs.mutateAsync({
-        id: row.id,
-        body: { billingAccountId: awsAccountId, config },
+        key: toDataSourceKey(row),
+        body: { config },
       });
       setSavedAt(Date.now());
       return updated;
     } else if (options.draft) {
       const created = await createDs.mutateAsync({
         ...options.draft,
-        billingAccountId: awsAccountId,
+        accountId: awsAccountId,
         enabled: false,
         config,
       });
@@ -680,8 +688,8 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     const savedSource = await persistConfig(buildConfig(exportArn ? { exportArn } : {}), {
       skipCreatedCallback: true,
     });
-    const dataSourceId = savedSource?.id ?? row?.id;
-    if (dataSourceId) await setupDataSourceJob(dataSourceId);
+    const dataSource = savedSource ?? row;
+    if (dataSource) await setupDataSourceJob(toDataSourceKey(dataSource));
     if (savedSource && !row) options.onCreated?.(savedSource);
   };
 
@@ -702,9 +710,9 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     );
   };
 
-  const setupDataSourceJob = async (dataSourceId: number) => {
+  const setupDataSourceJob = async (key: DataSourceKey) => {
     const r = await setupDs.mutateAsync({
-      id: dataSourceId,
+      key,
       body: {},
     });
     setResult(r);
@@ -844,9 +852,9 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
             deferCreatedCallback: true,
           },
         );
-        const dataSourceId = savedSource?.id ?? row?.id;
-        if (dataSourceId) {
-          const setupResult = await setupDataSourceJob(dataSourceId);
+        const dataSource = savedSource ?? row;
+        if (dataSource) {
+          const setupResult = await setupDataSourceJob(toDataSourceKey(dataSource));
           setCreateResourceSteps((steps) =>
             updateCreateResourceSteps(steps, {
               lakeflowJob: {
@@ -948,12 +956,12 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
 
   const onSetup = async () => {
     if (!row) return;
-    await setupDataSourceJob(row.id);
+    await setupDataSourceJob(toDataSourceKey(row));
   };
 
   const onRunJob = async () => {
     if (!row) return;
-    await runJob.mutateAsync(row.id);
+    await runJob.mutateAsync(toDataSourceKey(row));
   };
 
   const openExportModal = (open: boolean) => {

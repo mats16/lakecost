@@ -66,6 +66,59 @@ export const DataSourceIdentifierSchema = z
   .max(128)
   .regex(IDENT_RE, 'must match /^[A-Za-z_][A-Za-z0-9_]*$/');
 
+export const DataSourceAccountIdSchema = z.string().min(1).max(128);
+
+export const DEFAULT_DATABRICKS_ACCOUNT_ID = 'default';
+export const PROVIDER_DATABRICKS = 'databricks';
+export const PROVIDER_AWS = 'aws';
+
+export function normalizeProviderName(providerName: string): string {
+  const lower = providerName.trim().toLowerCase();
+  if (lower === 'databricks') return PROVIDER_DATABRICKS;
+  if (lower === 'aws' || lower === 'amazon web services') return PROVIDER_AWS;
+  return providerName.trim();
+}
+
+export function isDatabricksProvider(providerName: string): boolean {
+  return normalizeProviderName(providerName) === PROVIDER_DATABRICKS;
+}
+
+export function isAwsProvider(providerName: string): boolean {
+  return normalizeProviderName(providerName) === PROVIDER_AWS;
+}
+
+export const DataSourceProviderNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .transform(normalizeProviderName);
+
+export const DataSourceKeySchema = z.object({
+  providerName: DataSourceProviderNameSchema,
+  accountId: DataSourceAccountIdSchema,
+});
+export type DataSourceKey = z.infer<typeof DataSourceKeySchema>;
+
+export function toDataSourceKey(source: {
+  providerName: string;
+  accountId: string;
+}): DataSourceKey {
+  return { providerName: source.providerName, accountId: source.accountId };
+}
+
+export function dataSourceKeyString(key: { providerName: string; accountId: string }): string {
+  return `${key.providerName}:${key.accountId}`;
+}
+
+export function isDatabricksDefaultAccount(source: {
+  providerName: string;
+  accountId: string;
+}): boolean {
+  return (
+    isDatabricksProvider(source.providerName) && source.accountId === DEFAULT_DATABRICKS_ACCOUNT_ID
+  );
+}
+
 export const DataSourceTableNameSchema = z
   .string()
   .min(1)
@@ -76,11 +129,9 @@ export const DataSourceTableNameSchema = z
   );
 
 export const DataSourceSchema = z.object({
-  id: z.number().int().positive(),
-  templateId: z.string().min(1).max(128),
   name: z.string().min(1).max(256),
-  providerName: z.string().min(1).max(64),
-  billingAccountId: z.string().max(128).nullable(),
+  providerName: DataSourceProviderNameSchema,
+  accountId: DataSourceAccountIdSchema,
   tableName: DataSourceIdentifierSchema,
   focusVersion: z.string().min(1).max(32).nullable(),
   enabled: z.boolean(),
@@ -92,8 +143,8 @@ export type DataSource = z.infer<typeof DataSourceSchema>;
 export const DataSourceCreateBodySchema = z.object({
   templateId: z.string().min(1).max(128),
   name: z.string().min(1).max(256),
-  providerName: z.string().min(1).max(64),
-  billingAccountId: z.string().max(128).nullable().optional(),
+  providerName: DataSourceProviderNameSchema,
+  accountId: DataSourceAccountIdSchema.optional(),
   tableName: DataSourceIdentifierSchema,
   enabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
@@ -102,8 +153,6 @@ export type DataSourceCreateBody = z.infer<typeof DataSourceCreateBodySchema>;
 
 export const DataSourceUpdateBodySchema = z.object({
   name: z.string().min(1).max(256).optional(),
-  providerName: z.string().min(1).max(64).optional(),
-  billingAccountId: z.string().max(128).nullable().optional(),
   tableName: DataSourceIdentifierSchema.optional(),
   enabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
@@ -189,7 +238,7 @@ export const DataSourceSetupBodySchema = z.object({
 export type DataSourceSetupBody = z.infer<typeof DataSourceSetupBodySchema>;
 
 export const DataSourceSetupResultSchema = z.object({
-  dataSourceId: z.number().int().positive(),
+  dataSourceKey: DataSourceKeySchema,
   jobId: z.number().int().positive(),
   pipelineId: z.string().min(1),
   fqn: z.string(),
@@ -213,7 +262,7 @@ export const DataSourceSystemTableGrantsBodySchema = z.object({
 export type DataSourceSystemTableGrantsBody = z.infer<typeof DataSourceSystemTableGrantsBodySchema>;
 
 export const DataSourceSystemTableGrantsResultSchema = z.object({
-  dataSourceId: z.number().int().positive(),
+  dataSourceKey: DataSourceKeySchema,
   servicePrincipalId: z.string().min(1).nullable(),
   tables: z.array(z.string()),
   steps: z.array(DataSourcePermissionStepSchema),
@@ -228,7 +277,7 @@ export const DataSourcePreflightBodySchema = DataSourceSetupBodySchema;
 export type DataSourcePreflightBody = z.infer<typeof DataSourcePreflightBodySchema>;
 
 export const DataSourcePreflightResultSchema = z.object({
-  dataSourceId: z.number().int().positive(),
+  dataSourceKey: DataSourceKeySchema,
   servicePrincipalId: z.string().min(1).nullable(),
   ok: z.boolean(),
   steps: z.array(DataSourcePermissionStepSchema),
@@ -238,7 +287,7 @@ export const DataSourcePreflightResultSchema = z.object({
 export type DataSourcePreflightResult = z.infer<typeof DataSourcePreflightResultSchema>;
 
 export const DataSourceRunResultSchema = z.object({
-  dataSourceId: z.number().int().positive(),
+  dataSourceKey: DataSourceKeySchema,
   jobId: z.number().int().positive(),
   runId: z.number().int().positive(),
 });

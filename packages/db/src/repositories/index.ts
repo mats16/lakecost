@@ -1,6 +1,7 @@
 import type {
   Budget,
   CreateBudgetInput,
+  DataSourceKey,
   PricingData,
   SetupCheckResult,
   UpdateBudgetInput,
@@ -60,11 +61,9 @@ export interface SetupStateRepo {
 }
 
 export interface DataSourceValue {
-  id: number;
-  templateId: string;
   name: string;
   providerName: string;
-  billingAccountId: string | null;
+  accountId: string;
   tableName: string;
   focusVersion: string | null;
   enabled: boolean;
@@ -72,20 +71,20 @@ export interface DataSourceValue {
   updatedAt: string;
 }
 
-export type DataSourceCreateInput = Omit<DataSourceValue, 'id' | 'updatedAt' | 'focusVersion'> & {
+export type DataSourceCreateInput = Omit<DataSourceValue, 'updatedAt' | 'focusVersion'> & {
   focusVersion?: string | null;
 };
 
 export type DataSourceUpdatePatch = Partial<
-  Omit<DataSourceValue, 'id' | 'templateId' | 'updatedAt'>
+  Omit<DataSourceValue, 'providerName' | 'accountId' | 'updatedAt'>
 >;
 
 export interface DataSourcesRepo {
   list(): Promise<DataSourceValue[]>;
-  get(id: number): Promise<DataSourceValue | null>;
+  get(key: DataSourceKey): Promise<DataSourceValue | null>;
   create(input: DataSourceCreateInput): Promise<DataSourceValue>;
-  update(id: number, patch: DataSourceUpdatePatch): Promise<DataSourceValue>;
-  delete(id: number): Promise<void>;
+  update(key: DataSourceKey, patch: DataSourceUpdatePatch): Promise<DataSourceValue>;
+  delete(key: DataSourceKey): Promise<void>;
   clear(): Promise<number>;
 }
 

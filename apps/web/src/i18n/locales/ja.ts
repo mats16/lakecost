@@ -7,7 +7,7 @@ export const ja: Dictionary = {
     inform: '可視化',
     overview: '概要',
     configure: '構成',
-    dataSources: 'Integration',
+    dataSources: 'Integrations',
     credentials: '資格情報',
     externalData: 'External Data',
     externalLocations: 'External Locations',
@@ -523,7 +523,7 @@ export const ja: Dictionary = {
     createCredential: 'Create credential',
     createShort: 'Create',
     createDesc:
-      'AWS Role を作成する前に IAM Role 名を決めます。Unity Catalog の資格情報名は finlake_service_credential_<aws_account_id> 固定です。',
+      '先に Databricks 側で service credential を作成し、発行された External ID を使って AWS 側で IAM Role を作成します。',
     credentialName: '資格情報名',
     awsAccountId: 'AWS アカウント ID',
     roleName: 'IAM Role 名',
@@ -534,7 +534,7 @@ export const ja: Dictionary = {
     showSetup: '手順を表示',
     setup: 'Setup',
     deleteConfirm: '資格情報 {name} を削除しますか？',
-    awsSetupTitle: 'Setup IAM Role',
+    awsSetupTitle: 'Create an IAM Role',
     awsSetupDesc:
       'この trust policy で AWS 側に IAM Role を作成し、permission policy を付与してください。FinLake はまだこの資格情報を利用しません。',
     externalIdLabel: 'External ID',
@@ -542,10 +542,10 @@ export const ja: Dictionary = {
     trustPolicy: 'Trust policy',
     permissionPolicy: 'Permission policy',
     awsCli: 'AWS CLI',
-    createBoundaryPolicyCli: 'Storage Role の permission boundary を作成',
     createRoleCli: 'IAM Role を作成',
     updateTrustPolicyCli: 'Trust policy を更新',
-    putRolePolicyCli: 'インラインポリシーを付与',
+    putStorageRolePolicyCli: 'Storage Role 作成用の Policy を追加',
+    putBcmPolicyCli: 'BCM 用の Policy を追加',
     permissionTypes: {
       fullSetup: 'Full setup',
       readOnly: 'Read only',
@@ -766,6 +766,60 @@ export const ja: Dictionary = {
     drawer: {
       notImplemented:
         'このプロバイダーはまだ実装されていません。FinLake のロードマップで進捗を追跡しています。',
+    },
+    detail: {
+      eyebrow: 'Integrations',
+      backToIntegrations: 'Integrations に戻る',
+      docs: 'Docs',
+      searchAws: 'アカウント ID、ARN、名前で検索...',
+      connected: '接続済み',
+      awsEmpty: '表示できる AWS アカウントがありません。',
+      selectedSettings: 'AWS アカウント {account} の設定',
+      configureAccount: 'AWS アカウント {account} を設定',
+      moreActions: 'その他の操作',
+      openInAws: 'AWS で開く',
+      remove: '削除',
+      tabs: {
+        manage: 'Manage',
+        connect: 'Connect',
+      },
+      connectIntro: {
+        title: 'アカウントを接続',
+        description:
+          'FinLake はクロスアカウント IAM Role と AWS Billing and Cost Management Data Exports を使って AWS コストデータに接続します。',
+        serviceCredentialTitle: 'Service credential',
+        serviceCredentialDesc:
+          '接続する AWS アカウントに FinLakeServiceRole service credential がない場合は、先に作成し、発行された External ID を使って AWS 側で IAM Role を作成します。',
+        setupPathTitle: 'セットアップ方法を選択',
+        setupPathServiceRole:
+          '必要なリソースを FinLake に作成させる場合は、サービスロールで接続を選び、既存の FinLakeServiceRole service credential を選択します。',
+        setupPathExternalLocation:
+          '既存の Storage Credential と External Location を使う場合は、既存 External Location で接続を選びます。',
+        noteLabel: '注:',
+        note: 'AWS Billing and Cost Management Data Exports は、ワークロードのリージョンに関係なく us-east-1 で作成されます。',
+        afterSetupTitle: 'セットアップ後',
+        returnLabel: 'セットアップ完了後、このページに戻ってください。',
+        afterSetupDesc:
+          'FinLake は Data Export の出力先を登録し、エクスポートされた FOCUS データを取り込む Lakeflow ジョブをスケジュールします。初回のエクスポートと取り込みには数分かかる場合があります。',
+        actions: {
+          serviceRole: 'サービスロールで接続',
+          externalLocation: '既存 External Location で接続',
+          createServiceRole: 'サービスロールを作成',
+        },
+        actionDescriptions: {
+          serviceRole:
+            '既存の FinLakeServiceRole service credential を使い、必要な S3 バケット、Storage Credential、External Location、Data Export、Lakeflow リソースを FinLake が作成します。',
+          externalLocation:
+            '既存の Storage Credential と External Location を使い、AWS Billing and Cost Management Data Export の出力先を登録します。',
+        },
+      },
+      columns: {
+        account: 'Account',
+        costsAggregation: 'Costs Aggregation',
+        perResourceCosts: 'Per-Resource Costs',
+        lastUpdated: 'Last Updated',
+        status: 'Status',
+      },
     },
     name: {
       title: '表示名',

@@ -39,13 +39,12 @@ import { CodeBlock } from '../../components/CodeBlock';
 import { useI18n } from '../../i18n';
 import { messageOf } from '../Configure/utils';
 
-const DEFAULT_CREDENTIAL_NAME = 'finlake_service_credential_{undefined}';
-const DEFAULT_ROLE_NAME = 'FinLakeServiceRole';
+export const DEFAULT_CREDENTIAL_NAME = 'finlake_service_credential_{undefined}';
+export const DEFAULT_ROLE_NAME = 'FinLakeServiceRole';
 const SERVICE_POLICY_NAME = 'FinLakeDataExportManagement';
 const STORAGE_ROLE_BOUNDARY_POLICY_NAME = 'FinLakeStorageRoleBoundary';
+const STORAGE_ROLE_POLICY_NAME = 'FinLakeStorageRoleManagement';
 const STORAGE_ROLE_NAME_PREFIX = 'FinLakeStorageRole';
-type ServicePermissionType = 'fullSetup' | 'readOnly';
-
 export function Credentials() {
   const { t } = useI18n();
   const credentials = useServiceCredentials();
@@ -61,8 +60,6 @@ export function Credentials() {
   const [setupModalCredential, setSetupModalCredential] = useState<ServiceCredentialSummary | null>(
     null,
   );
-  const [servicePermissionType, setServicePermissionType] =
-    useState<ServicePermissionType>('fullSetup');
 
   const normalizedAccountId = awsAccountId.trim();
   const normalizedRoleName = roleName.trim();
@@ -76,11 +73,8 @@ export function Credentials() {
   const createError = messageOf(createCredential.error);
 
   const setupArtifacts = useMemo(
-    () =>
-      setupModalCredential
-        ? buildAwsSetupArtifacts(setupModalCredential, servicePermissionType)
-        : null,
-    [servicePermissionType, setupModalCredential],
+    () => (setupModalCredential ? buildAwsSetupArtifacts(setupModalCredential) : null),
+    [setupModalCredential],
   );
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -96,7 +90,6 @@ export function Credentials() {
       {
         onSuccess: (data) => {
           setCreateModalOpen(false);
-          setServicePermissionType('fullSetup');
           setSetupModalCredential(data.serviceCredential);
         },
       },
@@ -114,7 +107,6 @@ export function Credentials() {
   };
 
   const openSetupModal = (credential: ServiceCredentialSummary) => {
-    setServicePermissionType('fullSetup');
     setSetupModalCredential(credential);
   };
 
@@ -192,7 +184,6 @@ export function Credentials() {
         open={createModalOpen}
         awsAccountId={awsAccountId}
         roleName={roleName}
-        serviceCredentialName={serviceCredentialName}
         createPending={createCredential.isPending}
         canSubmit={canSubmit}
         validAccountId={validAccountId}
@@ -201,10 +192,6 @@ export function Credentials() {
         createError={createError}
         setServiceAwsAccountId={onServiceAccountIdChange}
         setServiceRoleName={setRoleName}
-        setServiceCredentialName={(value) => {
-          setServiceCredentialNameEdited(true);
-          setServiceCredentialName(value);
-        }}
         onSubmitService={onSubmit}
         onClose={() => setCreateModalOpen(false)}
       />
@@ -212,19 +199,16 @@ export function Credentials() {
       <AwsSetupModal
         credential={setupModalCredential}
         artifacts={setupArtifacts}
-        permissionType={servicePermissionType}
-        setPermissionType={setServicePermissionType}
         onClose={() => setSetupModalCredential(null)}
       />
     </div>
   );
 }
 
-function CreateCredentialModal({
+export function CreateCredentialModal({
   open,
   awsAccountId,
   roleName,
-  serviceCredentialName,
   createPending,
   canSubmit,
   validAccountId,
@@ -233,14 +217,12 @@ function CreateCredentialModal({
   createError,
   setServiceAwsAccountId,
   setServiceRoleName,
-  setServiceCredentialName,
   onSubmitService,
   onClose,
 }: {
   open: boolean;
   awsAccountId: string;
   roleName: string;
-  serviceCredentialName: string;
   createPending: boolean;
   canSubmit: boolean;
   validAccountId: boolean;
@@ -249,7 +231,6 @@ function CreateCredentialModal({
   createError: string | null;
   setServiceAwsAccountId: (value: string) => void;
   setServiceRoleName: (value: string) => void;
-  setServiceCredentialName: (value: string) => void;
   onSubmitService: (e: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
 }) {
@@ -333,15 +314,6 @@ function CreateCredentialModal({
                 />
               </Field>
             </div>
-
-            <Field>
-              <FieldLabel>{t('credentials.credentialName')}</FieldLabel>
-              <Input
-                value={serviceCredentialName}
-                onChange={(e) => setServiceCredentialName(e.target.value)}
-                disabled={createPending}
-              />
-            </Field>
 
             {showValidationHint ? (
               <Alert>
@@ -517,26 +489,24 @@ function CredentialActions({
   );
 }
 
-function ArtifactBlock({ title, body }: { title: string; body: string }) {
+function ArtifactBlock({ step, title, body }: { step: number; title: string; body: string }) {
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold">{title}</h3>
+      <h3 className="text-sm font-semibold">
+        {`Step ${step}:`} {title}
+      </h3>
       <CodeBlock>{body}</CodeBlock>
     </section>
   );
 }
 
-function AwsSetupModal({
+export function AwsSetupModal({
   credential,
   artifacts,
-  permissionType,
-  setPermissionType,
   onClose,
 }: {
   credential: ServiceCredentialSummary | null;
   artifacts: ReturnType<typeof buildAwsSetupArtifacts>;
-  permissionType: ServicePermissionType;
-  setPermissionType: (permissionType: ServicePermissionType) => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
@@ -594,24 +564,14 @@ function AwsSetupModal({
         <div className="min-h-0 overflow-y-auto p-5">
           {artifacts ? (
             <div className="space-y-5">
-              <div className="border-border inline-flex flex-wrap rounded-md border p-1">
-                <TabButton
-                  active={permissionType === 'fullSetup'}
-                  onClick={() => setPermissionType('fullSetup')}
-                >
-                  {t('credentials.permissionTypes.fullSetup')}
-                </TabButton>
-                <TabButton
-                  active={permissionType === 'readOnly'}
-                  onClick={() => setPermissionType('readOnly')}
-                >
-                  {t('credentials.permissionTypes.readOnly')}
-                </TabButton>
-              </div>
-
               <div className="grid gap-4">
-                {artifacts.cliBlocks.map((block) => (
-                  <ArtifactBlock key={block.titleKey} title={t(block.titleKey)} body={block.body} />
+                {artifacts.cliBlocks.map((block, index) => (
+                  <ArtifactBlock
+                    key={block.titleKey}
+                    step={index + 1}
+                    title={t(block.titleKey)}
+                    body={block.body}
+                  />
                 ))}
               </div>
             </div>
@@ -628,36 +588,7 @@ function AwsSetupModal({
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      className={`rounded px-3 py-1.5 text-sm transition-colors ${
-        active
-          ? 'bg-secondary text-secondary-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
-      }`}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function buildAwsSetupArtifacts(
-  credential: ServiceCredentialSummary,
-  servicePermissionType: ServicePermissionType,
-) {
+export function buildAwsSetupArtifacts(credential: ServiceCredentialSummary) {
   const roleArn = credential.roleArn;
   const externalId = credential.externalId;
   const unityCatalogIamArn = credential.unityCatalogIamArn;
@@ -682,39 +613,28 @@ function buildAwsSetupArtifacts(
       },
     ],
   });
-  const initialTrustPolicy = stableJson({
+  const initialTrustPolicy = JSON.stringify({
     Version: '2012-10-17',
     Statement: [
       {
         Effect: 'Allow',
         Principal: {
-          AWS: unityCatalogIamArn,
+          AWS: `arn:aws:iam::${awsAccountId}:root`,
         },
         Action: 'sts:AssumeRole',
-        Condition: {
-          StringEquals: {
-            'sts:ExternalId': externalId,
-          },
-        },
       },
     ],
   });
 
-  const permissionsBoundaryPolicy =
-    servicePermissionType === 'fullSetup'
-      ? stableJson(buildStorageRoleBoundaryPolicy(awsAccountId))
-      : null;
-  const permissionPolicy = stableJson(
-    buildServicePermissionPolicy(roleArn, awsAccountId, servicePermissionType),
-  );
+  const permissionsBoundaryPolicy = stableJson(buildStorageRoleBoundaryPolicy(awsAccountId));
+  const storageRolePermissionPolicy = stableJson(buildStorageRoleManagementPolicy(awsAccountId));
+  const bcmPermissionPolicy = stableJson(buildBcmPermissionPolicy());
 
-  const createBoundaryPolicyCli = permissionsBoundaryPolicy
-    ? [
-        `aws iam create-policy \\`,
-        `  --policy-name ${shellArg(STORAGE_ROLE_BOUNDARY_POLICY_NAME)} \\`,
-        `  --policy-document ${shellArg(permissionsBoundaryPolicy)}`,
-      ].join('\n')
-    : null;
+  const createBoundaryPolicyCli = [
+    `aws iam create-policy \\`,
+    `  --policy-name ${shellArg(STORAGE_ROLE_BOUNDARY_POLICY_NAME)} \\`,
+    `  --policy-document ${shellArg(permissionsBoundaryPolicy)}`,
+  ].join('\n');
 
   const createRoleCli = [
     `aws iam create-role \\`,
@@ -728,20 +648,24 @@ function buildAwsSetupArtifacts(
     `  --policy-document ${shellArg(trustPolicy)}`,
   ].join('\n');
 
-  const putRolePolicyCli = [
+  const putStorageRolePolicyCli = [
+    createBoundaryPolicyCli,
+    [
+      `aws iam put-role-policy \\`,
+      `  --role-name ${shellArg(roleName)} \\`,
+      `  --policy-name ${shellArg(STORAGE_ROLE_POLICY_NAME)} \\`,
+      `  --policy-document ${shellArg(storageRolePermissionPolicy)}`,
+    ].join('\n'),
+  ].join('\n\n');
+
+  const putBcmPolicyCli = [
     `aws iam put-role-policy \\`,
     `  --role-name ${shellArg(roleName)} \\`,
     `  --policy-name ${shellArg(SERVICE_POLICY_NAME)} \\`,
-    `  --policy-document ${shellArg(permissionPolicy)}`,
+    `  --policy-document ${shellArg(bcmPermissionPolicy)}`,
   ].join('\n');
 
   const cliBlocks = [
-    createBoundaryPolicyCli
-      ? {
-          titleKey: 'credentials.createBoundaryPolicyCli',
-          body: createBoundaryPolicyCli,
-        }
-      : null,
     {
       titleKey: 'credentials.createRoleCli',
       body: createRoleCli,
@@ -751,63 +675,59 @@ function buildAwsSetupArtifacts(
       body: updateTrustPolicyCli,
     },
     {
-      titleKey: 'credentials.putRolePolicyCli',
-      body: putRolePolicyCli,
+      titleKey: 'credentials.putStorageRolePolicyCli',
+      body: putStorageRolePolicyCli,
     },
-  ].filter((block): block is { titleKey: string; body: string } => block !== null);
+    {
+      titleKey: 'credentials.putBcmPolicyCli',
+      body: putBcmPolicyCli,
+    },
+  ];
 
-  return { cliBlocks, trustPolicy, permissionPolicy, permissionsBoundaryPolicy };
+  return {
+    cliBlocks,
+    trustPolicy,
+    storageRolePermissionPolicy,
+    bcmPermissionPolicy,
+    permissionsBoundaryPolicy,
+  };
 }
 
-function buildServicePermissionPolicy(
-  roleArn: string,
-  awsAccountId: string,
-  permissionType: ServicePermissionType,
-) {
-  const statements: Array<Record<string, unknown>> = [];
-
-  if (permissionType === 'readOnly') {
-    statements.push(
+function buildBcmPermissionPolicy() {
+  return {
+    Version: '2012-10-17',
+    Statement: [
       {
-        Sid: 'ReadBillingDataExports',
+        Sid: 'ManageBillingDataExports',
         Effect: 'Allow',
-        Action: ['bcm-data-exports:GetExport', 'bcm-data-exports:ListExports'],
+        Action: [
+          'bcm-data-exports:CreateExport',
+          'bcm-data-exports:GetExport',
+          'bcm-data-exports:ListExports',
+          'bcm-data-exports:UpdateExport',
+          'bcm-data-exports:DeleteExport',
+          'bcm-data-exports:TagResource',
+          'cur:PutReportDefinition',
+        ],
         Resource: '*',
       },
-      {
-        Sid: 'ReadCostAllocationTags',
-        Effect: 'Allow',
-        Action: ['ce:ListCostAllocationTags'],
-        Resource: '*',
-      },
-    );
-  } else {
-    statements.push({
-      Sid: 'ManageBillingDataExports',
-      Effect: 'Allow',
-      Action: [
-        'bcm-data-exports:CreateExport',
-        'bcm-data-exports:GetExport',
-        'bcm-data-exports:ListExports',
-        'bcm-data-exports:UpdateExport',
-        'bcm-data-exports:DeleteExport',
-        'bcm-data-exports:TagResource',
-        'cur:PutReportDefinition',
-      ],
-      Resource: '*',
-    });
-  }
-
-  if (permissionType === 'fullSetup') {
-    const storageRoleArn = `arn:aws:iam::${awsAccountId}:role/${STORAGE_ROLE_NAME_PREFIX}*`;
-    const boundaryPolicyArn = `arn:aws:iam::${awsAccountId}:policy/${STORAGE_ROLE_BOUNDARY_POLICY_NAME}`;
-    statements.push(
       {
         Sid: 'ManageCostAllocationTags',
         Effect: 'Allow',
         Action: ['ce:ListCostAllocationTags', 'ce:UpdateCostAllocationTagsStatus'],
         Resource: '*',
       },
+    ],
+  };
+}
+
+function buildStorageRoleManagementPolicy(awsAccountId: string) {
+  const storageRoleArn = `arn:aws:iam::${awsAccountId}:role/${STORAGE_ROLE_NAME_PREFIX}*`;
+  const boundaryPolicyArn = `arn:aws:iam::${awsAccountId}:policy/${STORAGE_ROLE_BOUNDARY_POLICY_NAME}`;
+
+  return {
+    Version: '2012-10-17',
+    Statement: [
       {
         Sid: 'ManageFinLakeBuckets',
         Effect: 'Allow',
@@ -859,12 +779,7 @@ function buildServicePermissionPolicy(
         Action: ['iam:GetPolicy', 'iam:GetPolicyVersion'],
         Resource: boundaryPolicyArn,
       },
-    );
-  }
-
-  return {
-    Version: '2012-10-17',
-    Statement: statements,
+    ],
   };
 }
 

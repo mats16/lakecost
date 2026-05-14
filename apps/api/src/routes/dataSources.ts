@@ -1,11 +1,15 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import type { DatabaseClient } from '@finlake/db';
 import {
   DATA_SOURCE_TEMPLATES,
   DataSourceCreateBodySchema,
+  DataSourceKeySchema,
   DataSourceSetupBodySchema,
   DataSourceUpdateBodySchema,
+  DEFAULT_DATABRICKS_ACCOUNT_ID,
+  isAwsProvider,
+  isDatabricksProvider,
+  type DataSourceKey,
   type Env,
 } from '@finlake/shared';
 import {
@@ -14,12 +18,6 @@ import {
   syncSharedFocusPipeline,
 } from '../services/dataSourceSetup.js';
 import { DataSourceSetupError } from '../services/dataSourceErrors.js';
-
-const IdSchema = z
-  .string()
-  .regex(/^\d+$/, 'invalid id')
-  .transform(Number)
-  .refine((id) => Number.isSafeInteger(id) && id > 0, 'invalid id');
 
 const AWS_SOURCE_LOCKED_CONFIG_KEYS = [
   'awsAccountId',
@@ -60,11 +58,15 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid templateId' } });
         return;
       }
+      const accountId = accountIdForCreate(parsed.data.providerName, parsed.data.accountId);
+      if (!accountId) {
+        res.status(400).json({ error: { message: 'accountId is required' } });
+        return;
+      }
       const created = await db.repos.dataSources.create({
-        templateId: parsed.data.templateId,
         name: parsed.data.name,
         providerName: parsed.data.providerName,
-        billingAccountId: parsed.data.billingAccountId ?? null,
+        accountId,
         tableName: parsed.data.tableName,
         focusVersion: template.focus_version,
         enabled: parsed.data.enabled ?? false,
@@ -76,14 +78,14 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.get('/configurations/:id', async (req, res, next) => {
+  router.get('/configurations/:providerName/:accountId', async (req, res, next) => {
     try {
-      const idParse = IdSchema.safeParse(req.params.id);
-      if (!idParse.success) {
-        res.status(400).json({ error: { message: 'Invalid id' } });
+      const key = parseDataSourceKey(req.params);
+      if (!key) {
+        res.status(400).json({ error: { message: 'Invalid data source key' } });
         return;
       }
-      const row = await db.repos.dataSources.get(idParse.data);
+      const row = await db.repos.dataSources.get(key);
       if (!row) {
         res.status(404).json({ error: { message: 'Not found' } });
         return;
@@ -94,11 +96,11 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.patch('/configurations/:id', async (req, res, next) => {
+  router.patch('/configurations/:providerName/:accountId', async (req, res, next) => {
     try {
-      const idParse = IdSchema.safeParse(req.params.id);
-      if (!idParse.success) {
-        res.status(400).json({ error: { message: 'Invalid id' } });
+      const key = parseDataSourceKey(req.params);
+      if (!key) {
+        res.status(400).json({ error: { message: 'Invalid data source key' } });
         return;
       }
       const parsed = DataSourceUpdateBodySchema.safeParse(req.body);
@@ -106,7 +108,7 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
         return;
       }
-      const existing = await db.repos.dataSources.get(idParse.data);
+      const existing = await db.repos.dataSources.get(key);
       if (!existing) {
         res.status(404).json({ error: { message: 'Not found' } });
         return;
@@ -124,32 +126,32 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
           return;
         }
       }
-      const updated = await db.repos.dataSources.update(idParse.data, parsed.data);
+      const updated = await db.repos.dataSources.update(key, parsed.data);
       res.json(updated);
     } catch (err) {
       next(err);
     }
   });
 
-  router.delete('/configurations/:id', async (req, res, next) => {
+  router.delete('/configurations/:providerName/:accountId', async (req, res, next) => {
     try {
-      const idParse = IdSchema.safeParse(req.params.id);
-      if (!idParse.success) {
-        res.status(400).json({ error: { message: 'Invalid id' } });
+      const key = parseDataSourceKey(req.params);
+      if (!key) {
+        res.status(400).json({ error: { message: 'Invalid data source key' } });
         return;
       }
-      const existing = await db.repos.dataSources.get(idParse.data);
+      const existing = await db.repos.dataSources.get(key);
       if (!existing) {
         res.status(404).json({ error: { message: 'Not found' } });
         return;
       }
-      await db.repos.dataSources.delete(idParse.data);
+      await db.repos.dataSources.delete(key);
       if (existing.enabled) {
         try {
           await syncSharedFocusPipeline(env, db);
         } catch (err) {
           console.warn(
-            `[dataSources] Deleted DB row ${idParse.data} but failed to refresh the shared pipeline: ${(err as Error).message}`,
+            `[dataSources] Deleted DB row ${key.providerName}/${key.accountId} but failed to refresh the shared pipeline: ${(err as Error).message}`,
           );
         }
       }
@@ -159,11 +161,11 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.post('/configurations/:id/setup', async (req, res, next) => {
+  router.post('/configurations/:providerName/:accountId/setup', async (req, res, next) => {
     try {
-      const idParse = IdSchema.safeParse(req.params.id);
-      if (!idParse.success) {
-        res.status(400).json({ error: { message: 'Invalid id' } });
+      const key = parseDataSourceKey(req.params);
+      if (!key) {
+        res.status(400).json({ error: { message: 'Invalid data source key' } });
         return;
       }
       const parsed = DataSourceSetupBodySchema.safeParse(req.body ?? {});
@@ -171,13 +173,7 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
         return;
       }
-      const result = await setupFocusDataSource(
-        env,
-        db,
-        req.user?.accessToken,
-        idParse.data,
-        parsed.data,
-      );
+      const result = await setupFocusDataSource(env, db, req.user?.accessToken, key, parsed.data);
       res.json(result);
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
@@ -190,14 +186,14 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
     }
   });
 
-  router.post('/configurations/:id/run', async (req, res, next) => {
+  router.post('/configurations/:providerName/:accountId/run', async (req, res, next) => {
     try {
-      const idParse = IdSchema.safeParse(req.params.id);
-      if (!idParse.success) {
-        res.status(400).json({ error: { message: 'Invalid id' } });
+      const key = parseDataSourceKey(req.params);
+      if (!key) {
+        res.status(400).json({ error: { message: 'Invalid data source key' } });
         return;
       }
-      const result = await runDataSourceJob(env, db, req.user?.accessToken, idParse.data);
+      const result = await runDataSourceJob(env, db, req.user?.accessToken, key);
       res.json(result);
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
@@ -211,11 +207,27 @@ export function dataSourcesRouter(db: DatabaseClient, env: Env): Router {
   return router;
 }
 
+function parseDataSourceKey(params: {
+  providerName?: string;
+  accountId?: string;
+}): DataSourceKey | null {
+  const parsed = DataSourceKeySchema.safeParse({
+    providerName: params.providerName,
+    accountId: params.accountId,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+function accountIdForCreate(providerName: string, accountId: string | undefined): string | null {
+  if (accountId?.trim()) return accountId.trim();
+  return isDatabricksProvider(providerName) ? DEFAULT_DATABRICKS_ACCOUNT_ID : null;
+}
+
 function isRegisteredAwsSource(source: {
   providerName: string;
   config: Record<string, unknown>;
 }): boolean {
-  if (source.providerName !== 'AWS' && source.providerName !== 'Amazon Web Services') return false;
+  if (!isAwsProvider(source.providerName)) return false;
   return ['awsAccountId', 'externalLocationName', 'exportName', 's3Prefix'].every((key) => {
     const value = source.config[key];
     return typeof value === 'string' && value.trim().length > 0;

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, primaryKey, unique } from 'drizzle-orm/sqlite-core';
 
 export const budgets = sqliteTable('budgets', {
   id: text('id').primaryKey(),
@@ -58,11 +58,9 @@ export const appSettings = sqliteTable('app_settings', {
 export const dataSources = sqliteTable(
   'data_sources',
   {
-    id: integer('id').primaryKey({ autoIncrement: true }),
-    templateId: text('template_id').notNull(),
     name: text('name').notNull(),
     providerName: text('provider_name').notNull(),
-    billingAccountId: text('billing_account_id'),
+    accountId: text('account_id').notNull(),
     tableName: text('table_name').notNull(),
     focusVersion: text('focus_version'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
@@ -70,7 +68,7 @@ export const dataSources = sqliteTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => ({
-    uniqProvider: unique().on(table.providerName, table.billingAccountId),
+    pk: primaryKey({ columns: [table.providerName, table.accountId] }),
   }),
 );
 

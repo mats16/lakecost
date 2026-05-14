@@ -5,8 +5,8 @@ import {
   doublePrecision,
   boolean,
   jsonb,
-  serial,
   timestamp,
+  primaryKey,
   unique,
 } from 'drizzle-orm/pg-core';
 
@@ -68,11 +68,9 @@ export const appSettings = pgTable('app_settings', {
 export const dataSources = pgTable(
   'data_sources',
   {
-    id: serial('id').primaryKey(),
-    templateId: text('template_id').notNull(),
     name: text('name').notNull(),
     providerName: text('provider_name').notNull(),
-    billingAccountId: text('billing_account_id'),
+    accountId: text('account_id').notNull(),
     tableName: text('table_name').notNull(),
     focusVersion: text('focus_version'),
     enabled: boolean('enabled').notNull().default(true),
@@ -80,7 +78,7 @@ export const dataSources = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    uniqProvider: unique().on(table.providerName, table.billingAccountId),
+    pk: primaryKey({ columns: [table.providerName, table.accountId] }),
   }),
 );
 

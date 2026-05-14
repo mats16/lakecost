@@ -60,9 +60,9 @@ const INFORM: NavGroup = {
 export const CONFIGURE: NavGroup = {
   labelKey: 'nav.configure',
   icon: Bolt,
-  matchPrefix: '/integration',
+  matchPrefix: '/integrations',
   items: [
-    { to: '/integration', labelKey: 'nav.dataSources', end: true },
+    { to: '/integrations', labelKey: 'nav.dataSources' },
     { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
     { to: '/pricing', labelKey: 'nav.pricing' },
