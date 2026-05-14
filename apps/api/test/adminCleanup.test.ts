@@ -8,6 +8,7 @@ import {
   GENIE_SPACE_SETTING_KEY,
   LAKEFLOW_PIPELINE_SETTING_KEYS,
   MEDALLION_SCHEMA_SETTING_KEYS,
+  PRICING_NOTEBOOK_WORKSPACE_PATH_SETTING_KEY,
   type Env,
 } from '@finlake/shared';
 import {
@@ -37,6 +38,7 @@ test('ADMIN_CLEANUP_SETTING_KEYS includes catalog, schema, resource, and legacy 
       LAKEFLOW_PIPELINE_SETTING_KEYS.pipelineId,
       LAKEFLOW_PIPELINE_SETTING_KEYS.jobId,
       SHARED_PIPELINE_SETTING_KEYS.workspaceRoot,
+      PRICING_NOTEBOOK_WORKSPACE_PATH_SETTING_KEY,
       LEGACY_SHARED_PIPELINE_SETTING_KEYS.pipelineId,
       LEGACY_SHARED_PIPELINE_SETTING_KEYS.jobId,
       GENIE_SPACE_SETTING_KEY,
@@ -66,6 +68,7 @@ test('cleanup response preserves resource failures while database cleanup comple
   assert.equal(response.database.status, 'deleted');
   assert.equal(response.database.deletedSettings, ADMIN_CLEANUP_SETTING_KEYS.length);
   assert.equal(response.database.deletedDataSources, 2);
+  assert.equal(response.database.deletedPricingData, 4);
   assert.equal(response.database.deletedCachedAggregations, 3);
   assert.equal(response.database.deletedSetupState, 1);
 });
@@ -101,6 +104,12 @@ function fakeDb(settings: Record<string, string>): DatabaseClient {
           throw new Error('not implemented');
         },
         delete: async () => {},
+      },
+      pricingData: {
+        get: async () => null,
+        getByNotebookId: async () => null,
+        upsert: async (input) => ({ ...input, updatedAt: new Date(0).toISOString() }),
+        clear: async () => 4,
       },
       cachedAggregations: {
         clear: async () => 3,

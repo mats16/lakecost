@@ -6,6 +6,7 @@ import {
   GENIE_SPACE_SETTING_KEY,
   LAKEFLOW_PIPELINE_SETTING_KEYS,
   MEDALLION_SCHEMA_SETTING_KEYS,
+  PRICING_NOTEBOOK_WORKSPACE_PATH_SETTING_KEY,
   quoteIdent,
   type AdminCleanupDatabaseResult,
   type AdminCleanupResponse,
@@ -29,6 +30,7 @@ export const ADMIN_CLEANUP_SETTING_KEYS = [
   LAKEFLOW_PIPELINE_SETTING_KEYS.pipelineId,
   LAKEFLOW_PIPELINE_SETTING_KEYS.jobId,
   SHARED_PIPELINE_SETTING_KEYS.workspaceRoot,
+  PRICING_NOTEBOOK_WORKSPACE_PATH_SETTING_KEY,
   LEGACY_SHARED_PIPELINE_SETTING_KEYS.pipelineId,
   LEGACY_SHARED_PIPELINE_SETTING_KEYS.jobId,
   GENIE_SPACE_SETTING_KEY,
@@ -170,6 +172,7 @@ async function cleanupDatabase(db: DatabaseClient): Promise<AdminCleanupDatabase
     message: null,
     deletedSettings: 0,
     deletedDataSources: 0,
+    deletedPricingData: 0,
     deletedCachedAggregations: 0,
     deletedSetupState: 0,
   };
@@ -181,6 +184,9 @@ async function cleanupDatabase(db: DatabaseClient): Promise<AdminCleanupDatabase
     }),
     countStep('data_sources', failures, async () => {
       result.deletedDataSources = await db.repos.dataSources.clear();
+    }),
+    countStep('pricing_data', failures, async () => {
+      result.deletedPricingData = await db.repos.pricingData.clear();
     }),
     countStep('cached_aggregations', failures, async () => {
       result.deletedCachedAggregations = await db.repos.cachedAggregations.clear();

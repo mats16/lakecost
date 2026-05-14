@@ -23,10 +23,12 @@ import {
   CATALOG_SETTING_KEY,
   CATALOG_USER_GROUP_DEFAULT,
   CATALOG_USER_GROUP_SETTING_KEY,
+  DOWNLOADS_VOLUME_DEFAULT,
   IDENT_RE,
   MEDALLION_SCHEMA_DEFAULTS,
   MEDALLION_SCHEMAS,
   MEDALLION_SCHEMA_SETTING_KEYS,
+  PRICING_SCHEMA_DEFAULT,
   catalogUserGroupFromSettings,
   medallionSchemaNamesFromSettings,
   quoteIdent,
@@ -372,12 +374,24 @@ function buildProvisionMessages(
       );
     }
   }
+  if (p.pricingSchemaEnsured === 'error') {
+    lines.push(t('settings.provisionSchemaFailed', { schema: PRICING_SCHEMA_DEFAULT }));
+  }
+  if (p.downloadsVolumeEnsured === 'error') {
+    lines.push(t('settings.provisionVolumeFailed', { volume: DOWNLOADS_VOLUME_DEFAULT }));
+  }
 
   const grantEntries: Array<{ scope: string; status: string }> = [
     { scope: t('settings.provisionScopeCatalog'), status: p.grants.catalog },
     {
       scope: t('settings.provisionScopeUsersCatalog', { group: catalogUserGroup }),
       status: p.grants.usersCatalog,
+    },
+    { scope: PRICING_SCHEMA_DEFAULT, status: p.grants.pricingSchema },
+    { scope: DOWNLOADS_VOLUME_DEFAULT, status: p.grants.downloadsVolume },
+    {
+      scope: t('settings.provisionScopeUsersDownloadsVolume', { group: catalogUserGroup }),
+      status: p.grants.usersDownloadsVolume,
     },
     ...MEDALLION_SCHEMAS.map((s) => ({
       scope: schemaNames[MEDALLION_SCHEMA_SETTING_KEYS[s]],
@@ -399,7 +413,10 @@ function buildProvisionMessages(
 
   for (const w of p.warnings) lines.push(w);
 
-  const hasSchemaError = Object.values(p.schemasEnsured).includes('error');
+  const hasSchemaError =
+    Object.values(p.schemasEnsured).includes('error') ||
+    p.pricingSchemaEnsured === 'error' ||
+    p.downloadsVolumeEnsured === 'error';
   const severity: Severity =
     grantFailures.length > 0 || hasSchemaError
       ? 'error'
@@ -415,7 +432,7 @@ function buildProvisionMessages(
   }
 
   const remediation =
-    grantFailures.length > 0
+    grantFailures.length > 0 || hasSchemaError
       ? renderRemediationSql(p.catalog, p.servicePrincipalId, schemaNames, catalogUserGroup)
       : null;
 
@@ -432,6 +449,15 @@ function renderRemediationSql(
   const lines: string[] = [];
   const accountUsers = quotePrincipal(catalogUserGroup);
   lines.push(`GRANT BROWSE, USE CATALOG, USE SCHEMA, SELECT ON CATALOG ${cat} TO ${accountUsers};`);
+  lines.push(
+    `CREATE SCHEMA IF NOT EXISTS ${cat}.${quoteIdent(PRICING_SCHEMA_DEFAULT)};`,
+    `CREATE VOLUME IF NOT EXISTS ${cat}.${quoteIdent(
+      schemaNames[MEDALLION_SCHEMA_SETTING_KEYS.bronze],
+    )}.${quoteIdent(DOWNLOADS_VOLUME_DEFAULT)};`,
+    `GRANT READ VOLUME ON VOLUME ${cat}.${quoteIdent(
+      schemaNames[MEDALLION_SCHEMA_SETTING_KEYS.bronze],
+    )}.${quoteIdent(DOWNLOADS_VOLUME_DEFAULT)} TO ${accountUsers};`,
+  );
   if (sp) {
     const principal = quotePrincipal(sp);
     lines.push(`GRANT USE CATALOG ON CATALOG ${cat} TO ${principal};`);
@@ -442,6 +468,14 @@ function renderRemediationSql(
         )} TO ${principal};`,
       );
     }
+    lines.push(
+      `GRANT USE SCHEMA, SELECT, CREATE TABLE ON SCHEMA ${cat}.${quoteIdent(
+        PRICING_SCHEMA_DEFAULT,
+      )} TO ${principal};`,
+      `GRANT READ VOLUME, WRITE VOLUME ON VOLUME ${cat}.${quoteIdent(
+        schemaNames[MEDALLION_SCHEMA_SETTING_KEYS.bronze],
+      )}.${quoteIdent(DOWNLOADS_VOLUME_DEFAULT)} TO ${principal};`,
+    );
   }
   return lines.join('\n');
 }

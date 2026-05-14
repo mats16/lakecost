@@ -88,6 +88,28 @@ export interface DataSourcesRepo {
   clear(): Promise<number>;
 }
 
+export interface PricingDataValue {
+  provider: string;
+  service: string;
+  slug: string;
+  table: string;
+  rawDataTable: string | null;
+  rawDataPath: string | null;
+  notebookPath: string | null;
+  notebookId: string | null;
+  metadata: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export type PricingDataUpsertInput = Omit<PricingDataValue, 'updatedAt'>;
+
+export interface PricingDataRepo {
+  get(provider: string, service: string): Promise<PricingDataValue | null>;
+  getByNotebookId(notebookId: string): Promise<PricingDataValue | null>;
+  upsert(input: PricingDataUpsertInput): Promise<PricingDataValue>;
+  clear(): Promise<number>;
+}
+
 export interface AppSettingValue {
   key: string;
   value: string;
@@ -113,4 +135,5 @@ export interface Repositories {
   setupState: SetupStateRepo;
   appSettings: AppSettingsRepo;
   dataSources: DataSourcesRepo;
+  pricingData: PricingDataRepo;
 }

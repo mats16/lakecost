@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json && mkdir -p dist/sql && cp src/sql/*.sql dist/sql/",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/sql && cp src/sql/*.sql dist/sql/ && mkdir -p dist/notebooks && cp src/notebooks/*.ipynb dist/notebooks/",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
     "test": "tsx --test test/*.test.ts"

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, unique, primaryKey } from 'drizzle-orm/sqlite-core';
 
 export const budgets = sqliteTable('budgets', {
   id: text('id').primaryKey(),
@@ -71,6 +71,26 @@ export const dataSources = sqliteTable(
   },
   (table) => ({
     uniqProvider: unique().on(table.providerName, table.billingAccountId),
+  }),
+);
+
+export const pricingData = sqliteTable(
+  'pricing_data',
+  {
+    provider: text('provider').notNull(),
+    service: text('service').notNull(),
+    slug: text('slug').notNull(),
+    tableName: text('table').notNull(),
+    rawDataTable: text('raw_data_table'),
+    rawDataPath: text('raw_data_path'),
+    notebookPath: text('notebook_path'),
+    notebookId: text('notebook_id'),
+    metadataJson: text('metadata').notNull().default('{}'),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.provider, table.service] }),
+    uniqSlug: unique().on(table.slug),
   }),
 );
 

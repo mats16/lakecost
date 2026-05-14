@@ -14,3 +14,4 @@ export * from './genie.js';
 export * from './admin.js';
 export * from './optimization.js';
 export * from './sql.js';
+export * from './pricing.js';

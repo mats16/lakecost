@@ -7,6 +7,7 @@ import { DataSources } from './pages/Configure/DataSources';
 import { Catalog } from './pages/Configure/Catalog';
 import { Transformations } from './pages/Configure/Transformations';
 import { GovernedTags } from './pages/Configure/GovernedTags';
+import { Pricing } from './pages/Configure/Pricing';
 import { Credentials } from './pages/ExternalData/Credentials';
 import { ExploreStub } from './pages/Explore/ExploreStub';
 import { Genie } from './pages/Explore/Genie';
@@ -36,6 +37,7 @@ export function App() {
           <Route path="/data-sources" element={<DataSources />} />
           <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/credentials" element={<Credentials />} />
           <Route path="/admin" element={<Catalog />} />
         </Route>
@@ -47,6 +49,7 @@ export function App() {
           path="/configure/transformations"
           element={<Navigate to="/transformations" replace />}
         />
+        <Route path="/configure/pricing" element={<Navigate to="/pricing" replace />} />
         <Route path="/configure/catalog" element={<Navigate to="/admin" replace />} />
         <Route path="/catalog" element={<Navigate to="/admin" replace />} />
 

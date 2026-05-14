@@ -1,7 +1,7 @@
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as s from './schema/sqlite.js';
 import type { DatabaseClient } from './DatabaseClient.js';
@@ -15,6 +15,9 @@ import type {
   DataSourceUpdatePatch,
   DataSourceValue,
   DataSourcesRepo,
+  PricingDataRepo,
+  PricingDataUpsertInput,
+  PricingDataValue,
   Repositories,
   SetupStateRepo,
   SetupStateValue,
@@ -47,6 +50,7 @@ export class SqliteClient implements DatabaseClient {
       setupState: new SqliteSetupStateRepo(db),
       appSettings: new SqliteAppSettingsRepo(db),
       dataSources: new SqliteDataSourcesRepo(db),
+      pricingData: new SqlitePricingDataRepo(db),
     };
   }
 
@@ -62,6 +66,7 @@ export class SqliteClient implements DatabaseClient {
   }
 
   private async bootstrapSchema(): Promise<void> {
+    await this.migratePricingDataSchema();
     const statements = [
       `CREATE TABLE IF NOT EXISTS budgets (
         id TEXT PRIMARY KEY,
@@ -125,6 +130,20 @@ export class SqliteClient implements DatabaseClient {
         updated_at TEXT NOT NULL,
         UNIQUE(provider_name, billing_account_id)
       )`,
+      `CREATE TABLE IF NOT EXISTS pricing_data (
+        provider TEXT NOT NULL,
+        service TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        raw_data_table TEXT,
+        raw_data_path TEXT,
+        notebook_path TEXT,
+        notebook_id TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (provider, service)
+      )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS pricing_data_slug_unique ON pricing_data(slug)`,
       `CREATE TABLE IF NOT EXISTS setup_state (
         workspace_id TEXT PRIMARY KEY,
         system_tables_ok INTEGER NOT NULL DEFAULT 0,
@@ -144,6 +163,74 @@ export class SqliteClient implements DatabaseClient {
     await this.migrateAppSettingKey('focus_pipeline_job_id', 'lakeflow_pipeline_job_id');
     await this.migrateAppSettingKey('focus_pipeline_id', 'lakeflow_pipeline_id');
     logger.debug('SQLite schema bootstrap complete');
+  }
+
+  private async migratePricingDataSchema(): Promise<void> {
+    const result = await this.raw.execute('PRAGMA table_info(pricing_data)');
+    const columns = result.rows.map((row) => String(row.name));
+    if (columns.length === 0) return;
+
+    if (columns.includes('id') && !columns.includes('provider')) {
+      await this.raw.execute('ALTER TABLE pricing_data RENAME TO pricing_data_legacy');
+      await this.raw.execute(`CREATE TABLE pricing_data (
+        provider TEXT NOT NULL,
+        service TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        raw_data_table TEXT,
+        raw_data_path TEXT,
+        notebook_path TEXT,
+        notebook_id TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (provider, service)
+      )`);
+      await this.raw.execute(`INSERT INTO pricing_data (
+        provider,
+        service,
+        slug,
+        "table",
+        raw_data_table,
+        raw_data_path,
+        notebook_path,
+        notebook_id,
+        metadata,
+        updated_at
+      )
+      SELECT
+        'AWS',
+        'AmazonEC2',
+        'aws_ec2',
+        "table",
+        NULL,
+        NULL,
+        notebook_path,
+        notebook_id,
+        metadata,
+        updated_at
+      FROM pricing_data_legacy
+      WHERE id = 'aws_ec2'
+      LIMIT 1`);
+      return;
+    }
+
+    if (!columns.includes('provider')) return;
+    const addColumns: Array<{ name: string; type: string }> = [
+      { name: 'slug', type: 'TEXT' },
+      { name: 'raw_data_table', type: 'TEXT' },
+      { name: 'raw_data_path', type: 'TEXT' },
+    ];
+    for (const col of addColumns) {
+      if (!columns.includes(col.name)) {
+        await this.raw.execute(`ALTER TABLE pricing_data ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+    if (!columns.includes('slug')) {
+      await this.raw.execute({
+        sql: `UPDATE pricing_data SET slug = ? WHERE provider = ? AND service = ?`,
+        args: ['aws_ec2', 'AWS', 'AmazonEC2'],
+      });
+    }
   }
 
   private async migrateAppSettingKey(oldKey: string, newKey: string): Promise<void> {
@@ -520,6 +607,82 @@ function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
     focusVersion: row.focusVersion,
     enabled: row.enabled,
     config: JSON.parse(row.configJson) as Record<string, unknown>,
+    updatedAt: row.updatedAt,
+  };
+}
+
+class SqlitePricingDataRepo implements PricingDataRepo {
+  constructor(private db: Db) {}
+
+  async get(provider: string, service: string): Promise<PricingDataValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.pricingData)
+      .where(and(eq(s.pricingData.provider, provider), eq(s.pricingData.service, service)))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async getByNotebookId(notebookId: string): Promise<PricingDataValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.pricingData)
+      .where(eq(s.pricingData.notebookId, notebookId))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async upsert(input: PricingDataUpsertInput): Promise<PricingDataValue> {
+    const row = {
+      provider: input.provider,
+      service: input.service,
+      slug: input.slug,
+      tableName: input.table,
+      rawDataTable: input.rawDataTable,
+      rawDataPath: input.rawDataPath,
+      notebookPath: input.notebookPath,
+      notebookId: input.notebookId,
+      metadataJson: JSON.stringify(input.metadata),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.db
+      .insert(s.pricingData)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [s.pricingData.provider, s.pricingData.service],
+        set: {
+          tableName: row.tableName,
+          slug: row.slug,
+          rawDataTable: row.rawDataTable,
+          rawDataPath: row.rawDataPath,
+          notebookPath: row.notebookPath,
+          notebookId: row.notebookId,
+          metadataJson: row.metadataJson,
+          updatedAt: row.updatedAt,
+        },
+      });
+    return toPricingData(row);
+  }
+
+  async clear(): Promise<number> {
+    const result = await this.db.run(sql`delete from pricing_data`);
+    return result.rowsAffected;
+  }
+}
+
+function toPricingData(row: typeof s.pricingData.$inferSelect): PricingDataValue {
+  return {
+    provider: row.provider,
+    service: row.service,
+    slug: row.slug,
+    table: row.tableName,
+    rawDataTable: row.rawDataTable,
+    rawDataPath: row.rawDataPath,
+    notebookPath: row.notebookPath,
+    notebookId: row.notebookId,
+    metadata: JSON.parse(row.metadataJson) as Record<string, unknown>,
     updatedAt: row.updatedAt,
   };
 }

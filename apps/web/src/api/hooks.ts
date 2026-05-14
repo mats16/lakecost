@@ -24,6 +24,9 @@ import type {
   GovernedTagsResponse,
   GovernedTagSyncBody,
   GovernedTagSyncResult,
+  PricingNotebookRunResult,
+  PricingNotebookSetupResult,
+  PricingNotebookState,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
@@ -609,6 +612,40 @@ export function useRunSharedTransformationJob() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transformations'] });
     },
+  });
+}
+
+export function usePricingNotebook() {
+  return useQuery({
+    queryKey: ['pricing', 'notebook'],
+    queryFn: () => apiFetch<PricingNotebookState>('/api/pricing/notebook'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useSetupPricingNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<PricingNotebookSetupResult>('/api/pricing/notebook/setup', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pricing', 'notebook'] });
+      qc.invalidateQueries({ queryKey: ['appSettings'] });
+    },
+  });
+}
+
+export function useRunNotebook() {
+  return useMutation({
+    mutationFn: (notebookId: string) =>
+      apiFetch<PricingNotebookRunResult>(`/api/notebook/${encodeURIComponent(notebookId)}/run`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
   });
 }
 
