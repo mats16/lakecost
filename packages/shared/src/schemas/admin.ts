@@ -18,6 +18,7 @@ export const AdminCleanupDatabaseResultSchema = z.object({
   message: z.string().nullable(),
   deletedSettings: z.number().int().nonnegative(),
   deletedDataSources: z.number().int().nonnegative(),
+  deletedPricingData: z.number().int().nonnegative(),
   deletedCachedAggregations: z.number().int().nonnegative(),
   deletedSetupState: z.number().int().nonnegative(),
 });

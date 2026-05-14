@@ -65,10 +65,16 @@ async function ensureWorkspaceDir(wc: WorkspaceClient, dir: string): Promise<voi
   }
 }
 
+export interface UploadWorkspaceFileOptions {
+  format?: 'SOURCE' | 'JUPYTER';
+  language?: 'SQL' | 'PYTHON' | 'SCALA' | 'R';
+}
+
 export async function uploadPipelineFile(
   wc: WorkspaceClient,
   path: string,
   content: string,
+  options: UploadWorkspaceFileOptions = {},
 ): Promise<void> {
   const lastSlash = path.lastIndexOf('/');
   if (lastSlash > 0) {
@@ -77,8 +83,8 @@ export async function uploadPipelineFile(
   await wc.workspace.import({
     path,
     content: Buffer.from(content, 'utf8').toString('base64'),
-    format: 'SOURCE',
-    language: 'SQL',
+    format: options.format ?? 'SOURCE',
+    language: options.language ?? 'SQL',
     overwrite: true,
   });
 }

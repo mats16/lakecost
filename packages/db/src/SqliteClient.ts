@@ -1,7 +1,7 @@
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import type { LibSQLDatabase } from 'drizzle-orm/libsql';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import * as s from './schema/sqlite.js';
 import type { DatabaseClient } from './DatabaseClient.js';
@@ -15,6 +15,10 @@ import type {
   DataSourceUpdatePatch,
   DataSourceValue,
   DataSourcesRepo,
+  PricingDataRepo,
+  PricingDataRunPatch,
+  PricingDataUpsertInput,
+  PricingDataValue,
   Repositories,
   SetupStateRepo,
   SetupStateValue,
@@ -47,6 +51,7 @@ export class SqliteClient implements DatabaseClient {
       setupState: new SqliteSetupStateRepo(db),
       appSettings: new SqliteAppSettingsRepo(db),
       dataSources: new SqliteDataSourcesRepo(db),
+      pricingData: new SqlitePricingDataRepo(db),
     };
   }
 
@@ -124,6 +129,25 @@ export class SqliteClient implements DatabaseClient {
         config_json TEXT NOT NULL DEFAULT '{}',
         updated_at TEXT NOT NULL,
         UNIQUE(provider_name, billing_account_id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS pricing_data (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        service TEXT NOT NULL,
+        "table" TEXT NOT NULL,
+        raw_data_table TEXT,
+        raw_data_path TEXT,
+        notebook_path TEXT,
+        notebook_id TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        run_id INTEGER,
+        run_status TEXT NOT NULL DEFAULT 'not_started',
+        run_url TEXT,
+        run_started_at TEXT,
+        run_finished_at TEXT,
+        run_checked_at TEXT,
+        updated_at TEXT NOT NULL,
+        UNIQUE(provider, service)
       )`,
       `CREATE TABLE IF NOT EXISTS setup_state (
         workspace_id TEXT PRIMARY KEY,
@@ -520,6 +544,135 @@ function toDataSource(row: typeof s.dataSources.$inferSelect): DataSourceValue {
     focusVersion: row.focusVersion,
     enabled: row.enabled,
     config: JSON.parse(row.configJson) as Record<string, unknown>,
+    updatedAt: row.updatedAt,
+  };
+}
+
+class SqlitePricingDataRepo implements PricingDataRepo {
+  constructor(private db: Db) {}
+
+  async get(provider: string, service: string): Promise<PricingDataValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.pricingData)
+      .where(and(eq(s.pricingData.provider, provider), eq(s.pricingData.service, service)))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async getById(id: string): Promise<PricingDataValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.pricingData)
+      .where(eq(s.pricingData.id, id))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async getByNotebookId(notebookId: string): Promise<PricingDataValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.pricingData)
+      .where(eq(s.pricingData.notebookId, notebookId))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async upsert(input: PricingDataUpsertInput): Promise<PricingDataValue> {
+    const row = {
+      id: input.id,
+      provider: input.provider,
+      service: input.service,
+      tableName: input.table,
+      rawDataTable: input.rawDataTable,
+      rawDataPath: input.rawDataPath,
+      notebookPath: input.notebookPath,
+      notebookId: input.notebookId,
+      metadataJson: JSON.stringify(input.metadata),
+      runId: input.runId,
+      runStatus: input.runStatus,
+      runUrl: input.runUrl,
+      runStartedAt: input.runStartedAt,
+      runFinishedAt: input.runFinishedAt,
+      runCheckedAt: input.runCheckedAt,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.db
+      .insert(s.pricingData)
+      .values(row)
+      .onConflictDoUpdate({
+        target: s.pricingData.id,
+        set: {
+          provider: row.provider,
+          service: row.service,
+          tableName: row.tableName,
+          rawDataTable: row.rawDataTable,
+          rawDataPath: row.rawDataPath,
+          notebookPath: row.notebookPath,
+          notebookId: row.notebookId,
+          metadataJson: row.metadataJson,
+          runId: row.runId,
+          runStatus: row.runStatus,
+          runUrl: row.runUrl,
+          runStartedAt: row.runStartedAt,
+          runFinishedAt: row.runFinishedAt,
+          runCheckedAt: row.runCheckedAt,
+          updatedAt: row.updatedAt,
+        },
+      });
+    return toPricingData(row);
+  }
+
+  async updateRun(id: string, patch: PricingDataRunPatch): Promise<PricingDataValue | null> {
+    const updatedAt = new Date().toISOString();
+    const updated = await this.db
+      .update(s.pricingData)
+      .set({
+        runId: patch.runId,
+        runStatus: patch.runStatus,
+        runUrl: patch.runUrl,
+        runStartedAt: patch.runStartedAt,
+        runFinishedAt: patch.runFinishedAt,
+        runCheckedAt: patch.runCheckedAt,
+        updatedAt,
+      })
+      .where(eq(s.pricingData.id, id))
+      .returning();
+    const row = updated[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async deleteById(id: string): Promise<boolean> {
+    const result = await this.db.delete(s.pricingData).where(eq(s.pricingData.id, id));
+    return result.rowsAffected > 0;
+  }
+
+  async clear(): Promise<number> {
+    const result = await this.db.run(sql`delete from pricing_data`);
+    return result.rowsAffected;
+  }
+}
+
+function toPricingData(row: typeof s.pricingData.$inferSelect): PricingDataValue {
+  return {
+    id: row.id,
+    provider: row.provider,
+    service: row.service,
+    table: row.tableName,
+    rawDataTable: row.rawDataTable,
+    rawDataPath: row.rawDataPath,
+    notebookPath: row.notebookPath,
+    notebookId: row.notebookId,
+    metadata: JSON.parse(row.metadataJson) as Record<string, unknown>,
+    runId: row.runId,
+    runStatus: row.runStatus as PricingDataValue['runStatus'],
+    runUrl: row.runUrl,
+    runStartedAt: row.runStartedAt,
+    runFinishedAt: row.runFinishedAt,
+    runCheckedAt: row.runCheckedAt,
     updatedAt: row.updatedAt,
   };
 }

@@ -1,7 +1,9 @@
 import {
   CATALOG_USER_GROUP_DEFAULT,
+  DOWNLOADS_VOLUME_DEFAULT,
   MEDALLION_SCHEMA_DEFAULTS,
   MEDALLION_SCHEMAS,
+  PRICING_SCHEMA_DEFAULT,
   quoteIdent,
   quotePrincipal,
   schemaGrantPrivileges,
@@ -82,6 +84,16 @@ interface ProvisionOptions {
   catalogUserGroup?: string;
 }
 
+interface ProvisionCatalogDeps {
+  executor: StatementExecutor;
+}
+
+const PRICING_SCHEMA_GRANT_PRIVILEGES = 'USE SCHEMA, SELECT, CREATE TABLE';
+const DOWNLOADS_VOLUME_SP_PRIVILEGES = 'READ VOLUME, WRITE VOLUME';
+const DOWNLOADS_VOLUME_USER_PRIVILEGES = 'READ VOLUME';
+
+type GrantStatus = ProvisionResult['grants'][keyof ProvisionResult['grants']];
+
 /**
  * Provisions the medallion layout under
  * `catalog`, optionally creating the catalog itself, and grants the App
@@ -100,13 +112,6 @@ export async function provisionCatalog(
   catalog: string,
   opts: ProvisionOptions = {},
 ): Promise<ProvisionResult> {
-  // Fail fast on bad identifiers so we never interpolate them into SQL.
-  const catalogIdent = quoteIdent(catalog);
-  const schemaIdents = MEDALLION_SCHEMAS.map((s) => {
-    const schema = opts.schemaNames?.[s]?.trim() || MEDALLION_SCHEMA_DEFAULTS[s];
-    return { layer: s, schema, ident: quoteIdent(schema) };
-  });
-
   const executor = buildUserExecutor(env, userToken);
   if (!executor) {
     throw new CatalogServiceError(
@@ -114,6 +119,27 @@ export async function provisionCatalog(
       400,
     );
   }
+  return provisionCatalogWithDeps(env, catalog, opts, {
+    executor,
+  });
+}
+
+export async function provisionCatalogWithDeps(
+  env: Env,
+  catalog: string,
+  opts: ProvisionOptions = {},
+  deps: ProvisionCatalogDeps,
+): Promise<ProvisionResult> {
+  // Fail fast on bad identifiers so we never interpolate them into SQL.
+  const catalogIdent = quoteIdent(catalog);
+  const schemaIdents = MEDALLION_SCHEMAS.map((s) => {
+    const schema = opts.schemaNames?.[s]?.trim() || MEDALLION_SCHEMA_DEFAULTS[s];
+    return { layer: s, schema, ident: quoteIdent(schema) };
+  });
+  const bronzeSchema = schemaIdents.find((s) => s.layer === 'bronze')!;
+  const pricingSchemaIdent = quoteIdent(PRICING_SCHEMA_DEFAULT);
+  const downloadsVolumeIdent = quoteIdent(DOWNLOADS_VOLUME_DEFAULT);
+  const executor = deps.executor;
 
   const sp = (env.DATABRICKS_CLIENT_ID ?? '').trim();
   const warnings: string[] = [];
@@ -132,75 +158,93 @@ export async function provisionCatalog(
     }
   }
 
-  // Schemas: independent CREATEs run in parallel.
-  // Promise.all preserves input order in its output array, so warnings are
-  // collected deterministically regardless of which SQL statement resolves first.
-  const schemaResults = await Promise.all(
-    schemaIdents.map(async ({ layer, ident }) => {
-      const { status, warning } = await ensureSchema(
-        executor,
-        `CREATE SCHEMA IF NOT EXISTS ${catalogIdent}.${ident}`,
-      );
-      return { layer, status, warning };
-    }),
-  );
-  const schemasEnsured = Object.fromEntries(
-    schemaResults.map(({ layer, status }) => [layer, status]),
-  ) as Record<(typeof MEDALLION_SCHEMAS)[number], SchemaEnsureStatus>;
-  for (const r of schemaResults) {
+  // Schemas: medallion + pricing schemas are independent — issue concurrently.
+  // Promise.all preserves input order so warnings are collected deterministically.
+  const schemaStmts = [
+    ...schemaIdents.map(({ layer, ident }) => ({
+      key: layer,
+      sql: `CREATE SCHEMA IF NOT EXISTS ${catalogIdent}.${ident}`,
+    })),
+    {
+      key: 'pricing' as const,
+      sql: `CREATE SCHEMA IF NOT EXISTS ${catalogIdent}.${pricingSchemaIdent}`,
+    },
+  ];
+  const schemaResults = await Promise.all(schemaStmts.map((s) => ensureSchema(executor, s.sql)));
+  const schemasEnsured = {} as Record<(typeof MEDALLION_SCHEMAS)[number], SchemaEnsureStatus>;
+  let pricingSchemaEnsured: SchemaEnsureStatus = 'error';
+  schemaStmts.forEach((s, i) => {
+    const r = schemaResults[i]!;
+    if (s.key === 'pricing') pricingSchemaEnsured = r.status;
+    else schemasEnsured[s.key] = r.status;
     if (r.warning) warnings.push(r.warning);
-  }
+  });
 
-  // Grants: catalog-level + per-schema all independent — issue concurrently.
-  const grants: ProvisionResult['grants'] = {
-    catalog: 'skipped:sp_id_not_configured',
-    usersCatalog: 'skipped:not_attempted',
-    bronze: 'skipped:sp_id_not_configured',
-    silver: 'skipped:sp_id_not_configured',
-    gold: 'skipped:sp_id_not_configured',
-  };
+  // Downloads volume depends on the bronze schema existing — run after schemas.
+  const { status: downloadsVolumeEnsured, warning: downloadsVolumeWarning } = await ensureSchema(
+    executor,
+    `CREATE VOLUME IF NOT EXISTS ${catalogIdent}.${bronzeSchema.ident}.${downloadsVolumeIdent}`,
+  );
+  if (downloadsVolumeWarning) warnings.push(downloadsVolumeWarning);
+
   const catalogUserGroup = opts.catalogUserGroup?.trim() || CATALOG_USER_GROUP_DEFAULT;
   const catalogUserGroupIdent = quotePrincipal(catalogUserGroup);
-  const userGrantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
+  const grantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
     {
       key: 'usersCatalog',
       sql: `GRANT BROWSE, USE CATALOG, USE SCHEMA, SELECT ON CATALOG ${catalogIdent} TO ${catalogUserGroupIdent}`,
     },
+    {
+      key: 'usersDownloadsVolume',
+      sql: `GRANT ${DOWNLOADS_VOLUME_USER_PRIVILEGES} ON VOLUME ${catalogIdent}.${bronzeSchema.ident}.${downloadsVolumeIdent} TO ${catalogUserGroupIdent}`,
+    },
   ];
   if (sp.length > 0) {
     const spIdent = quotePrincipal(sp);
-    const grantStmts: Array<{ key: keyof ProvisionResult['grants']; sql: string }> = [
+    grantStmts.push(
       { key: 'catalog', sql: `GRANT USE CATALOG ON CATALOG ${catalogIdent} TO ${spIdent}` },
       ...schemaIdents.map(({ layer, ident }) => ({
         key: layer,
         sql: `GRANT ${schemaGrantPrivileges(layer)} ON SCHEMA ${catalogIdent}.${ident} TO ${spIdent}`,
       })),
-      ...userGrantStmts,
-    ];
-    const grantResults = await Promise.all(grantStmts.map((g) => grant(executor, g.sql)));
-    grantStmts.forEach((g, i) => {
-      grants[g.key] = grantResults[i]!
-        .status as ProvisionResult['grants'][keyof ProvisionResult['grants']];
-    });
-    for (const r of grantResults) {
-      if (r.warning) warnings.push(r.warning);
-    }
+      {
+        key: 'pricingSchema',
+        sql: `GRANT ${PRICING_SCHEMA_GRANT_PRIVILEGES} ON SCHEMA ${catalogIdent}.${pricingSchemaIdent} TO ${spIdent}`,
+      },
+      {
+        key: 'downloadsVolume',
+        sql: `GRANT ${DOWNLOADS_VOLUME_SP_PRIVILEGES} ON VOLUME ${catalogIdent}.${bronzeSchema.ident}.${downloadsVolumeIdent} TO ${spIdent}`,
+      },
+    );
   } else {
     warnings.push('DATABRICKS_CLIENT_ID is not set — App Service Principal grants were skipped.');
-    const grantResults = await Promise.all(userGrantStmts.map((g) => grant(executor, g.sql)));
-    userGrantStmts.forEach((g, i) => {
-      grants[g.key] = grantResults[i]!
-        .status as ProvisionResult['grants'][keyof ProvisionResult['grants']];
-    });
-    for (const r of grantResults) {
-      if (r.warning) warnings.push(r.warning);
-    }
+  }
+  const skipReason: GrantStatus =
+    sp.length > 0 ? 'skipped:not_attempted' : 'skipped:sp_id_not_configured';
+  const grants: ProvisionResult['grants'] = {
+    catalog: skipReason,
+    usersCatalog: 'skipped:not_attempted',
+    bronze: skipReason,
+    silver: skipReason,
+    gold: skipReason,
+    pricingSchema: skipReason,
+    downloadsVolume: skipReason,
+    usersDownloadsVolume: 'skipped:not_attempted',
+  };
+  const grantResults = await Promise.all(grantStmts.map((g) => grant(executor, g.sql)));
+  grantStmts.forEach((g, i) => {
+    grants[g.key] = grantResults[i]!.status as GrantStatus;
+  });
+  for (const r of grantResults) {
+    if (r.warning) warnings.push(r.warning);
   }
 
   return {
     catalog,
     catalogCreated,
     schemasEnsured,
+    pricingSchemaEnsured,
+    downloadsVolumeEnsured,
     grants,
     servicePrincipalId: sp.length > 0 ? sp : null,
     warnings,

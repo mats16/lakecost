@@ -23,6 +23,8 @@ import { governedTagsRouter } from './routes/governedTags.js';
 import { genieRouter } from './routes/genie.js';
 import { adminRouter } from './routes/admin.js';
 import { sqlRouter } from './routes/sql.js';
+import { pricingRouter } from './routes/pricing.js';
+import { jobsRouter } from './routes/jobs.js';
 
 export interface AppDeps {
   env: Env;
@@ -56,6 +58,8 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/genie', genieRouter(db, env));
   app.use('/api/admin', adminRouter(db, env));
   app.use('/api/sql', sqlRouter(db, env));
+  app.use('/api/pricing', pricingRouter(db, env));
+  app.use('/api/jobs', jobsRouter(db, env));
 
   if (env.NODE_ENV === 'production') {
     const distDir = resolveWebDistDir(env);

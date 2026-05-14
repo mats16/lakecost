@@ -84,6 +84,31 @@ export const dataSources = pgTable(
   }),
 );
 
+export const pricingData = pgTable(
+  'pricing_data',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    service: text('service').notNull(),
+    tableName: text('table').notNull(),
+    rawDataTable: text('raw_data_table'),
+    rawDataPath: text('raw_data_path'),
+    notebookPath: text('notebook_path'),
+    notebookId: text('notebook_id'),
+    metadata: jsonb('metadata').notNull().default({}),
+    runId: integer('run_id'),
+    runStatus: text('run_status').notNull().default('not_started'),
+    runUrl: text('run_url'),
+    runStartedAt: timestamp('run_started_at', { withTimezone: true }),
+    runFinishedAt: timestamp('run_finished_at', { withTimezone: true }),
+    runCheckedAt: timestamp('run_checked_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniqProviderService: unique().on(table.provider, table.service),
+  }),
+);
+
 export const setupState = pgTable('setup_state', {
   workspaceId: text('workspace_id').primaryKey(),
   systemTablesOk: boolean('system_tables_ok').notNull().default(false),

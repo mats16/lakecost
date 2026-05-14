@@ -49,7 +49,7 @@ import { useI18n } from '../../i18n';
 import { displayNameForRow, findTemplateById, findTemplateForRow } from './dataSourceCatalog';
 import type { DatabricksFocusDraft } from './DataSources';
 import { type AwsFocusDraft, useAwsFocusForm } from './useAwsFocusForm';
-import { numberSetting } from './utils';
+import { catalogTableUrl, numberSetting } from './utils';
 
 const AWS_BCM_DATA_EXPORTS_URL =
   'https://us-east-1.console.aws.amazon.com/costmanagement/home#/bcm-data-exports';
@@ -69,10 +69,6 @@ interface ResourceStep {
   status: ResourceStepStatus;
   detail: string | null;
   href: string | null;
-}
-
-function catalogTableUrl(workspaceUrl: string, fqn: string): string {
-  return `${workspaceUrl}/explore/data/${fqn.split('.').map(encodeURIComponent).join('/')}`;
 }
 
 export function DataSourceDrawer({
@@ -1388,7 +1384,7 @@ function DatabricksResourceLinks({
         <ResourceLink
           label={t('dataSources.systemTables.tableResource')}
           id={tableFqn}
-          href={workspaceUrl ? catalogTableUrl(workspaceUrl, tableFqn) : null}
+          href={catalogTableUrl(workspaceUrl, tableFqn)}
         />
       </div>
     </div>

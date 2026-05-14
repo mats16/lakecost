@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isTerminalSqlStatus } from '@finlake/shared';
+import { isActivePricingRunStatus, isTerminalSqlStatus } from '@finlake/shared';
 import type {
   Budget,
   AdminCleanupResponse,
@@ -24,6 +24,10 @@ import type {
   GovernedTagsResponse,
   GovernedTagSyncBody,
   GovernedTagSyncResult,
+  DatabricksRunLinkResult,
+  PricingNotebookRunResult,
+  PricingNotebookDeleteResult,
+  PricingNotebookListResponse,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
@@ -609,6 +613,55 @@ export function useRunSharedTransformationJob() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['transformations'] });
     },
+  });
+}
+
+export function usePricingNotebook() {
+  return useQuery({
+    queryKey: ['pricing'],
+    queryFn: () => apiFetch<PricingNotebookListResponse>('/api/pricing'),
+    staleTime: 60 * 1000,
+    retry: false,
+    refetchInterval: (query) => {
+      const data = query.state.data as PricingNotebookListResponse | undefined;
+      return data?.items.some((item) => isActivePricingRunStatus(item.runStatus)) ? 5_000 : false;
+    },
+    refetchIntervalInBackground: false,
+  });
+}
+
+export function useRunNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<PricingNotebookRunResult>(`/api/pricing/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pricing'] });
+    },
+  });
+}
+
+export function useDeletePricingNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<PricingNotebookDeleteResult>(`/api/pricing/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pricing'] });
+    },
+  });
+}
+
+export function useGetJobRunLink() {
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiFetch<DatabricksRunLinkResult>(
+        `/api/jobs/runs/get?run_id=${encodeURIComponent(String(runId))}`,
+      ),
   });
 }
 

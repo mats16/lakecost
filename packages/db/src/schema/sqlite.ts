@@ -74,6 +74,31 @@ export const dataSources = sqliteTable(
   }),
 );
 
+export const pricingData = sqliteTable(
+  'pricing_data',
+  {
+    id: text('id').primaryKey(),
+    provider: text('provider').notNull(),
+    service: text('service').notNull(),
+    tableName: text('table').notNull(),
+    rawDataTable: text('raw_data_table'),
+    rawDataPath: text('raw_data_path'),
+    notebookPath: text('notebook_path'),
+    notebookId: text('notebook_id'),
+    metadataJson: text('metadata').notNull().default('{}'),
+    runId: integer('run_id'),
+    runStatus: text('run_status').notNull().default('not_started'),
+    runUrl: text('run_url'),
+    runStartedAt: text('run_started_at'),
+    runFinishedAt: text('run_finished_at'),
+    runCheckedAt: text('run_checked_at'),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => ({
+    uniqProviderService: unique().on(table.provider, table.service),
+  }),
+);
+
 export const setupState = sqliteTable('setup_state', {
   workspaceId: text('workspace_id').primaryKey(),
   systemTablesOk: integer('system_tables_ok', { mode: 'boolean' }).notNull().default(false),
