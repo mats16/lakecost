@@ -14,7 +14,7 @@ export function jobsRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
         return;
       }
-      res.json(await submitManagedNotebookRunById(env, db, req.user?.accessToken, parsed.data.id));
+      res.json(await submitManagedNotebookRunById(env, db, parsed.data.id));
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
         res.status(err.statusCode).json({ error: { message: err.message } });

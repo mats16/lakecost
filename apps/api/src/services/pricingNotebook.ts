@@ -15,7 +15,6 @@ import {
   type PricingData,
   type PricingNotebookDeleteResult,
   type PricingNotebookListResponse,
-  type PricingNotebookSetupResult,
   type PricingNotebookState,
 } from '@finlake/shared';
 import { getDatabricksRunSnapshot } from './databricksRunStatus.js';
@@ -24,7 +23,6 @@ import { uploadPipelineFile } from './databricksJobs.js';
 import {
   buildAppWorkspaceClient,
   buildUserExecutor,
-  buildUserWorkspaceClient,
   type StatementExecutor,
   type WorkspaceClient,
 } from './statementExecution.js';
@@ -74,7 +72,7 @@ async function readPricingNotebook(): Promise<string> {
 }
 
 export function pricingNotebookWorkspacePath(appName: string): string {
-  return `/Workspace/Shared/${appName}/${PRICING_NOTEBOOK_NAME}`;
+  return `/Workspace/Shared/${appName}/pricing/${PRICING_NOTEBOOK_NAME}`;
 }
 
 export function awsPricingServiceById(id: string): AwsPricingService {
@@ -145,37 +143,6 @@ interface PricingNotebookDeps {
   uploadNotebook?: (wc: WorkspaceClient, workspacePath: string) => Promise<string>;
 }
 
-export async function setupPricingNotebook(
-  env: Env,
-  db: DatabaseClient,
-  userToken: string | undefined,
-  id: string,
-  deps: PricingNotebookDeps = {},
-): Promise<PricingNotebookSetupResult> {
-  return setupPricingNotebookWithDeps(env, db, userToken, id, deps);
-}
-
-export async function setupPricingNotebookWithDeps(
-  env: Env,
-  db: DatabaseClient,
-  userToken: string | undefined,
-  id: string,
-  deps: PricingNotebookDeps = {},
-): Promise<PricingNotebookSetupResult> {
-  const { service, pricingData, notebookWorkspacePath } = await upsertPricingNotebook(
-    env,
-    db,
-    userToken,
-    id,
-    deps,
-  );
-  return {
-    ...stateFromPricingData(pricingData, service),
-    notebookWorkspacePath,
-    warnings: [],
-  };
-}
-
 export async function deletePricingNotebookData(
   env: Env,
   db: DatabaseClient,
@@ -216,19 +183,12 @@ export async function deletePricingNotebookData(
   };
 }
 
-interface UpsertPricingNotebookResult {
-  service: AwsPricingService;
-  pricingData: PricingData;
-  notebookWorkspacePath: string;
-}
-
 async function upsertPricingNotebook(
   env: Env,
   db: DatabaseClient,
-  userToken: string | undefined,
   id: string,
   deps: PricingNotebookDeps,
-): Promise<UpsertPricingNotebookResult> {
+): Promise<PricingData> {
   const service = awsPricingServiceById(id);
   const [settings, current] = await Promise.all([
     db.repos.appSettings.list().then(settingsToRecord),
@@ -245,16 +205,16 @@ async function upsertPricingNotebook(
     current?.rawDataPath ?? pricingDownloadFilePath(catalog, medallion.bronze, service);
   const rawDataTable =
     current?.rawDataTable ?? pricingRawTableFqn(catalog, medallion.bronze, service);
-  if (!userToken) {
-    throw new DataSourceSetupError('OBO access token required', 401);
-  }
   const appName = env.DATABRICKS_APP_NAME?.trim();
   if (!appName) {
     throw new DataSourceSetupError('DATABRICKS_APP_NAME must be configured.', 400);
   }
-  const wc = deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken);
+  const wc = deps.workspaceClient ?? buildAppWorkspaceClient(env);
   if (!wc) {
-    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
+    throw new DataSourceSetupError(
+      'Databricks service principal workspace client is not configured.',
+      400,
+    );
   }
   if (!targetTable) {
     throw new DataSourceSetupError('Pricing target table could not be resolved.', 500);
@@ -276,7 +236,7 @@ async function upsertPricingNotebook(
     notebookStatus.object_id === undefined || notebookStatus.object_id === null
       ? null
       : String(notebookStatus.object_id);
-  const pricingData = await db.repos.pricingData.upsert({
+  return db.repos.pricingData.upsert({
     id: service.id,
     provider: AWS_PROVIDER,
     service: service.service,
@@ -291,21 +251,18 @@ async function upsertPricingNotebook(
     },
     ...runFieldsFromPricingData(current),
   });
-
-  return { service, pricingData, notebookWorkspacePath };
 }
 
 export async function ensurePricingDataForId(
   env: Env,
   db: DatabaseClient,
-  userToken: string | undefined,
   id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingData> {
   const existing = await db.repos.pricingData.getById(id);
   if (isRunnablePricingData(existing)) return existing;
 
-  const { pricingData } = await upsertPricingNotebook(env, db, userToken, id, deps);
+  const pricingData = await upsertPricingNotebook(env, db, id, deps);
   if (isRunnablePricingData(pricingData)) return pricingData;
   throw new DataSourceSetupError('Pricing metadata could not be prepared.', 500);
 }

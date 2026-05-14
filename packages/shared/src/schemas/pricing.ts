@@ -67,12 +67,6 @@ export const PricingNotebookSetupInputSchema = z.object({
 });
 export type PricingNotebookSetupInput = z.infer<typeof PricingNotebookSetupInputSchema>;
 
-export const PricingNotebookSetupResultSchema = PricingNotebookStateSchema.extend({
-  notebookWorkspacePath: z.string(),
-  warnings: z.array(z.string()),
-});
-export type PricingNotebookSetupResult = z.infer<typeof PricingNotebookSetupResultSchema>;
-
 export const PricingNotebookDeleteResultSchema = z.object({
   id: z.enum(AWS_PRICING_IDS),
   table: z.string().nullable(),

@@ -5,10 +5,10 @@ import type { DatabaseClient } from '@finlake/db';
 import { CATALOG_SETTING_KEY, type Env, type PricingData } from '@finlake/shared';
 import {
   deletePricingNotebookData,
+  ensurePricingDataForId,
   pricingNotebookState,
   pricingNotebookStateById,
   pricingNotebookWorkspacePath,
-  setupPricingNotebookWithDeps,
 } from '../src/services/pricingNotebook.js';
 import {
   getDatabricksRunLink,
@@ -114,6 +114,13 @@ function createFakeDb(initial: PricingDataInput[] = []) {
   };
 }
 
+test('pricingNotebookWorkspacePath stores pricing notebooks under the pricing directory', () => {
+  assert.equal(
+    pricingNotebookWorkspacePath(APP_NAME),
+    `/Workspace/Shared/${APP_NAME}/pricing/pricing_ingest_aws.ipynb`,
+  );
+});
+
 test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
   const fake = createFakeDb();
 
@@ -140,7 +147,7 @@ test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
   assert.deepEqual(result.items[1]?.metadata, { source: RDS_SOURCE_URL });
 });
 
-test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', async () => {
+test('ensurePricingDataForId stores AWS EC2 pricing metadata with service principal client', async () => {
   const fake = createFakeDb();
   const workspaceClient = {
     workspace: {
@@ -151,13 +158,12 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
     },
   } as unknown as WorkspaceClient;
 
-  const result = await setupPricingNotebookWithDeps(
+  const result = await ensurePricingDataForId(
     {
       DATABRICKS_APP_NAME: APP_NAME,
       DATABRICKS_HOST: 'https://example.cloud.databricks.com',
     } as Env,
     fake.db,
-    'obo-token',
     'aws_ec2',
     {
       workspaceClient,
@@ -175,7 +181,7 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
   assert.equal(result.table, 'finops.pricing.aws_ec2');
   assert.equal(result.rawDataTable, EC2_RAW_TABLE);
   assert.equal(result.rawDataPath, EC2_VOLUME_PATH);
-  assert.equal(result.notebookWorkspacePath, PRICING_NOTEBOOK_WORKSPACE_PATH);
+  assert.equal(result.notebookPath, PRICING_NOTEBOOK_WORKSPACE_PATH);
   assert.equal(result.notebookId, '12345');
   assert.deepEqual(result.metadata, {
     source: EC2_SOURCE_URL,
@@ -202,7 +208,7 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
   assert.equal(fake.stored('aws_rds'), null);
 });
 
-test('setupPricingNotebook stores AWS RDS pricing metadata in pricing_data', async () => {
+test('ensurePricingDataForId stores AWS RDS pricing metadata in pricing_data', async () => {
   const fake = createFakeDb();
   const workspaceClient = {
     workspace: {
@@ -213,13 +219,12 @@ test('setupPricingNotebook stores AWS RDS pricing metadata in pricing_data', asy
     },
   } as unknown as WorkspaceClient;
 
-  const result = await setupPricingNotebookWithDeps(
+  const result = await ensurePricingDataForId(
     {
       DATABRICKS_APP_NAME: APP_NAME,
       DATABRICKS_HOST: 'https://example.cloud.databricks.com',
     } as Env,
     fake.db,
-    'obo-token',
     'aws_rds',
     {
       workspaceClient,
@@ -237,7 +242,7 @@ test('setupPricingNotebook stores AWS RDS pricing metadata in pricing_data', asy
   assert.equal(result.table, 'finops.pricing.aws_rds');
   assert.equal(result.rawDataTable, RDS_RAW_TABLE);
   assert.equal(result.rawDataPath, RDS_VOLUME_PATH);
-  assert.equal(result.notebookWorkspacePath, PRICING_NOTEBOOK_WORKSPACE_PATH);
+  assert.equal(result.notebookPath, PRICING_NOTEBOOK_WORKSPACE_PATH);
   assert.equal(result.notebookId, '12345');
   assert.deepEqual(result.metadata, {
     source: RDS_SOURCE_URL,
@@ -422,7 +427,6 @@ test('submitManagedNotebookRunById submits an RDS run with service-specific para
   const result = await submitManagedNotebookRunById(
     { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
     fake.db,
-    'obo-token',
     'aws_rds',
     { workspaceClient },
   );
@@ -470,7 +474,7 @@ test('submitManagedNotebookRunById submits an RDS run with service-specific para
   });
 });
 
-test('submitManagedNotebookRunById prepares missing pricing metadata before submit', async () => {
+test('submitManagedNotebookRunById prepares missing pricing metadata with service principal client', async () => {
   const fake = createFakeDb();
   let importedPath: string | null = null;
   let payload: unknown;
@@ -501,7 +505,6 @@ test('submitManagedNotebookRunById prepares missing pricing metadata before subm
       DATABRICKS_HOST: 'https://example.cloud.databricks.com',
     } as Env,
     fake.db,
-    'obo-token',
     'aws_ec2',
     { workspaceClient },
   );

@@ -67,7 +67,6 @@ export class SqliteClient implements DatabaseClient {
   }
 
   private async bootstrapSchema(): Promise<void> {
-    await this.migratePricingDataSchema();
     const statements = [
       `CREATE TABLE IF NOT EXISTS budgets (
         id TEXT PRIMARY KEY,
@@ -169,16 +168,6 @@ export class SqliteClient implements DatabaseClient {
     await this.migrateAppSettingKey('focus_pipeline_job_id', 'lakeflow_pipeline_job_id');
     await this.migrateAppSettingKey('focus_pipeline_id', 'lakeflow_pipeline_id');
     logger.debug('SQLite schema bootstrap complete');
-  }
-
-  private async migratePricingDataSchema(): Promise<void> {
-    const result = await this.raw.execute('PRAGMA table_info(pricing_data)');
-    const columns = result.rows.map((row) => String(row.name));
-    if (columns.length === 0) return;
-
-    if (!columns.includes('id') || !columns.includes('provider') || columns.includes('slug')) {
-      await this.raw.execute('DROP TABLE pricing_data');
-    }
   }
 
   private async migrateAppSettingKey(oldKey: string, newKey: string): Promise<void> {

@@ -51,7 +51,7 @@ export function pricingRouter(db: DatabaseClient, env: Env): Router {
     try {
       const id = parsePricingId(req, res);
       if (!id) return;
-      res.json(await submitManagedNotebookRunById(env, db, req.user?.accessToken, id));
+      res.json(await submitManagedNotebookRunById(env, db, id));
     } catch (err) {
       handleSetupError(err, res, next);
     }

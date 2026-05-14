@@ -8,11 +8,7 @@ import type {
 import { getDatabricksRunSnapshot } from './databricksRunStatus.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import { ensurePricingDataForId } from './pricingNotebook.js';
-import {
-  buildAppWorkspaceClient,
-  buildUserWorkspaceClient,
-  type WorkspaceClient,
-} from './statementExecution.js';
+import { buildAppWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
 
 interface NotebookRunDeps {
   workspaceClient?: WorkspaceClient;
@@ -30,7 +26,6 @@ const PRICING_SERVERLESS_ENVIRONMENT_VERSION = '4';
 export async function submitManagedNotebookRunById(
   env: Env,
   db: DatabaseClient,
-  userToken: string | undefined,
   id: string,
   deps: NotebookRunDeps = {},
 ): Promise<PricingNotebookRunResult> {
@@ -41,7 +36,10 @@ export async function submitManagedNotebookRunById(
       400,
     );
   }
-  const pricingData = await ensureRunnablePricingData(env, db, userToken, id, deps);
+  const pricingData = await ensureRunnablePricingData(env, db, id, {
+    ...deps,
+    workspaceClient: wc,
+  });
   return submitPricingNotebookRun(db, wc, pricingData);
 }
 
@@ -162,7 +160,6 @@ function safeTaskKey(id: string): string {
 async function ensureRunnablePricingData(
   env: Env,
   db: DatabaseClient,
-  userToken: string | undefined,
   id: string,
   deps: NotebookRunDeps,
 ): Promise<PricingData> {
@@ -177,12 +174,8 @@ async function ensureRunnablePricingData(
     return existing;
   }
 
-  if (!userToken) {
-    throw new DataSourceSetupError('OBO access token required to prepare pricing notebook.', 401);
-  }
-
-  return ensurePricingDataForId(env, db, userToken, id, {
+  return ensurePricingDataForId(env, db, id, {
     workspaceClient:
-      deps.setupWorkspaceClient ?? deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken),
+      deps.setupWorkspaceClient ?? deps.workspaceClient ?? buildAppWorkspaceClient(env),
   });
 }
