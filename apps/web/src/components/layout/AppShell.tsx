@@ -65,7 +65,6 @@ export const CONFIGURE: NavGroup = {
     { to: '/integrations', labelKey: 'nav.dataSources' },
     { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
-    { to: '/pricing', labelKey: 'nav.pricing' },
     { to: '/credentials', labelKey: 'nav.credentials' },
     { to: '/admin', labelKey: 'nav.configureCatalog' },
   ],

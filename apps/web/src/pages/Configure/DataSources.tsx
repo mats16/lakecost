@@ -4,6 +4,7 @@ import {
   dataSourceKeyString,
   isAwsProvider,
   isDatabricksProvider,
+  type PricingNotebookState,
   type DataSource,
 } from '@finlake/shared';
 import {
@@ -17,11 +18,17 @@ import {
   TableRow,
 } from '@databricks/appkit-ui/react';
 import { Pencil } from 'lucide-react';
-import { useCreateDataSource, useDataSources, useDataSourceTemplates } from '../../api/hooks';
+import {
+  useCreateDataSource,
+  useDataSources,
+  useDataSourceTemplates,
+  usePricingNotebook,
+} from '../../api/hooks';
 import { DataSourceTile, type TileBadge } from './DataSourceTile';
 import { VendorLogo } from './VendorLogo';
 import {
   DATA_SOURCE_TEMPLATES,
+  PRICING_AWS_TEMPLATE,
   canCreateTemplate,
   displayNameForRow,
   findTemplateForRow,
@@ -55,6 +62,17 @@ function templateForRow(row: DataSource): DataSourceTemplate {
   return findTemplateForRow(row) ?? FALLBACK_TEMPLATE;
 }
 
+function isRegisteredPricing(row: PricingNotebookState): boolean {
+  return Boolean(
+    row.table ||
+    row.rawDataTable ||
+    row.rawDataPath ||
+    row.notebookWorkspacePath ||
+    row.runId ||
+    row.runStatus !== 'not_started',
+  );
+}
+
 function rowMatchesTemplate(row: DataSource, template: DataSourceTemplate): boolean {
   return findTemplateForRow(row)?.id === template.id;
 }
@@ -79,9 +97,18 @@ export function DataSources() {
   const navigate = useNavigate();
   const dataSources = useDataSources();
   const templates = useDataSourceTemplates();
+  const pricing = usePricingNotebook();
   const createDs = useCreateDataSource();
 
   const rows = dataSources.data?.items ?? [];
+  const { hasRegisteredPricingData, pricingDataEnabled } = useMemo(() => {
+    const pricingRows = pricing.data?.items ?? [];
+    const registered = pricingRows.filter(isRegisteredPricing);
+    return {
+      hasRegisteredPricingData: registered.length > 0,
+      pricingDataEnabled: registered.some((row) => Boolean(row.table)),
+    };
+  }, [pricing.data?.items]);
   const availableTemplates = useMemo(
     () => templates.data?.items ?? DATA_SOURCE_TEMPLATES,
     [templates.data?.items],
@@ -145,7 +172,7 @@ export function DataSources() {
         </div>
       </div>
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && !hasRegisteredPricingData ? (
         <p className="text-muted-foreground text-sm italic">{t('dataSources.empty')}</p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
@@ -154,7 +181,6 @@ export function DataSources() {
               <TableRow>
                 <TableHead>{t('dataSources.columns.provider')}</TableHead>
                 <TableHead>{t('dataSources.columns.status')}</TableHead>
-                <TableHead>{t('dataSources.columns.table')}</TableHead>
                 <TableHead>{t('dataSources.columns.type')}</TableHead>
                 <TableHead className="text-right" aria-label={t('dataSources.columns.actions')} />
               </TableRow>
@@ -185,11 +211,6 @@ export function DataSources() {
                         }
                       />
                     </TableCell>
-                    <TableCell>
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {row.tableName}
-                      </span>
-                    </TableCell>
                     <TableCell>{t('dataSources.type.dataSource')}</TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -205,6 +226,38 @@ export function DataSources() {
                   </TableRow>
                 );
               })}
+              {hasRegisteredPricingData ? (
+                <TableRow className="cursor-pointer" onClick={() => navigate('/pricing/aws')}>
+                  <TableCell>
+                    <div className="flex min-w-56 items-center gap-3">
+                      <VendorLogo source={PRICING_AWS_TEMPLATE} logo={{ kind: 'aws' }} size={32} />
+                      <div className="font-medium">{PRICING_AWS_TEMPLATE.name}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <ConnectionStatus
+                      enabled={pricingDataEnabled}
+                      label={
+                        pricingDataEnabled
+                          ? t('dataSources.badges.enabled')
+                          : t('dataSources.badges.setupRequired')
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>{t('dataSources.type.pricingData')}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={t('dataSources.editPricingData')}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ) : null}
             </TableBody>
           </Table>
         </div>
@@ -215,7 +268,7 @@ export function DataSources() {
         <p className="text-muted-foreground mt-1 text-sm">{t('dataSources.addDesc')}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {candidates.map((tpl) => {
           const existing = canAddMultiple(tpl)
             ? undefined
@@ -240,6 +293,23 @@ export function DataSources() {
           );
         })}
       </div>
+
+      {!hasRegisteredPricingData ? (
+        <>
+          <div className="mt-8 mb-4">
+            <h3 className="m-0 text-base font-semibold">{t('dataSources.pricingTitle')}</h3>
+            <p className="text-muted-foreground mt-1 text-sm">{t('dataSources.pricingDesc')}</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <DataSourceTile
+              source={PRICING_AWS_TEMPLATE}
+              logo={{ kind: 'aws' }}
+              onClick={() => navigate('/pricing/aws')}
+            />
+          </div>
+        </>
+      ) : null}
     </>
   );
 }

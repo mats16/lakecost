@@ -124,6 +124,19 @@ export const LEGACY_TEMPLATE_NAMES: Record<string, string[]> = {
   databricks_focus13: ['Databricks System Tables'],
 };
 
+export const PRICING_AWS_TEMPLATE: DataSourceTemplate = {
+  id: 'pricing_aws',
+  name: 'AWS Pricing',
+  description: '',
+  subtitle: '',
+  focus_version: null,
+  available: true,
+  appearance: {
+    brandColor: '#FF9900',
+    brandTextColor: '#232F3E',
+  },
+};
+
 export function displayNameForRow(row: { name: string }, template: DataSourceTemplate): string {
   const defaultNames = [template.name, ...(LEGACY_TEMPLATE_NAMES[template.id] ?? [])];
   return defaultNames.includes(row.name) ? template.name : row.name;

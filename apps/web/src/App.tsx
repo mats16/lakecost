@@ -43,7 +43,8 @@ export function App() {
           <Route path="/integrations/aws" element={<AwsIntegrationDetail />} />
           <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
-          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/pricing" element={<Navigate to="/pricing/aws" replace />} />
+          <Route path="/pricing/aws" element={<Pricing />} />
           <Route path="/credentials" element={<Credentials />} />
           <Route path="/admin" element={<Catalog />} />
         </Route>
@@ -56,7 +57,7 @@ export function App() {
           path="/configure/transformations"
           element={<Navigate to="/transformations" replace />}
         />
-        <Route path="/configure/pricing" element={<Navigate to="/pricing" replace />} />
+        <Route path="/configure/pricing" element={<Navigate to="/pricing/aws" replace />} />
         <Route path="/configure/catalog" element={<Navigate to="/admin" replace />} />
         <Route path="/catalog" element={<Navigate to="/admin" replace />} />
 

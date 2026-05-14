@@ -736,9 +736,12 @@ export const ja: Dictionary = {
     currentDesc: '接続済みのデータソースと料金データを監視・管理します。',
     addTitle: 'データソース',
     addDesc: 'コストデータのソースを接続します。',
+    pricingTitle: 'Pricing Data',
+    pricingDesc: 'プロバイダーの料金表データを接続します。',
     empty: 'データソースがまだ登録されていません。下のカタログから追加してください。',
     delete: 'データソースを削除',
     edit: 'データソースを編集',
+    editPricingData: '料金データを編集',
     confirmDelete: '「{name}」を削除しますか？スケジュール済みのリフレッシュジョブも削除されます。',
     columns: {
       provider: 'プロバイダー',
@@ -749,6 +752,7 @@ export const ja: Dictionary = {
     },
     type: {
       dataSource: 'データソース',
+      pricingData: '料金データ',
     },
     badges: {
       enabled: '有効',
@@ -981,6 +985,10 @@ export const ja: Dictionary = {
       custom: {
         description: 'Auto Loader や Lakeflow Connect を介して独自のコストデータを取り込み',
         subtitle: 'お客様提供',
+      },
+      pricing_aws: {
+        description: 'EC2 と RDS の料金表データ',
+        subtitle: '',
       },
     },
   },

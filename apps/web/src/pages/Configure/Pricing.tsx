@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CATALOG_SETTING_KEY,
   isActivePricingRunStatus,
@@ -19,11 +20,6 @@ import {
   AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -48,6 +44,8 @@ import {
   useRunNotebook,
 } from '../../api/hooks';
 import { useI18n } from '../../i18n';
+import { VendorLogo } from './VendorLogo';
+import { PRICING_AWS_TEMPLATE } from './dataSourceCatalog';
 import {
   catalogTableUrl,
   fileNameFromPath,
@@ -101,28 +99,26 @@ export function Pricing() {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('pricing.title')}</CardTitle>
-          <CardDescription>{t('pricing.desc')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <PricingBody
-            isLoading={isLoading}
-            loadError={loadError}
-            catalogConfigured={catalogConfigured}
-            rows={rows}
-            workspaceUrl={workspaceUrl}
-            runError={runError}
-            deleteError={deleteError}
-            runPendingId={runPendingId}
-            deletePendingId={deletePendingId}
-            onSelectRow={setSelectedId}
-            onRunNotebook={onRunNotebook}
-            onRequestDelete={requestDelete}
-          />
-        </CardContent>
-      </Card>
+      <PricingHeader />
+
+      <div className="mb-4">
+        <p className="text-muted-foreground m-0 text-sm">{t('pricing.desc')}</p>
+      </div>
+
+      <PricingBody
+        isLoading={isLoading}
+        loadError={loadError}
+        catalogConfigured={catalogConfigured}
+        rows={rows}
+        workspaceUrl={workspaceUrl}
+        runError={runError}
+        deleteError={deleteError}
+        runPendingId={runPendingId}
+        deletePendingId={deletePendingId}
+        onSelectRow={setSelectedId}
+        onRunNotebook={onRunNotebook}
+        onRequestDelete={requestDelete}
+      />
 
       <PricingDetailsSheet
         row={selected}
@@ -175,6 +171,28 @@ export function Pricing() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function PricingHeader() {
+  const { t } = useI18n();
+
+  return (
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex items-center gap-3">
+        <VendorLogo source={PRICING_AWS_TEMPLATE} logo={{ kind: 'aws' }} size={44} />
+        <div>
+          <Link
+            to="/integrations"
+            aria-label={t('dataSources.detail.backToIntegrations')}
+            className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+          >
+            {t('dataSources.detail.eyebrow')}
+          </Link>
+          <h3 className="m-0 text-xl font-semibold">{PRICING_AWS_TEMPLATE.name}</h3>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -251,7 +269,7 @@ function PricingBody({
           <AlertDescription>{deleteError}</AlertDescription>
         </Alert>
       ) : null}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>

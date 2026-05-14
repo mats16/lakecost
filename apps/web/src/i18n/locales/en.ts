@@ -727,9 +727,12 @@ export const en = {
     currentDesc: 'Monitor and manage your connected data sources and pricing data.',
     addTitle: 'Data Sources',
     addDesc: 'Connect your cost data sources.',
+    pricingTitle: 'Pricing Data',
+    pricingDesc: 'Connect provider pricing tables.',
     empty: 'No data sources yet — add one from the catalog below.',
     delete: 'Delete data source',
     edit: 'Edit data source',
+    editPricingData: 'Edit pricing data',
     confirmDelete: 'Delete "{name}"? Its scheduled refresh job will also be removed.',
     columns: {
       provider: 'Provider',
@@ -740,6 +743,7 @@ export const en = {
     },
     type: {
       dataSource: 'Data source',
+      pricingData: 'Pricing data',
     },
     badges: {
       enabled: 'Enabled',
@@ -973,6 +977,10 @@ export const en = {
       custom: {
         description: 'Bring your own cost feed via Auto Loader or Lakeflow Connect',
         subtitle: 'by your team',
+      },
+      pricing_aws: {
+        description: 'EC2 and RDS list pricing tables',
+        subtitle: '',
       },
     },
   },
