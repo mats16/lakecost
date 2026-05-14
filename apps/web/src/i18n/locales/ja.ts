@@ -732,12 +732,24 @@ export const ja: Dictionary = {
     },
   },
   dataSources: {
-    currentTitle: '現在のデータソース',
-    filterPlaceholder: 'データソースを絞り込み…',
-    addTitle: 'データソースを追加',
+    currentTitle: '接続済みデータソース & 料金データ',
+    currentDesc: '接続済みのデータソースと料金データを監視・管理します。',
+    addTitle: 'データソース',
+    addDesc: 'コストデータのソースを接続します。',
     empty: 'データソースがまだ登録されていません。下のカタログから追加してください。',
     delete: 'データソースを削除',
+    edit: 'データソースを編集',
     confirmDelete: '「{name}」を削除しますか？スケジュール済みのリフレッシュジョブも削除されます。',
+    columns: {
+      provider: 'プロバイダー',
+      status: '接続状態',
+      type: '種別',
+      table: 'テーブル',
+      actions: '操作',
+    },
+    type: {
+      dataSource: 'データソース',
+    },
     badges: {
       enabled: '有効',
       disabled: '無効',

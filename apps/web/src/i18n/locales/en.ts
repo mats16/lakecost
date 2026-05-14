@@ -723,12 +723,24 @@ export const en = {
     },
   },
   dataSources: {
-    currentTitle: 'Current data sources',
-    filterPlaceholder: 'Filter sources…',
-    addTitle: 'Add data source',
+    currentTitle: 'Connected Data Sources & Pricing Data',
+    currentDesc: 'Monitor and manage your connected data sources and pricing data.',
+    addTitle: 'Data Sources',
+    addDesc: 'Connect your cost data sources.',
     empty: 'No data sources yet — add one from the catalog below.',
     delete: 'Delete data source',
+    edit: 'Edit data source',
     confirmDelete: 'Delete "{name}"? Its scheduled refresh job will also be removed.',
+    columns: {
+      provider: 'Provider',
+      status: 'Connection status',
+      type: 'Type',
+      table: 'Table',
+      actions: 'Actions',
+    },
+    type: {
+      dataSource: 'Data source',
+    },
     badges: {
       enabled: 'Enabled',
       disabled: 'Disabled',

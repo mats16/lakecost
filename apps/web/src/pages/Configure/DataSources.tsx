@@ -1,9 +1,20 @@
 import { useMemo, useState } from 'react';
 import { tableLeafName, type DataSource } from '@finlake/shared';
-import { Input, Separator } from '@databricks/appkit-ui/react';
+import {
+  Button,
+  cn,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@databricks/appkit-ui/react';
+import { Pencil } from 'lucide-react';
 import { useCreateDataSource, useDataSources, useDataSourceTemplates } from '../../api/hooks';
 import { DataSourceTile, type TileBadge } from './DataSourceTile';
 import { DataSourceDrawer } from './DataSourceDrawer';
+import { VendorLogo } from './VendorLogo';
 import {
   DATA_SOURCE_TEMPLATES,
   canCreateTemplate,
@@ -60,7 +71,6 @@ function nextTableName(base: string, rows: DataSource[]): string {
 
 export function DataSources() {
   const { t } = useI18n();
-  const [filter, setFilter] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [draftAwsSource, setDraftAwsSource] = useState<AwsFocusDraft | null>(null);
   const [draftDatabricksSource, setDraftDatabricksSource] = useState<DatabricksFocusDraft | null>(
@@ -76,24 +86,12 @@ export function DataSources() {
     [templates.data?.items],
   );
 
-  const filteredRows = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.name.toLowerCase().includes(q));
-  }, [rows, filter]);
-
-  const candidates = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    return availableTemplates.filter((tpl) => {
-      if (
-        tpl.id === 'databricks_focus13' &&
-        rows.some((row) => row.providerName === 'Databricks')
-      ) {
-        return false;
-      }
-      return q ? tpl.name.toLowerCase().includes(q) : true;
-    });
-  }, [availableTemplates, filter, rows]);
+  const candidates = availableTemplates.filter((tpl) => {
+    if (tpl.id === 'databricks_focus13' && rows.some((row) => row.providerName === 'Databricks')) {
+      return false;
+    }
+    return true;
+  });
 
   const badgesFor = (row: DataSource): TileBadge[] => {
     return [
@@ -153,41 +151,84 @@ export function DataSources() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <h3 className="m-0 text-base font-semibold">{t('dataSources.currentTitle')}</h3>
-        <div className="flex items-center gap-3">
-          <Input
-            placeholder={t('dataSources.filterPlaceholder')}
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="h-9 w-52"
-          />
+        <div>
+          <h3 className="m-0 text-base font-semibold">{t('dataSources.currentTitle')}</h3>
+          <p className="text-muted-foreground mt-1 text-sm">{t('dataSources.currentDesc')}</p>
         </div>
       </div>
 
-      {filteredRows.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="text-muted-foreground text-sm italic">{t('dataSources.empty')}</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredRows.map((row) => {
-            const tpl = templateForRow(row);
-            const registryEntry = getTemplateRegistryEntry(tpl);
-            return (
-              <DataSourceTile
-                key={row.id}
-                source={tpl}
-                logo={registryEntry?.logo}
-                displayName={displayNameForRow(row, tpl)}
-                badges={badgesFor(row)}
-                onClick={() => setOpenId(row.id)}
-              />
-            );
-          })}
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('dataSources.columns.provider')}</TableHead>
+                <TableHead>{t('dataSources.columns.status')}</TableHead>
+                <TableHead>{t('dataSources.columns.table')}</TableHead>
+                <TableHead>{t('dataSources.columns.type')}</TableHead>
+                <TableHead className="text-right" aria-label={t('dataSources.columns.actions')} />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => {
+                const tpl = templateForRow(row);
+                const registryEntry = getTemplateRegistryEntry(tpl);
+                return (
+                  <TableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    onClick={() => setOpenId(row.id)}
+                  >
+                    <TableCell>
+                      <div className="flex min-w-56 items-center gap-3">
+                        <VendorLogo source={tpl} logo={registryEntry?.logo} size={32} />
+                        <div>
+                          <div className="font-medium">{displayNameForRow(row, tpl)}</div>
+                          <div className="text-muted-foreground text-xs">{row.providerName}</div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <ConnectionStatus
+                        enabled={row.enabled}
+                        label={
+                          row.enabled
+                            ? t('dataSources.badges.enabled')
+                            : t('dataSources.badges.setupRequired')
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-muted-foreground font-mono text-xs">
+                        {row.tableName}
+                      </span>
+                    </TableCell>
+                    <TableCell>{t('dataSources.type.dataSource')}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t('dataSources.edit')}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
-      <Separator className="my-8" />
-
-      <h3 className="mb-4 text-base font-semibold">{t('dataSources.addTitle')}</h3>
+      <div className="mt-8 mb-4">
+        <h3 className="m-0 text-base font-semibold">{t('dataSources.addTitle')}</h3>
+        <p className="text-muted-foreground mt-1 text-sm">{t('dataSources.addDesc')}</p>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {candidates.map((tpl) => {
@@ -231,5 +272,21 @@ export function DataSources() {
         }}
       />
     </>
+  );
+}
+
+function ConnectionStatus({ enabled, label }: { enabled: boolean; label: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-2 whitespace-nowrap text-sm font-medium',
+        enabled ? 'text-(--success)' : 'text-(--warning)',
+      )}
+    >
+      <span
+        className={cn('h-2 w-2 rounded-full', enabled ? 'bg-(--success)' : 'bg-(--warning)')}
+      />
+      {label}
+    </span>
   );
 }
