@@ -219,7 +219,8 @@ export async function provisionCatalogWithDeps(
   } else {
     warnings.push('DATABRICKS_CLIENT_ID is not set — App Service Principal grants were skipped.');
   }
-  const skipReason: GrantStatus = sp.length > 0 ? 'skipped:not_attempted' : 'skipped:sp_id_not_configured';
+  const skipReason: GrantStatus =
+    sp.length > 0 ? 'skipped:not_attempted' : 'skipped:sp_id_not_configured';
   const grants: ProvisionResult['grants'] = {
     catalog: skipReason,
     usersCatalog: 'skipped:not_attempted',

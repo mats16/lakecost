@@ -1,5 +1,5 @@
 import type { DatabaseClient } from '@finlake/db';
-import type { Env, PricingNotebookRunResult } from '@finlake/shared';
+import type { DatabricksRunLinkResult, Env, PricingNotebookRunResult } from '@finlake/shared';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import { normalizeHost } from './normalizeHost.js';
 import { buildUserWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
@@ -20,7 +20,7 @@ interface JobsRunGetResponse {
 const PRICING_SERVERLESS_ENVIRONMENT_KEY = 'pricing_serverless';
 const PRICING_SERVERLESS_ENVIRONMENT_VERSION = '4';
 
-export async function runManagedNotebookById(
+export async function submitManagedNotebookRunById(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
@@ -101,16 +101,34 @@ export async function runManagedNotebookById(
     throw new DataSourceSetupError('Databricks Jobs API returned no run_id.', 500);
   }
 
-  const run = await getRunInfo(wc, response.run_id);
-
   return {
     provider: pricingData.provider,
     service: pricingData.service,
     slug: pricingData.slug,
-    jobId: run?.job_id ?? null,
     runId: response.run_id,
-    runUrl:
-      run?.run_page_url ?? databricksRunUrl(env.DATABRICKS_HOST, run?.job_id, response.run_id),
+  };
+}
+
+export async function getDatabricksRunLink(
+  env: Env,
+  userToken: string | undefined,
+  runId: number,
+  deps: NotebookRunDeps = {},
+): Promise<DatabricksRunLinkResult> {
+  if (!userToken) {
+    throw new DataSourceSetupError('OBO access token required', 401);
+  }
+
+  const wc = deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken);
+  if (!wc) {
+    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
+  }
+
+  const run = await getRunInfo(wc, runId);
+  return {
+    jobId: run?.job_id ?? null,
+    runId,
+    runUrl: run?.run_page_url ?? databricksRunUrl(env.DATABRICKS_HOST, run?.job_id, runId),
   };
 }
 

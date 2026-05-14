@@ -38,8 +38,23 @@ export const PricingNotebookRunResultSchema = z.object({
   provider: z.string(),
   service: z.string(),
   slug: z.string(),
+  runId: z.number(),
+});
+export type PricingNotebookRunResult = z.infer<typeof PricingNotebookRunResultSchema>;
+
+export const JobRunSubmitInputSchema = z.object({
+  notebook_id: z.string().trim().min(1),
+});
+export type JobRunSubmitInput = z.infer<typeof JobRunSubmitInputSchema>;
+
+export const JobRunLinkQuerySchema = z.object({
+  run_id: z.coerce.number().int().positive(),
+});
+export type JobRunLinkQuery = z.infer<typeof JobRunLinkQuerySchema>;
+
+export const DatabricksRunLinkResultSchema = z.object({
   jobId: z.number().nullable(),
   runId: z.number(),
   runUrl: z.string().nullable(),
 });
-export type PricingNotebookRunResult = z.infer<typeof PricingNotebookRunResultSchema>;
+export type DatabricksRunLinkResult = z.infer<typeof DatabricksRunLinkResultSchema>;

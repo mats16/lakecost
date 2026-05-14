@@ -26,6 +26,7 @@ import {
 import { AlertCircle, ExternalLink, Play, RefreshCcw, UploadCloud } from 'lucide-react';
 import {
   useMe,
+  useGetJobRunLink,
   usePricingNotebook,
   useRunNotebook,
   useSetupPricingNotebook,
@@ -189,7 +190,7 @@ function PricingBody({
           <AlertTitle>
             <span className="flex flex-wrap items-center gap-2">
               <span>{t('pricing.runStarted')}</span>
-              <RunLink runId={runNotebook.data.runId} href={runNotebook.data.runUrl} />
+              <RunLink runId={runNotebook.data.runId} />
             </span>
           </AlertTitle>
         </Alert>
@@ -420,19 +421,51 @@ function ResourceLink({ href, value }: { href: string | null; value: string }) {
   );
 }
 
-function RunLink({ runId, href }: { runId: number; href: string | null }) {
+function RunLink({ runId }: { runId: number }) {
+  const runLink = useGetJobRunLink();
   const label = `Run #${runId}`;
-  if (!href) return <span className="font-mono text-sm font-normal">{label}</span>;
+  const cachedUrl = runLink.data?.runUrl ?? null;
+
+  if (cachedUrl) {
+    return (
+      <a
+        href={cachedUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="inline-flex items-center gap-1 font-mono text-sm font-normal"
+      >
+        {label}
+        <ExternalLink className="inline-block h-3.5 w-3.5 shrink-0 align-[-2px]" />
+      </a>
+    );
+  }
+
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener"
+    <button
+      type="button"
       className="inline-flex items-center gap-1 font-mono text-sm font-normal"
+      disabled={runLink.isPending}
+      onClick={async () => {
+        const popup = window.open('about:blank', '_blank');
+        const result = await runLink.mutateAsync(runId);
+        if (result.runUrl) {
+          if (popup) {
+            popup.location.href = result.runUrl;
+          } else {
+            window.open(result.runUrl, '_blank', 'noreferrer');
+          }
+        } else {
+          popup?.close();
+        }
+      }}
     >
       {label}
-      <ExternalLink className="inline-block h-3.5 w-3.5 shrink-0 align-[-2px]" />
-    </a>
+      {runLink.isPending ? (
+        <Spinner className="h-3.5 w-3.5" />
+      ) : (
+        <ExternalLink className="inline-block h-3.5 w-3.5 shrink-0 align-[-2px]" />
+      )}
+    </button>
   );
 }
 

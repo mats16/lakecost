@@ -169,4 +169,3 @@ function stateFromSettings(
     metadata: pricingData?.metadata ?? { source: AWS_EC2_PRICE_LIST_SOURCE },
   };
 }
-

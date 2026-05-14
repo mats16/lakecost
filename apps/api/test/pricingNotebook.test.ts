@@ -12,7 +12,10 @@ import {
   pricingNotebookWorkspacePath,
   setupPricingNotebookWithDeps,
 } from '../src/services/pricingNotebook.js';
-import { runManagedNotebookById } from '../src/services/notebookRuns.js';
+import {
+  getDatabricksRunLink,
+  submitManagedNotebookRunById,
+} from '../src/services/notebookRuns.js';
 import type { WorkspaceClient } from '../src/services/statementExecution.js';
 
 const UPDATED_AT = '2026-05-14T00:00:00.000Z';
@@ -107,7 +110,35 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
   });
 });
 
-test('runManagedNotebookById submits a serverless one-time run with pricing parameters', async () => {
+test('getDatabricksRunLink resolves job run URL on demand', async () => {
+  let getRunQuery: unknown;
+  const workspaceClient = {
+    apiClient: {
+      async request(options: { path: string; method: string; query?: unknown }) {
+        assert.equal(options.path, '/api/2.2/jobs/runs/get');
+        assert.equal(options.method, 'GET');
+        getRunQuery = options.query;
+        return { job_id: 54321 };
+      },
+    },
+  } as unknown as WorkspaceClient;
+
+  const result = await getDatabricksRunLink(
+    { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
+    'obo-token',
+    67890,
+    { workspaceClient },
+  );
+
+  assert.deepEqual(getRunQuery, { run_id: 67890 });
+  assert.deepEqual(result, {
+    jobId: 54321,
+    runId: 67890,
+    runUrl: 'https://example.cloud.databricks.com/jobs/54321/runs/67890',
+  });
+});
+
+test('submitManagedNotebookRunById submits a serverless one-time run with pricing parameters', async () => {
   const fake = createFakeDb({
     provider: 'AWS',
     service: 'AmazonEC2',
@@ -121,24 +152,18 @@ test('runManagedNotebookById submits a serverless one-time run with pricing para
     updatedAt: UPDATED_AT,
   });
   let payload: unknown;
-  let getRunQuery: unknown;
   const workspaceClient = {
     apiClient: {
-      async request(options: { path: string; method: string; payload?: unknown; query?: unknown }) {
-        if (options.path === '/api/2.2/jobs/runs/submit') {
-          assert.equal(options.method, 'POST');
-          payload = options.payload;
-          return { run_id: 67890 };
-        }
-        assert.equal(options.path, '/api/2.2/jobs/runs/get');
-        assert.equal(options.method, 'GET');
-        getRunQuery = options.query;
-        return { job_id: 54321 };
+      async request(options: { path: string; method: string; payload?: unknown }) {
+        assert.equal(options.path, '/api/2.2/jobs/runs/submit');
+        assert.equal(options.method, 'POST');
+        payload = options.payload;
+        return { run_id: 67890 };
       },
     },
   } as unknown as WorkspaceClient;
 
-  const result = await runManagedNotebookById(
+  const result = await submitManagedNotebookRunById(
     { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
     fake.db,
     'obo-token',
@@ -150,11 +175,8 @@ test('runManagedNotebookById submits a serverless one-time run with pricing para
     provider: 'AWS',
     service: 'AmazonEC2',
     slug: 'aws_ec2',
-    jobId: 54321,
     runId: 67890,
-    runUrl: 'https://example.cloud.databricks.com/jobs/54321/runs/67890',
   });
-  assert.deepEqual(getRunQuery, { run_id: 67890 });
   const submitted = payload as { run_name?: string };
   assert.match(submitted.run_name ?? '', /^aws_ec2-\d+$/);
   assert.deepEqual(payload, {

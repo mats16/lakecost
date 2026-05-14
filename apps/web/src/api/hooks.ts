@@ -24,6 +24,7 @@ import type {
   GovernedTagsResponse,
   GovernedTagSyncBody,
   GovernedTagSyncResult,
+  DatabricksRunLinkResult,
   PricingNotebookRunResult,
   PricingNotebookSetupResult,
   PricingNotebookState,
@@ -642,10 +643,19 @@ export function useSetupPricingNotebook() {
 export function useRunNotebook() {
   return useMutation({
     mutationFn: (notebookId: string) =>
-      apiFetch<PricingNotebookRunResult>(`/api/notebook/${encodeURIComponent(notebookId)}/run`, {
+      apiFetch<PricingNotebookRunResult>('/api/jobs/runs/submit', {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ notebook_id: notebookId }),
       }),
+  });
+}
+
+export function useGetJobRunLink() {
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiFetch<DatabricksRunLinkResult>(
+        `/api/jobs/runs/get?run_id=${encodeURIComponent(String(runId))}`,
+      ),
   });
 }
 

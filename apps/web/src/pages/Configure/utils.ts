@@ -21,10 +21,7 @@ export function notebookEditorUrl(
   return `${workspaceUrl.replace(/\/$/, '')}/editor/notebooks/${notebookId}`;
 }
 
-export function volumeFileUrl(
-  workspaceUrl: string | null,
-  volumePath: string,
-): string | null {
+export function volumeFileUrl(workspaceUrl: string | null, volumePath: string): string | null {
   if (!workspaceUrl) return null;
   const parts = volumePath.split('/').filter(Boolean);
   if (parts.length < 5 || parts[0] !== 'Volumes') return null;
