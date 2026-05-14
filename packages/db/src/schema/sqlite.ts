@@ -86,6 +86,12 @@ export const pricingData = sqliteTable(
     notebookPath: text('notebook_path'),
     notebookId: text('notebook_id'),
     metadataJson: text('metadata').notNull().default('{}'),
+    runId: integer('run_id'),
+    runStatus: text('run_status').notNull().default('not_started'),
+    runUrl: text('run_url'),
+    runStartedAt: text('run_started_at'),
+    runFinishedAt: text('run_finished_at'),
+    runCheckedAt: text('run_checked_at'),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => ({

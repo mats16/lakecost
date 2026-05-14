@@ -1,9 +1,22 @@
 import { useState } from 'react';
-import type { PricingNotebookState } from '@finlake/shared';
+import {
+  isActivePricingRunStatus,
+  type PricingNotebookState,
+  type PricingRunStatus,
+} from '@finlake/shared';
 import {
   Alert,
   AlertDescription,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   AlertTitle,
+  Badge,
   Button,
   Card,
   CardContent,
@@ -22,78 +35,83 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  cn,
 } from '@databricks/appkit-ui/react';
-import { AlertCircle, ExternalLink, Play, RefreshCcw, UploadCloud } from 'lucide-react';
+import { AlertCircle, ExternalLink, Trash2, UploadCloud } from 'lucide-react';
 import {
   useMe,
+  useDeletePricingNotebook,
   useGetJobRunLink,
   usePricingNotebook,
   useRunNotebook,
-  useSetupPricingNotebook,
 } from '../../api/hooks';
 import { useI18n } from '../../i18n';
-import { catalogTableUrl, messageOf, notebookEditorUrl, volumeFileUrl } from './utils';
+import {
+  catalogTableUrl,
+  fileNameFromPath,
+  messageOf,
+  notebookEditorUrl,
+  volumeFileUrl,
+} from './utils';
 
 export function Pricing() {
   const { t } = useI18n();
   const me = useMe();
   const pricing = usePricingNotebook();
-  const setup = useSetupPricingNotebook();
   const runNotebook = useRunNotebook();
+  const deletePricing = useDeletePricingNotebook();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [pendingDeleteSlug, setPendingDeleteSlug] = useState<string | null>(null);
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const rows = pricing.data?.items ?? [];
   const selected = rows.find((row) => row.slug === selectedSlug) ?? null;
-  const setupError = messageOf(setup.error);
+  const pendingDelete = rows.find((row) => row.slug === pendingDeleteSlug) ?? null;
   const runError = messageOf(runNotebook.error);
-  const setupPendingSlug = setup.isPending ? (setup.variables ?? null) : null;
+  const deleteError = messageOf(deletePricing.error);
   const runPendingSlug = runNotebook.isPending ? (runNotebook.variables ?? null) : null;
-
-  const onSetupNotebook = (slug: string) => {
-    setup.reset();
-    setup.mutate(slug);
-  };
+  const deletePendingSlug = deletePricing.isPending ? (deletePricing.variables ?? null) : null;
 
   const onRunNotebook = (slug: string) => {
     runNotebook.reset();
     runNotebook.mutate(slug);
   };
 
+  const requestDelete = (slug: string) => {
+    deletePricing.reset();
+    setPendingDeleteSlug(slug);
+  };
+
+  const confirmDelete = () => {
+    if (!pendingDeleteSlug) return;
+    deletePricing.mutate(pendingDeleteSlug, {
+      onSuccess: () => {
+        if (selectedSlug === pendingDeleteSlug) setSelectedSlug(null);
+      },
+      onSettled: () => {
+        setPendingDeleteSlug(null);
+      },
+    });
+  };
+
   return (
     <>
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle>{t('pricing.title')}</CardTitle>
-              <CardDescription>{t('pricing.desc')}</CardDescription>
-            </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => pricing.refetch()}
-              disabled={pricing.isFetching}
-            >
-              <RefreshCcw className={pricing.isFetching ? 'animate-spin' : undefined} />
-              {t('pricing.refresh')}
-            </Button>
-          </div>
+          <CardTitle>{t('pricing.title')}</CardTitle>
+          <CardDescription>{t('pricing.desc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <PricingBody
             pricing={pricing}
             rows={rows}
             workspaceUrl={workspaceUrl}
-            setup={setup}
-            runNotebook={runNotebook}
-            setupError={setupError}
             runError={runError}
-            setupPendingSlug={setupPendingSlug}
+            deleteError={deleteError}
             runPendingSlug={runPendingSlug}
+            deletePendingSlug={deletePendingSlug}
             onSelectRow={setSelectedSlug}
-            onSetupNotebook={onSetupNotebook}
             onRunNotebook={onRunNotebook}
+            onRequestDelete={requestDelete}
           />
         </CardContent>
       </Card>
@@ -101,46 +119,81 @@ export function Pricing() {
       <PricingDetailsSheet
         row={selected}
         workspaceUrl={workspaceUrl}
-        setupPending={setupPendingSlug !== null && setupPendingSlug === selected?.slug}
         runPending={runPendingSlug !== null && runPendingSlug === selected?.slug}
+        deletePending={deletePendingSlug !== null && deletePendingSlug === selected?.slug}
         onClose={() => setSelectedSlug(null)}
-        onSetupNotebook={onSetupNotebook}
         onRunNotebook={onRunNotebook}
+        onRequestDelete={requestDelete}
       />
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletePricing.isPending) setPendingDeleteSlug(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('pricing.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? t('pricing.deleteConfirmDescription', {
+                    name: pendingDelete.slug,
+                    table: pendingDelete.table ?? t('pricing.notCreated'),
+                  })
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePricing.isPending}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                confirmDelete();
+              }}
+              disabled={deletePricing.isPending}
+            >
+              {deletePricing.isPending ? (
+                <>
+                  <Spinner /> {t('pricing.deleting')}
+                </>
+              ) : (
+                t('pricing.confirmDeleteAction')
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
 
 type PricingHook = ReturnType<typeof usePricingNotebook>;
-type SetupHook = ReturnType<typeof useSetupPricingNotebook>;
-type RunHook = ReturnType<typeof useRunNotebook>;
 
 function PricingBody({
   pricing,
   rows,
   workspaceUrl,
-  setup,
-  runNotebook,
-  setupError,
   runError,
-  setupPendingSlug,
+  deleteError,
   runPendingSlug,
+  deletePendingSlug,
   onSelectRow,
-  onSetupNotebook,
   onRunNotebook,
+  onRequestDelete,
 }: {
   pricing: PricingHook;
   rows: PricingNotebookState[];
   workspaceUrl: string | null;
-  setup: SetupHook;
-  runNotebook: RunHook;
-  setupError: string | null;
   runError: string | null;
-  setupPendingSlug: string | null;
+  deleteError: string | null;
   runPendingSlug: string | null;
+  deletePendingSlug: string | null;
   onSelectRow: (slug: string) => void;
-  onSetupNotebook: (slug: string) => void;
   onRunNotebook: (slug: string) => void;
+  onRequestDelete: (slug: string) => void;
 }) {
   const { t } = useI18n();
 
@@ -174,13 +227,6 @@ function PricingBody({
 
   return (
     <div className="grid gap-4">
-      {setupError ? (
-        <Alert variant="destructive">
-          <AlertCircle />
-          <AlertTitle>{t('pricing.setupFailed')}</AlertTitle>
-          <AlertDescription>{setupError}</AlertDescription>
-        </Alert>
-      ) : null}
       {runError ? (
         <Alert variant="destructive">
           <AlertCircle />
@@ -188,36 +234,13 @@ function PricingBody({
           <AlertDescription>{runError}</AlertDescription>
         </Alert>
       ) : null}
-      {runNotebook.data ? (
-        <Alert>
-          <Play />
-          <AlertTitle>
-            <span className="flex flex-wrap items-center gap-2">
-              <span>{t('pricing.runStarted')}</span>
-              <RunLink runId={runNotebook.data.runId} />
-            </span>
-          </AlertTitle>
-        </Alert>
-      ) : null}
-      {setup.data ? (
-        <Alert>
-          <UploadCloud />
-          <AlertTitle>{t('pricing.setupReady')}</AlertTitle>
-          <AlertDescription>
-            {t('pricing.notebookUploaded', {
-              path: setup.data.notebookWorkspacePath,
-            })}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {setup.data?.warnings.map((warning) => (
-        <Alert key={warning}>
+      {deleteError ? (
+        <Alert variant="destructive">
           <AlertCircle />
-          <AlertTitle>{t('pricing.setupWarning')}</AlertTitle>
-          <AlertDescription>{warning}</AlertDescription>
+          <AlertTitle>{t('pricing.deleteFailed')}</AlertTitle>
+          <AlertDescription>{deleteError}</AlertDescription>
         </Alert>
-      ))}
-
+      ) : null}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -225,6 +248,8 @@ function PricingBody({
               <TableHead>{t('pricing.columns.name')}</TableHead>
               <TableHead>{t('pricing.columns.table')}</TableHead>
               <TableHead>{t('pricing.columns.notebook')}</TableHead>
+              <TableHead>{t('pricing.columns.status')}</TableHead>
+              <TableHead>{t('pricing.columns.latestRun')}</TableHead>
               <TableHead className="text-right">{t('pricing.columns.actions')}</TableHead>
             </TableRow>
           </TableHeader>
@@ -234,11 +259,11 @@ function PricingBody({
                 key={row.slug}
                 row={row}
                 workspaceUrl={workspaceUrl}
-                setupPending={setupPendingSlug === row.slug}
                 runPending={runPendingSlug === row.slug}
+                deletePending={deletePendingSlug === row.slug}
                 onSelect={() => onSelectRow(row.slug)}
-                onSetupNotebook={onSetupNotebook}
                 onRunNotebook={onRunNotebook}
+                onRequestDelete={onRequestDelete}
               />
             ))}
           </TableBody>
@@ -251,23 +276,26 @@ function PricingBody({
 function PricingRow({
   row,
   workspaceUrl,
-  setupPending,
   runPending,
+  deletePending,
   onSelect,
-  onSetupNotebook,
   onRunNotebook,
+  onRequestDelete,
 }: {
   row: PricingNotebookState;
   workspaceUrl: string | null;
-  setupPending: boolean;
   runPending: boolean;
+  deletePending: boolean;
   onSelect: () => void;
-  onSetupNotebook: (slug: string) => void;
   onRunNotebook: (slug: string) => void;
+  onRequestDelete: (slug: string) => void;
 }) {
   const { t } = useI18n();
   const notebookUrl = notebookEditorUrl(workspaceUrl, row.notebookId);
   const tableUrl = row.table ? catalogTableUrl(workspaceUrl, row.table) : null;
+  const notebookName = row.notebookWorkspacePath
+    ? fileNameFromPath(row.notebookWorkspacePath)
+    : null;
 
   return (
     <TableRow className="cursor-pointer" onClick={onSelect}>
@@ -275,22 +303,32 @@ function PricingRow({
         <span className="font-mono text-sm">{row.slug}</span>
       </TableCell>
       <TableCell>
-        <ResourceLink href={tableUrl} value={row.table ?? '-'} />
-      </TableCell>
-      <TableCell>
-        {row.notebookWorkspacePath ? (
-          <ResourceLink href={notebookUrl} value={row.notebookWorkspacePath} />
+        {row.table ? (
+          <ResourceLink href={tableUrl} value={row.table} />
         ) : (
           <span className="text-muted-foreground">{t('pricing.notCreated')}</span>
         )}
       </TableCell>
+      <TableCell>
+        {notebookName ? (
+          <ResourceLink href={notebookUrl} value={notebookName} />
+        ) : (
+          <span className="text-muted-foreground">{t('pricing.notCreated')}</span>
+        )}
+      </TableCell>
+      <TableCell>
+        <RunStatusBadge row={row} />
+      </TableCell>
+      <TableCell>
+        {row.runId ? <RunLink runId={row.runId} cachedUrl={row.runUrl} /> : '-'}
+      </TableCell>
       <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
         <PricingActions
           row={row}
-          setupPending={setupPending}
           runPending={runPending}
-          onSetupNotebook={onSetupNotebook}
+          deletePending={deletePending}
           onRunNotebook={onRunNotebook}
+          onRequestDelete={onRequestDelete}
         />
       </TableCell>
     </TableRow>
@@ -300,24 +338,27 @@ function PricingRow({
 function PricingDetailsSheet({
   row,
   workspaceUrl,
-  setupPending,
   runPending,
+  deletePending,
   onClose,
-  onSetupNotebook,
   onRunNotebook,
+  onRequestDelete,
 }: {
   row: PricingNotebookState | null;
   workspaceUrl: string | null;
-  setupPending: boolean;
   runPending: boolean;
+  deletePending: boolean;
   onClose: () => void;
-  onSetupNotebook: (slug: string) => void;
   onRunNotebook: (slug: string) => void;
+  onRequestDelete: (slug: string) => void;
 }) {
   const { t } = useI18n();
   const notebookUrl = row ? notebookEditorUrl(workspaceUrl, row.notebookId) : null;
   const tableUrl = row?.table ? catalogTableUrl(workspaceUrl, row.table) : null;
   const volumeUrl = row?.rawDataPath ? volumeFileUrl(workspaceUrl, row.rawDataPath) : null;
+  const notebookName = row?.notebookWorkspacePath
+    ? fileNameFromPath(row.notebookWorkspacePath)
+    : null;
 
   return (
     <Sheet open={Boolean(row)} onOpenChange={(open) => (open ? null : onClose())}>
@@ -336,6 +377,11 @@ function PricingDetailsSheet({
             <div className="grid gap-4">
               <InfoRow label={t('pricing.provider')} value={row.provider} />
               <InfoRow label={t('pricing.service')} value={row.service} />
+              <InfoRow
+                label={t('pricing.runStatus')}
+                value={t(`pricing.status.${row.runStatus}`)}
+              />
+              <InfoRow label={t('pricing.runId')} value={row.runId ? String(row.runId) : null} />
               <InfoRow label={t('pricing.outputTable')} value={row.table} href={tableUrl} />
               <InfoRow
                 label={t('pricing.downloadsVolume')}
@@ -344,17 +390,17 @@ function PricingDetailsSheet({
               />
               <InfoRow
                 label={t('pricing.notebook')}
-                value={row.notebookWorkspacePath ?? t('pricing.notCreated')}
+                value={notebookName ?? t('pricing.notCreated')}
                 href={notebookUrl}
               />
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <PricingActions
                 row={row}
-                setupPending={setupPending}
                 runPending={runPending}
-                onSetupNotebook={onSetupNotebook}
+                deletePending={deletePending}
                 onRunNotebook={onRunNotebook}
+                onRequestDelete={onRequestDelete}
               />
             </div>
           </div>
@@ -366,18 +412,22 @@ function PricingDetailsSheet({
 
 function PricingActions({
   row,
-  setupPending,
   runPending,
-  onSetupNotebook,
+  deletePending,
   onRunNotebook,
+  onRequestDelete,
 }: {
   row: PricingNotebookState;
-  setupPending: boolean;
   runPending: boolean;
-  onSetupNotebook: (slug: string) => void;
+  deletePending: boolean;
   onRunNotebook: (slug: string) => void;
+  onRequestDelete: (slug: string) => void;
 }) {
   const { t } = useI18n();
+  const activeRun = isActivePricingRunStatus(row.runStatus);
+  const hasPricingData = Boolean(row.table);
+  const actionLabel = hasPricingData ? t('pricing.update') : t('pricing.register');
+  const pendingLabel = hasPricingData ? t('pricing.updating') : t('pricing.registering');
   return (
     <div className="flex justify-end gap-2">
       <Button
@@ -385,12 +435,12 @@ function PricingActions({
         size="sm"
         onClick={(event) => {
           event.stopPropagation();
-          onSetupNotebook(row.slug);
+          onRunNotebook(row.slug);
         }}
-        disabled={setupPending}
+        disabled={runPending || activeRun}
       >
-        {setupPending ? <Spinner /> : <UploadCloud />}
-        {row.notebookWorkspacePath ? t('pricing.updateNotebook') : t('pricing.createNotebook')}
+        {runPending || activeRun ? <Spinner /> : <UploadCloud />}
+        {runPending || activeRun ? pendingLabel : actionLabel}
       </Button>
       <Button
         type="button"
@@ -398,15 +448,45 @@ function PricingActions({
         variant="secondary"
         onClick={(event) => {
           event.stopPropagation();
-          onRunNotebook(row.slug);
+          onRequestDelete(row.slug);
         }}
-        disabled={runPending}
+        disabled={deletePending || !hasPricingData || activeRun}
       >
-        {runPending ? <Spinner /> : <Play />}
-        {t('pricing.runNotebook')}
+        {deletePending ? <Spinner /> : <Trash2 />}
+        {deletePending ? t('pricing.deleting') : t('pricing.delete')}
       </Button>
     </div>
   );
+}
+
+function RunStatusBadge({ row }: { row: PricingNotebookState }) {
+  const { t } = useI18n();
+  const active = isActivePricingRunStatus(row.runStatus);
+  return (
+    <Badge variant="outline" className={cn('gap-1.5', pricingStatusBadgeClass(row.runStatus))}>
+      {active ? <Spinner className="h-3.5 w-3.5" /> : null}
+      {t(`pricing.status.${row.runStatus}`)}
+    </Badge>
+  );
+}
+
+function pricingStatusBadgeClass(status: PricingRunStatus): string {
+  switch (status) {
+    case 'succeeded':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300';
+    case 'pending':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300';
+    case 'running':
+      return 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300';
+    case 'failed':
+      return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300';
+    case 'canceled':
+      return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-300';
+    case 'unknown':
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300';
+    case 'not_started':
+      return 'border-zinc-200 bg-zinc-50 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-300';
+  }
 }
 
 function ResourceLink({ href, value }: { href: string | null; value: string }) {
@@ -425,10 +505,10 @@ function ResourceLink({ href, value }: { href: string | null; value: string }) {
   );
 }
 
-function RunLink({ runId }: { runId: number }) {
+function RunLink({ runId, cachedUrl: initialUrl }: { runId: number; cachedUrl?: string | null }) {
   const runLink = useGetJobRunLink();
-  const label = `Run #${runId}`;
-  const cachedUrl = runLink.data?.runUrl ?? null;
+  const label = `#${runId}`;
+  const cachedUrl = initialUrl ?? runLink.data?.runUrl ?? null;
 
   if (cachedUrl) {
     return (

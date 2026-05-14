@@ -25,7 +25,7 @@ export type MedallionSchema = (typeof MEDALLION_SCHEMAS)[number];
 export function schemaGrantPrivileges(schema: MedallionSchema): string {
   return schema === 'silver' || schema === 'gold'
     ? 'USE SCHEMA, SELECT, CREATE TABLE, CREATE MATERIALIZED VIEW'
-    : 'USE SCHEMA, SELECT';
+    : 'USE SCHEMA, SELECT, CREATE TABLE, CREATE VOLUME, READ VOLUME, WRITE VOLUME';
 }
 
 export interface FocusViewTarget {

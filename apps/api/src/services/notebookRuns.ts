@@ -5,21 +5,22 @@ import type {
   PricingData,
   PricingNotebookRunResult,
 } from '@finlake/shared';
+import { getDatabricksRunSnapshot } from './databricksRunStatus.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
-import { normalizeHost } from './normalizeHost.js';
 import { ensurePricingDataForSlug } from './pricingNotebook.js';
-import { buildUserWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
+import {
+  buildAppWorkspaceClient,
+  buildUserWorkspaceClient,
+  type WorkspaceClient,
+} from './statementExecution.js';
 
 interface NotebookRunDeps {
   workspaceClient?: WorkspaceClient;
+  setupWorkspaceClient?: WorkspaceClient;
 }
 
 interface JobsSubmitResponse {
   run_id?: number;
-}
-
-interface JobsRunGetResponse {
-  job_id?: number;
   run_page_url?: string;
 }
 
@@ -33,20 +34,19 @@ export async function submitManagedNotebookRunBySlug(
   slug: string,
   deps: NotebookRunDeps = {},
 ): Promise<PricingNotebookRunResult> {
-  if (!userToken) {
-    throw new DataSourceSetupError('OBO access token required', 401);
-  }
-  const wc = deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken);
+  const wc = deps.workspaceClient ?? buildAppWorkspaceClient(env);
   if (!wc) {
-    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
+    throw new DataSourceSetupError(
+      'Databricks service principal workspace client is not configured.',
+      400,
+    );
   }
-  const pricingData = await ensurePricingDataForSlug(env, db, userToken, slug, {
-    workspaceClient: wc,
-  });
-  return submitPricingNotebookRun(wc, pricingData);
+  const pricingData = await ensureRunnablePricingData(env, db, userToken, slug, deps);
+  return submitPricingNotebookRun(db, wc, pricingData);
 }
 
 async function submitPricingNotebookRun(
+  db: DatabaseClient,
   wc: WorkspaceClient,
   pricingData: PricingData,
 ): Promise<PricingNotebookRunResult> {
@@ -114,34 +114,44 @@ async function submitPricingNotebookRun(
     throw new DataSourceSetupError('Databricks Jobs API returned no run_id.', 500);
   }
 
+  const runUrl = response.run_page_url ?? null;
+  await db.repos.pricingData.updateRun(pricingData.slug, {
+    runId: response.run_id,
+    runStatus: 'pending',
+    runUrl,
+    runStartedAt: null,
+    runFinishedAt: null,
+    runCheckedAt: new Date().toISOString(),
+  });
+
   return {
     provider: pricingData.provider,
     service: pricingData.service,
     slug: pricingData.slug,
     runId: response.run_id,
+    runStatus: 'pending',
+    runUrl,
   };
 }
 
 export async function getDatabricksRunLink(
   env: Env,
-  userToken: string | undefined,
   runId: number,
   deps: NotebookRunDeps = {},
 ): Promise<DatabricksRunLinkResult> {
-  if (!userToken) {
-    throw new DataSourceSetupError('OBO access token required', 401);
-  }
-
-  const wc = deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken);
+  const wc = deps.workspaceClient ?? buildAppWorkspaceClient(env);
   if (!wc) {
-    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
+    throw new DataSourceSetupError(
+      'Databricks service principal workspace client is not configured.',
+      400,
+    );
   }
 
-  const run = await getRunInfo(wc, runId);
+  const run = await getDatabricksRunSnapshot(wc, env, runId);
   return {
-    jobId: run?.job_id ?? null,
+    jobId: run?.jobId ?? null,
     runId,
-    runUrl: run?.run_page_url ?? databricksRunUrl(env.DATABRICKS_HOST, run?.job_id, runId),
+    runUrl: run?.runUrl ?? null,
   };
 }
 
@@ -149,28 +159,30 @@ function safeTaskKey(slug: string): string {
   return slug.replace(/[^A-Za-z0-9_-]/g, '_') || 'notebook';
 }
 
-async function getRunInfo(wc: WorkspaceClient, runId: number): Promise<JobsRunGetResponse | null> {
-  try {
-    return (await wc.apiClient.request({
-      path: '/api/2.2/jobs/runs/get',
-      method: 'GET',
-      headers: new Headers({
-        Accept: 'application/json',
-      }),
-      query: { run_id: runId },
-      raw: false,
-    })) as JobsRunGetResponse;
-  } catch {
-    return null;
+async function ensureRunnablePricingData(
+  env: Env,
+  db: DatabaseClient,
+  userToken: string | undefined,
+  slug: string,
+  deps: NotebookRunDeps,
+): Promise<PricingData> {
+  const existing = await db.repos.pricingData.getBySlug(slug);
+  if (
+    existing?.notebookPath &&
+    existing.rawDataPath &&
+    existing.rawDataTable &&
+    existing.table &&
+    typeof existing.metadata.source === 'string'
+  ) {
+    return existing;
   }
-}
 
-function databricksRunUrl(
-  host: string | undefined,
-  jobId: number | undefined,
-  runId: number,
-): string | null {
-  const consoleHost = normalizeHost(host);
-  if (!consoleHost || typeof jobId !== 'number') return null;
-  return `${consoleHost}/jobs/${jobId}/runs/${runId}`;
+  if (!userToken) {
+    throw new DataSourceSetupError('OBO access token required to prepare pricing notebook.', 401);
+  }
+
+  return ensurePricingDataForSlug(env, db, userToken, slug, {
+    workspaceClient:
+      deps.setupWorkspaceClient ?? deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken),
+  });
 }

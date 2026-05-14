@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isTerminalSqlStatus } from '@finlake/shared';
+import { isActivePricingRunStatus, isTerminalSqlStatus } from '@finlake/shared';
 import type {
   Budget,
   AdminCleanupResponse,
@@ -26,8 +26,8 @@ import type {
   GovernedTagSyncResult,
   DatabricksRunLinkResult,
   PricingNotebookRunResult,
+  PricingNotebookDeleteResult,
   PricingNotebookListResponse,
-  PricingNotebookSetupResult,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
@@ -618,35 +618,41 @@ export function useRunSharedTransformationJob() {
 
 export function usePricingNotebook() {
   return useQuery({
-    queryKey: ['pricing', 'notebook'],
-    queryFn: () => apiFetch<PricingNotebookListResponse>('/api/pricing/notebook'),
+    queryKey: ['pricing'],
+    queryFn: () => apiFetch<PricingNotebookListResponse>('/api/pricing'),
     staleTime: 60 * 1000,
     retry: false,
-  });
-}
-
-export function useSetupPricingNotebook() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (slug: string) =>
-      apiFetch<PricingNotebookSetupResult>('/api/pricing/notebook/setup', {
-        method: 'POST',
-        body: JSON.stringify({ slug }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['pricing', 'notebook'] });
-      qc.invalidateQueries({ queryKey: ['appSettings'] });
+    refetchInterval: (query) => {
+      const data = query.state.data as PricingNotebookListResponse | undefined;
+      return data?.items.some((item) => isActivePricingRunStatus(item.runStatus)) ? 5_000 : false;
     },
+    refetchIntervalInBackground: false,
   });
 }
 
 export function useRunNotebook() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) =>
-      apiFetch<PricingNotebookRunResult>('/api/jobs/runs/submit', {
-        method: 'POST',
-        body: JSON.stringify({ slug }),
+      apiFetch<PricingNotebookRunResult>(`/api/pricing/${encodeURIComponent(slug)}`, {
+        method: 'PUT',
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pricing'] });
+    },
+  });
+}
+
+export function useDeletePricingNotebook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<PricingNotebookDeleteResult>(`/api/pricing/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pricing'] });
+    },
   });
 }
 

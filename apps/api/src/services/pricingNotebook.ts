@@ -6,18 +6,29 @@ import {
   CATALOG_SETTING_KEY,
   DOWNLOADS_VOLUME_DEFAULT,
   PRICING_SCHEMA_DEFAULT,
+  isActivePricingRunStatus,
   medallionSchemaNamesFromSettings,
+  quoteIdent,
   unquotedFqn,
   type AwsPricingSlug,
   type Env,
   type PricingData,
+  type PricingNotebookDeleteResult,
   type PricingNotebookListResponse,
   type PricingNotebookSetupResult,
   type PricingNotebookState,
 } from '@finlake/shared';
+import { getDatabricksRunSnapshot } from './databricksRunStatus.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import { uploadPipelineFile } from './databricksJobs.js';
-import { buildUserWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
+import {
+  buildAppWorkspaceClient,
+  buildAppExecutor,
+  buildUserWorkspaceClient,
+  type StatementExecutor,
+  type WorkspaceClient,
+} from './statementExecution.js';
+import { z } from 'zod';
 
 const PRICING_NOTEBOOK_NAME = 'pricing_ingest_aws.ipynb';
 const AWS_PROVIDER = 'AWS';
@@ -101,6 +112,8 @@ export async function uploadPricingNotebook(
 
 export async function pricingNotebookState(
   db: DatabaseClient,
+  env: Env,
+  deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookListResponse> {
   const [settingsRows, pricingRows] = await Promise.all([
     db.repos.appSettings.list(),
@@ -110,12 +123,30 @@ export async function pricingNotebookState(
       ),
     ),
   ]);
+  const resolvedRows = await Promise.all(
+    pricingRows.map((row) => syncActivePricingRun(env, db, row ?? null, deps)),
+  );
   const settings = settingsToRecord(settingsRows);
   return {
     items: AWS_PRICING_SERVICES.map((service, index) =>
-      stateFromSettings(settings, pricingRows[index] ?? null, service),
+      stateFromSettings(settings, resolvedRows[index] ?? null, service),
     ),
   };
+}
+
+export async function pricingNotebookStateBySlug(
+  db: DatabaseClient,
+  env: Env,
+  slug: string,
+  deps: PricingNotebookDeps = {},
+): Promise<PricingNotebookState> {
+  const service = awsPricingServiceBySlug(slug);
+  const [settingsRows, pricingRow] = await Promise.all([
+    db.repos.appSettings.list(),
+    db.repos.pricingData.get(AWS_PROVIDER, service.service),
+  ]);
+  const resolvedRow = await syncActivePricingRun(env, db, pricingRow, deps);
+  return stateFromSettings(settingsToRecord(settingsRows), resolvedRow, service);
 }
 
 interface PricingNotebookDeps {
@@ -154,6 +185,42 @@ export async function setupPricingNotebookWithDeps(
   };
 }
 
+export async function deletePricingNotebookData(
+  env: Env,
+  db: DatabaseClient,
+  slug: string,
+  deps: { executor?: StatementExecutor } = {},
+): Promise<PricingNotebookDeleteResult> {
+  const service = awsPricingServiceBySlug(slug);
+  const pricingData = await db.repos.pricingData.get(AWS_PROVIDER, service.service);
+  if (!pricingData) {
+    throw new DataSourceSetupError(`Pricing data is not configured for ${slug}.`, 404);
+  }
+
+  if (pricingData.table) {
+    const executor = deps.executor ?? buildAppExecutor(env);
+    if (!executor) {
+      throw new DataSourceSetupError(
+        'Databricks service principal SQL executor is not configured.',
+        400,
+      );
+    }
+    await executor.run(
+      `DROP TABLE IF EXISTS ${quoteThreePartTable(pricingData.table)}`,
+      [],
+      z.unknown(),
+    );
+  }
+
+  const deletedPricingData = await db.repos.pricingData.deleteBySlug(slug);
+  return {
+    slug: service.slug,
+    table: pricingData.table,
+    droppedTable: Boolean(pricingData.table),
+    deletedPricingData,
+  };
+}
+
 interface UpsertPricingNotebookResult {
   settings: Record<string, string | undefined>;
   service: AwsPricingService;
@@ -177,6 +244,13 @@ async function upsertPricingNotebook(
   if (!state.catalog) {
     throw new DataSourceSetupError('Main catalog is not configured.', 400);
   }
+  const medallion = medallionSchemaNamesFromSettings(settings);
+  const targetTable =
+    current?.table ?? unquotedFqn(state.catalog, PRICING_SCHEMA_DEFAULT, service.tableName);
+  const rawDataPath =
+    current?.rawDataPath ?? pricingDownloadFilePath(state.catalog, medallion.bronze, service);
+  const rawDataTable =
+    current?.rawDataTable ?? pricingRawTableFqn(state.catalog, medallion.bronze, service);
   if (!userToken) {
     throw new DataSourceSetupError('OBO access token required', 401);
   }
@@ -188,13 +262,13 @@ async function upsertPricingNotebook(
   if (!wc) {
     throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
   }
-  if (!state.table) {
+  if (!targetTable) {
     throw new DataSourceSetupError('Pricing target table could not be resolved.', 500);
   }
-  if (!state.rawDataPath) {
+  if (!rawDataPath) {
     throw new DataSourceSetupError('Raw data path could not be resolved.', 500);
   }
-  if (!state.rawDataTable) {
+  if (!rawDataTable) {
     throw new DataSourceSetupError('Raw data table could not be resolved.', 500);
   }
 
@@ -212,15 +286,16 @@ async function upsertPricingNotebook(
     provider: AWS_PROVIDER,
     service: service.service,
     slug: service.slug,
-    table: state.table,
-    rawDataTable: state.rawDataTable,
-    rawDataPath: state.rawDataPath,
+    table: targetTable,
+    rawDataTable,
+    rawDataPath,
     notebookPath: notebookWorkspacePath,
     notebookId,
     metadata: {
       ...state.metadata,
       source: service.source,
     },
+    ...runFieldsFromPricingData(current),
   });
 
   return { settings, service, pricingData, notebookWorkspacePath };
@@ -258,24 +333,62 @@ function stateFromSettings(
   service: AwsPricingService,
 ): PricingNotebookState {
   const catalog = settings[CATALOG_SETTING_KEY]?.trim() || null;
-  const medallion = medallionSchemaNamesFromSettings(settings);
-  const defaultTable = catalog
-    ? unquotedFqn(catalog, PRICING_SCHEMA_DEFAULT, service.tableName)
-    : null;
   return {
     provider: pricingData?.provider ?? AWS_PROVIDER,
     service: pricingData?.service ?? service.service,
     slug: pricingData?.slug ?? service.slug,
     catalog,
-    table: pricingData?.table ?? defaultTable,
-    rawDataTable:
-      pricingData?.rawDataTable ??
-      (catalog ? pricingRawTableFqn(catalog, medallion.bronze, service) : null),
-    rawDataPath:
-      pricingData?.rawDataPath ??
-      (catalog ? pricingDownloadFilePath(catalog, medallion.bronze, service) : null),
+    table: pricingData?.table ?? null,
+    rawDataTable: pricingData?.rawDataTable ?? null,
+    rawDataPath: pricingData?.rawDataPath ?? null,
     notebookWorkspacePath: pricingData?.notebookPath ?? null,
     notebookId: pricingData?.notebookId ?? null,
     metadata: pricingData?.metadata ?? { source: service.source },
+    ...runFieldsFromPricingData(pricingData ?? null),
   };
+}
+
+async function syncActivePricingRun(
+  env: Env,
+  db: DatabaseClient,
+  row: PricingData | null,
+  deps: PricingNotebookDeps,
+): Promise<PricingData | null> {
+  if (!row?.runId || !isActivePricingRunStatus(row.runStatus)) return row;
+  const wc = deps.workspaceClient ?? buildAppWorkspaceClient(env);
+  if (!wc) return row;
+  const snapshot = await getDatabricksRunSnapshot(wc, env, row.runId);
+  if (!snapshot) return row;
+  return (
+    (await db.repos.pricingData.updateRun(row.slug, {
+      runId: snapshot.runId,
+      runStatus: snapshot.runStatus,
+      runUrl: snapshot.runUrl,
+      runStartedAt: snapshot.runStartedAt,
+      runFinishedAt: snapshot.runFinishedAt,
+      runCheckedAt: snapshot.runCheckedAt,
+    })) ?? row
+  );
+}
+
+function runFieldsFromPricingData(pricingData: PricingData | null) {
+  return {
+    runId: pricingData?.runId ?? null,
+    runStatus: pricingData?.runStatus ?? 'not_started',
+    runUrl: pricingData?.runUrl ?? null,
+    runStartedAt: pricingData?.runStartedAt ?? null,
+    runFinishedAt: pricingData?.runFinishedAt ?? null,
+    runCheckedAt: pricingData?.runCheckedAt ?? null,
+  };
+}
+
+function quoteThreePartTable(value: string): string {
+  const parts = value.split('.');
+  if (parts.length !== 3) {
+    throw new DataSourceSetupError(
+      `Invalid pricing table "${value}": expected a three-part table name.`,
+      500,
+    );
+  }
+  return parts.map((part) => quoteIdent(part)).join('.');
 }

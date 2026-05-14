@@ -44,6 +44,11 @@ test('provisionCatalog creates pricing schema, downloads volume, and grants', as
   );
   assert.ok(
     executor.sql.includes(
+      'GRANT USE SCHEMA, SELECT, CREATE TABLE, CREATE VOLUME, READ VOLUME, WRITE VOLUME ON SCHEMA `finops`.`ingest` TO `sp-123`',
+    ),
+  );
+  assert.ok(
+    executor.sql.includes(
       'GRANT READ VOLUME, WRITE VOLUME ON VOLUME `finops`.`ingest`.`downloads` TO `sp-123`',
     ),
   );

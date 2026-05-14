@@ -21,6 +21,11 @@ export function notebookEditorUrl(
   return `${workspaceUrl.replace(/\/$/, '')}/editor/notebooks/${notebookId}`;
 }
 
+export function fileNameFromPath(path: string): string {
+  const parts = path.split('/').filter(Boolean);
+  return parts.at(-1) ?? path;
+}
+
 export function volumeFileUrl(workspaceUrl: string | null, volumePath: string): string | null {
   if (!workspaceUrl) return null;
   const parts = volumePath.split('/').filter(Boolean);

@@ -97,6 +97,12 @@ export const pricingData = pgTable(
     notebookPath: text('notebook_path'),
     notebookId: text('notebook_id'),
     metadata: jsonb('metadata').notNull().default({}),
+    runId: integer('run_id'),
+    runStatus: text('run_status').notNull().default('not_started'),
+    runUrl: text('run_url'),
+    runStartedAt: timestamp('run_started_at', { withTimezone: true }),
+    runFinishedAt: timestamp('run_finished_at', { withTimezone: true }),
+    runCheckedAt: timestamp('run_checked_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

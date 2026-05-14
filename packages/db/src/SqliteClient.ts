@@ -16,6 +16,7 @@ import type {
   DataSourceValue,
   DataSourcesRepo,
   PricingDataRepo,
+  PricingDataRunPatch,
   PricingDataUpsertInput,
   PricingDataValue,
   Repositories,
@@ -140,6 +141,12 @@ export class SqliteClient implements DatabaseClient {
         notebook_path TEXT,
         notebook_id TEXT,
         metadata TEXT NOT NULL DEFAULT '{}',
+        run_id INTEGER,
+        run_status TEXT NOT NULL DEFAULT 'not_started',
+        run_url TEXT,
+        run_started_at TEXT,
+        run_finished_at TEXT,
+        run_checked_at TEXT,
         updated_at TEXT NOT NULL,
         PRIMARY KEY (provider, service)
       )`,
@@ -182,6 +189,12 @@ export class SqliteClient implements DatabaseClient {
         notebook_path TEXT,
         notebook_id TEXT,
         metadata TEXT NOT NULL DEFAULT '{}',
+        run_id INTEGER,
+        run_status TEXT NOT NULL DEFAULT 'not_started',
+        run_url TEXT,
+        run_started_at TEXT,
+        run_finished_at TEXT,
+        run_checked_at TEXT,
         updated_at TEXT NOT NULL,
         PRIMARY KEY (provider, service)
       )`);
@@ -195,6 +208,12 @@ export class SqliteClient implements DatabaseClient {
         notebook_path,
         notebook_id,
         metadata,
+        run_id,
+        run_status,
+        run_url,
+        run_started_at,
+        run_finished_at,
+        run_checked_at,
         updated_at
       )
       SELECT
@@ -207,6 +226,12 @@ export class SqliteClient implements DatabaseClient {
         notebook_path,
         notebook_id,
         metadata,
+        NULL,
+        'not_started',
+        NULL,
+        NULL,
+        NULL,
+        NULL,
         updated_at
       FROM pricing_data_legacy
       WHERE id = 'aws_ec2'
@@ -219,6 +244,12 @@ export class SqliteClient implements DatabaseClient {
       { name: 'slug', type: 'TEXT' },
       { name: 'raw_data_table', type: 'TEXT' },
       { name: 'raw_data_path', type: 'TEXT' },
+      { name: 'run_id', type: 'INTEGER' },
+      { name: 'run_status', type: "TEXT NOT NULL DEFAULT 'not_started'" },
+      { name: 'run_url', type: 'TEXT' },
+      { name: 'run_started_at', type: 'TEXT' },
+      { name: 'run_finished_at', type: 'TEXT' },
+      { name: 'run_checked_at', type: 'TEXT' },
     ];
     for (const col of addColumns) {
       if (!columns.includes(col.name)) {
@@ -655,6 +686,12 @@ class SqlitePricingDataRepo implements PricingDataRepo {
       notebookPath: input.notebookPath,
       notebookId: input.notebookId,
       metadataJson: JSON.stringify(input.metadata),
+      runId: input.runId,
+      runStatus: input.runStatus,
+      runUrl: input.runUrl,
+      runStartedAt: input.runStartedAt,
+      runFinishedAt: input.runFinishedAt,
+      runCheckedAt: input.runCheckedAt,
       updatedAt: new Date().toISOString(),
     };
     await this.db
@@ -670,10 +707,40 @@ class SqlitePricingDataRepo implements PricingDataRepo {
           notebookPath: row.notebookPath,
           notebookId: row.notebookId,
           metadataJson: row.metadataJson,
+          runId: row.runId,
+          runStatus: row.runStatus,
+          runUrl: row.runUrl,
+          runStartedAt: row.runStartedAt,
+          runFinishedAt: row.runFinishedAt,
+          runCheckedAt: row.runCheckedAt,
           updatedAt: row.updatedAt,
         },
       });
     return toPricingData(row);
+  }
+
+  async updateRun(slug: string, patch: PricingDataRunPatch): Promise<PricingDataValue | null> {
+    const updatedAt = new Date().toISOString();
+    const updated = await this.db
+      .update(s.pricingData)
+      .set({
+        runId: patch.runId,
+        runStatus: patch.runStatus,
+        runUrl: patch.runUrl,
+        runStartedAt: patch.runStartedAt,
+        runFinishedAt: patch.runFinishedAt,
+        runCheckedAt: patch.runCheckedAt,
+        updatedAt,
+      })
+      .where(eq(s.pricingData.slug, slug))
+      .returning();
+    const row = updated[0];
+    return row ? toPricingData(row) : null;
+  }
+
+  async deleteBySlug(slug: string): Promise<boolean> {
+    const result = await this.db.delete(s.pricingData).where(eq(s.pricingData.slug, slug));
+    return result.rowsAffected > 0;
   }
 
   async clear(): Promise<number> {
@@ -693,6 +760,12 @@ function toPricingData(row: typeof s.pricingData.$inferSelect): PricingDataValue
     notebookPath: row.notebookPath,
     notebookId: row.notebookId,
     metadata: JSON.parse(row.metadataJson) as Record<string, unknown>,
+    runId: row.runId,
+    runStatus: row.runStatus as PricingDataValue['runStatus'],
+    runUrl: row.runUrl,
+    runStartedAt: row.runStartedAt,
+    runFinishedAt: row.runFinishedAt,
+    runCheckedAt: row.runCheckedAt,
     updatedAt: row.updatedAt,
   };
 }

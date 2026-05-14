@@ -4,7 +4,9 @@ import test from 'node:test';
 import type { DatabaseClient } from '@finlake/db';
 import { CATALOG_SETTING_KEY, type Env, type PricingData } from '@finlake/shared';
 import {
+  deletePricingNotebookData,
   pricingNotebookState,
+  pricingNotebookStateBySlug,
   pricingNotebookWorkspacePath,
   setupPricingNotebookWithDeps,
 } from '../src/services/pricingNotebook.js';
@@ -26,8 +28,38 @@ const RDS_VOLUME_PATH = '/Volumes/finops/ingest/downloads/pricing_aws_rds.csv';
 const EC2_RAW_TABLE = 'finops.ingest.pricing_aws_ec2';
 const RDS_RAW_TABLE = 'finops.ingest.pricing_aws_rds';
 
-function createFakeDb(initial: PricingData[] = []) {
-  const stored = new Map(initial.map((row) => [row.slug, row]));
+type PricingDataInput = Omit<
+  PricingData,
+  'runId' | 'runStatus' | 'runUrl' | 'runStartedAt' | 'runFinishedAt' | 'runCheckedAt' | 'updatedAt'
+> &
+  Partial<
+    Pick<
+      PricingData,
+      | 'runId'
+      | 'runStatus'
+      | 'runUrl'
+      | 'runStartedAt'
+      | 'runFinishedAt'
+      | 'runCheckedAt'
+      | 'updatedAt'
+    >
+  >;
+
+function pricingDataRow(input: PricingDataInput): PricingData {
+  return {
+    ...input,
+    runId: input.runId ?? null,
+    runStatus: input.runStatus ?? 'not_started',
+    runUrl: input.runUrl ?? null,
+    runStartedAt: input.runStartedAt ?? null,
+    runFinishedAt: input.runFinishedAt ?? null,
+    runCheckedAt: input.runCheckedAt ?? null,
+    updatedAt: input.updatedAt ?? UPDATED_AT,
+  };
+}
+
+function createFakeDb(initial: PricingDataInput[] = []) {
+  const stored = new Map(initial.map((row) => [row.slug, pricingDataRow(row)]));
   const db = {
     backend: 'sqlite',
     repos: {
@@ -55,6 +87,22 @@ function createFakeDb(initial: PricingData[] = []) {
           stored.set(row.slug, row);
           return row;
         },
+        async updateRun(
+          slug: string,
+          patch: Pick<
+            PricingData,
+            'runId' | 'runStatus' | 'runUrl' | 'runStartedAt' | 'runFinishedAt' | 'runCheckedAt'
+          >,
+        ) {
+          const current = stored.get(slug);
+          if (!current) return null;
+          const next = { ...current, ...patch, updatedAt: UPDATED_AT };
+          stored.set(slug, next);
+          return next;
+        },
+        async deleteBySlug(slug: string) {
+          return stored.delete(slug);
+        },
       },
     },
   } as unknown as DatabaseClient;
@@ -68,7 +116,7 @@ function createFakeDb(initial: PricingData[] = []) {
 test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
   const fake = createFakeDb();
 
-  const result = await pricingNotebookState(fake.db);
+  const result = await pricingNotebookState(fake.db, {} as Env);
 
   assert.equal(result.items.length, 2);
   assert.deepEqual(
@@ -76,14 +124,18 @@ test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
     ['aws_ec2', 'aws_rds'],
   );
   assert.equal(result.items[0]?.service, 'AmazonEC2');
-  assert.equal(result.items[0]?.table, 'finops.pricing.aws_ec2');
-  assert.equal(result.items[0]?.rawDataTable, EC2_RAW_TABLE);
-  assert.equal(result.items[0]?.rawDataPath, EC2_VOLUME_PATH);
+  assert.equal(result.items[0]?.table, null);
+  assert.equal(result.items[0]?.rawDataTable, null);
+  assert.equal(result.items[0]?.rawDataPath, null);
+  assert.equal(result.items[0]?.runStatus, 'not_started');
+  assert.equal(result.items[0]?.runId, null);
   assert.deepEqual(result.items[0]?.metadata, { source: EC2_SOURCE_URL });
   assert.equal(result.items[1]?.service, 'AmazonRDS');
-  assert.equal(result.items[1]?.table, 'finops.pricing.aws_rds');
-  assert.equal(result.items[1]?.rawDataTable, RDS_RAW_TABLE);
-  assert.equal(result.items[1]?.rawDataPath, RDS_VOLUME_PATH);
+  assert.equal(result.items[1]?.table, null);
+  assert.equal(result.items[1]?.rawDataTable, null);
+  assert.equal(result.items[1]?.rawDataPath, null);
+  assert.equal(result.items[1]?.runStatus, 'not_started');
+  assert.equal(result.items[1]?.runId, null);
   assert.deepEqual(result.items[1]?.metadata, { source: RDS_SOURCE_URL });
 });
 
@@ -138,6 +190,12 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
     notebookPath: PRICING_NOTEBOOK_WORKSPACE_PATH,
     notebookId: '12345',
     metadata: { source: EC2_SOURCE_URL },
+    runId: null,
+    runStatus: 'not_started',
+    runUrl: null,
+    runStartedAt: null,
+    runFinishedAt: null,
+    runCheckedAt: null,
     updatedAt: UPDATED_AT,
   });
   assert.equal(fake.stored('aws_rds'), null);
@@ -201,7 +259,6 @@ test('getDatabricksRunLink resolves job run URL on demand', async () => {
 
   const result = await getDatabricksRunLink(
     { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
-    'obo-token',
     67890,
     { workspaceClient },
   );
@@ -212,6 +269,92 @@ test('getDatabricksRunLink resolves job run URL on demand', async () => {
     runId: 67890,
     runUrl: 'https://example.cloud.databricks.com/jobs/54321/runs/67890',
   });
+});
+
+test('pricingNotebookState refreshes active run status with service principal client', async () => {
+  const fake = createFakeDb([
+    {
+      provider: 'AWS',
+      service: 'AmazonEC2',
+      slug: 'aws_ec2',
+      table: 'finops.pricing.aws_ec2',
+      rawDataTable: EC2_RAW_TABLE,
+      rawDataPath: EC2_VOLUME_PATH,
+      notebookPath: PRICING_NOTEBOOK_WORKSPACE_PATH,
+      notebookId: '12345',
+      metadata: { source: EC2_SOURCE_URL },
+      runId: 67890,
+      runStatus: 'running',
+    },
+  ]);
+  let getRunQuery: unknown;
+  const workspaceClient = {
+    apiClient: {
+      async request(options: { path: string; method: string; query?: unknown }) {
+        assert.equal(options.path, '/api/2.2/jobs/runs/get');
+        assert.equal(options.method, 'GET');
+        getRunQuery = options.query;
+        return {
+          job_id: 54321,
+          run_page_url: 'https://example.cloud.databricks.com/jobs/54321/runs/67890',
+          state: { life_cycle_state: 'TERMINATED', result_state: 'SUCCESS' },
+          start_time: 1_777_000_000_000,
+          end_time: 1_777_000_120_000,
+        };
+      },
+    },
+  } as unknown as WorkspaceClient;
+
+  const result = await pricingNotebookStateBySlug(
+    fake.db,
+    { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
+    'aws_ec2',
+    { workspaceClient },
+  );
+
+  assert.deepEqual(getRunQuery, { run_id: 67890 });
+  assert.equal(result.runStatus, 'succeeded');
+  assert.equal(result.runUrl, 'https://example.cloud.databricks.com/jobs/54321/runs/67890');
+  assert.equal(fake.stored('aws_ec2')?.runStatus, 'succeeded');
+});
+
+test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_data record', async () => {
+  const fake = createFakeDb([
+    {
+      provider: 'AWS',
+      service: 'AmazonEC2',
+      slug: 'aws_ec2',
+      table: 'finops.pricing.aws_ec2',
+      rawDataTable: EC2_RAW_TABLE,
+      rawDataPath: EC2_VOLUME_PATH,
+      notebookPath: PRICING_NOTEBOOK_WORKSPACE_PATH,
+      notebookId: '12345',
+      metadata: { source: EC2_SOURCE_URL },
+    },
+  ]);
+  let sqlText: string | null = null;
+  const executor = {
+    async run(query: string) {
+      sqlText = query;
+      return [];
+    },
+  };
+
+  const result = await deletePricingNotebookData(
+    { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
+    fake.db,
+    'aws_ec2',
+    { executor: executor as never },
+  );
+
+  assert.equal(sqlText, 'DROP TABLE IF EXISTS `finops`.`pricing`.`aws_ec2`');
+  assert.deepEqual(result, {
+    slug: 'aws_ec2',
+    table: 'finops.pricing.aws_ec2',
+    droppedTable: true,
+    deletedPricingData: true,
+  });
+  assert.equal(fake.stored('aws_ec2'), null);
 });
 
 test('submitManagedNotebookRunBySlug submits an RDS run with service-specific parameters', async () => {
@@ -254,7 +397,11 @@ test('submitManagedNotebookRunBySlug submits an RDS run with service-specific pa
     service: 'AmazonRDS',
     slug: 'aws_rds',
     runId: 67890,
+    runStatus: 'pending',
+    runUrl: null,
   });
+  assert.equal(fake.stored('aws_rds')?.runId, 67890);
+  assert.equal(fake.stored('aws_rds')?.runStatus, 'pending');
   const submitted = payload as { run_name?: string };
   assert.match(submitted.run_name ?? '', /^aws_rds-\d+$/);
   assert.deepEqual(payload, {

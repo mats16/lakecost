@@ -33,7 +33,7 @@ export function jobsRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
         return;
       }
-      res.json(await getDatabricksRunLink(env, req.user?.accessToken, parsed.data.run_id));
+      res.json(await getDatabricksRunLink(env, parsed.data.run_id));
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
         res.status(err.statusCode).json({ error: { message: err.message } });

@@ -10,9 +10,30 @@ export const PricingDataSchema = z.object({
   notebookPath: z.string().nullable(),
   notebookId: z.string().nullable(),
   metadata: z.record(z.string(), z.unknown()),
+  runId: z.number().int().positive().nullable(),
+  runStatus: z.enum([
+    'not_started',
+    'pending',
+    'running',
+    'succeeded',
+    'failed',
+    'canceled',
+    'unknown',
+  ]),
+  runUrl: z.string().nullable(),
+  runStartedAt: z.string().datetime().nullable(),
+  runFinishedAt: z.string().datetime().nullable(),
+  runCheckedAt: z.string().datetime().nullable(),
   updatedAt: z.string().datetime(),
 });
 export type PricingData = z.infer<typeof PricingDataSchema>;
+
+export const PricingRunStatusSchema = PricingDataSchema.shape.runStatus;
+export type PricingRunStatus = z.infer<typeof PricingRunStatusSchema>;
+
+export function isActivePricingRunStatus(status: PricingRunStatus): boolean {
+  return status === 'pending' || status === 'running';
+}
 
 export const PricingNotebookStateSchema = z.object({
   provider: z.string(),
@@ -25,6 +46,12 @@ export const PricingNotebookStateSchema = z.object({
   notebookWorkspacePath: z.string().nullable(),
   notebookId: z.string().nullable(),
   metadata: z.record(z.string(), z.unknown()),
+  runId: z.number().int().positive().nullable(),
+  runStatus: PricingRunStatusSchema,
+  runUrl: z.string().nullable(),
+  runStartedAt: z.string().datetime().nullable(),
+  runFinishedAt: z.string().datetime().nullable(),
+  runCheckedAt: z.string().datetime().nullable(),
 });
 export type PricingNotebookState = z.infer<typeof PricingNotebookStateSchema>;
 
@@ -47,11 +74,21 @@ export const PricingNotebookSetupResultSchema = PricingNotebookStateSchema.exten
 });
 export type PricingNotebookSetupResult = z.infer<typeof PricingNotebookSetupResultSchema>;
 
+export const PricingNotebookDeleteResultSchema = z.object({
+  slug: z.enum(AWS_PRICING_SLUGS),
+  table: z.string().nullable(),
+  droppedTable: z.boolean(),
+  deletedPricingData: z.boolean(),
+});
+export type PricingNotebookDeleteResult = z.infer<typeof PricingNotebookDeleteResultSchema>;
+
 export const PricingNotebookRunResultSchema = z.object({
   provider: z.string(),
   service: z.string(),
   slug: z.string(),
   runId: z.number(),
+  runStatus: PricingRunStatusSchema,
+  runUrl: z.string().nullable(),
 });
 export type PricingNotebookRunResult = z.infer<typeof PricingNotebookRunResultSchema>;
 
