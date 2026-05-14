@@ -23,7 +23,7 @@ import { DataSourceSetupError } from './dataSourceErrors.js';
 import { uploadPipelineFile } from './databricksJobs.js';
 import {
   buildAppWorkspaceClient,
-  buildAppExecutor,
+  buildUserExecutor,
   buildUserWorkspaceClient,
   type StatementExecutor,
   type WorkspaceClient,
@@ -179,6 +179,7 @@ export async function setupPricingNotebookWithDeps(
 export async function deletePricingNotebookData(
   env: Env,
   db: DatabaseClient,
+  userToken: string | undefined,
   id: string,
   deps: { executor?: StatementExecutor } = {},
 ): Promise<PricingNotebookDeleteResult> {
@@ -189,10 +190,13 @@ export async function deletePricingNotebookData(
   }
 
   if (pricingData.table) {
-    const executor = deps.executor ?? buildAppExecutor(env);
+    if (!userToken && !deps.executor) {
+      throw new DataSourceSetupError('OBO access token required', 401);
+    }
+    const executor = deps.executor ?? buildUserExecutor(env, userToken);
     if (!executor) {
       throw new DataSourceSetupError(
-        'Databricks service principal SQL executor is not configured.',
+        'OBO access token + DATABRICKS_HOST + SQL_WAREHOUSE_ID required to drop pricing table.',
         400,
       );
     }

@@ -61,7 +61,7 @@ export function pricingRouter(db: DatabaseClient, env: Env): Router {
     try {
       const id = parsePricingId(req, res);
       if (!id) return;
-      res.json(await deletePricingNotebookData(env, db, id));
+      res.json(await deletePricingNotebookData(env, db, req.user?.accessToken, id));
     } catch (err) {
       handleSetupError(err, res, next);
     }

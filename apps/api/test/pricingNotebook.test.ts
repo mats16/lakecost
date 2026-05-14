@@ -14,6 +14,7 @@ import {
   getDatabricksRunLink,
   submitManagedNotebookRunById,
 } from '../src/services/notebookRuns.js';
+import { DataSourceSetupError } from '../src/services/dataSourceErrors.js';
 import type { WorkspaceClient } from '../src/services/statementExecution.js';
 
 const UPDATED_AT = '2026-05-14T00:00:00.000Z';
@@ -343,6 +344,7 @@ test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_da
   const result = await deletePricingNotebookData(
     { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
     fake.db,
+    'obo-token',
     'aws_ec2',
     { executor: executor as never },
   );
@@ -355,6 +357,39 @@ test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_da
     deletedPricingData: true,
   });
   assert.equal(fake.stored('aws_ec2'), null);
+});
+
+test('deletePricingNotebookData requires OBO token when dropping Unity Catalog table', async () => {
+  const fake = createFakeDb([
+    {
+      provider: 'AWS',
+      service: 'AmazonEC2',
+      id: 'aws_ec2',
+      table: 'finops.pricing.aws_ec2',
+      rawDataTable: EC2_RAW_TABLE,
+      rawDataPath: EC2_VOLUME_PATH,
+      notebookPath: PRICING_NOTEBOOK_WORKSPACE_PATH,
+      notebookId: '12345',
+      metadata: { source: EC2_SOURCE_URL },
+    },
+  ]);
+
+  try {
+    await deletePricingNotebookData(
+      {
+        DATABRICKS_HOST: 'https://example.cloud.databricks.com',
+        SQL_WAREHOUSE_ID: 'warehouse-1',
+      } as Env,
+      fake.db,
+      undefined,
+      'aws_ec2',
+    );
+    assert.fail('Expected deletePricingNotebookData to reject without OBO token');
+  } catch (err) {
+    assert.ok(err instanceof DataSourceSetupError);
+    assert.equal(err.statusCode, 401);
+    assert.equal(fake.stored('aws_ec2')?.table, 'finops.pricing.aws_ec2');
+  }
 });
 
 test('submitManagedNotebookRunById submits an RDS run with service-specific parameters', async () => {
