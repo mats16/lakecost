@@ -624,6 +624,16 @@ class SqlitePricingDataRepo implements PricingDataRepo {
     return row ? toPricingData(row) : null;
   }
 
+  async getBySlug(slug: string): Promise<PricingDataValue | null> {
+    const rows = await this.db
+      .select()
+      .from(s.pricingData)
+      .where(eq(s.pricingData.slug, slug))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPricingData(row) : null;
+  }
+
   async getByNotebookId(notebookId: string): Promise<PricingDataValue | null> {
     const rows = await this.db
       .select()

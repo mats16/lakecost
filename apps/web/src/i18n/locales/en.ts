@@ -51,7 +51,7 @@ export const en = {
   },
   pricing: {
     title: 'Pricing',
-    desc: 'Create the AWS EC2 instance price notebook that publishes pricing.aws_ec2.',
+    desc: 'Create and run AWS price notebooks for EC2 and RDS pricing tables.',
     refresh: 'Refresh',
     loadFailed: 'Could not load pricing notebook status',
     catalogMissingTitle: 'Catalog is not configured',

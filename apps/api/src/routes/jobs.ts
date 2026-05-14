@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { DatabaseClient } from '@finlake/db';
 import { JobRunLinkQuerySchema, JobRunSubmitInputSchema, type Env } from '@finlake/shared';
 import { DataSourceSetupError } from '../services/dataSourceErrors.js';
-import { getDatabricksRunLink, submitManagedNotebookRunById } from '../services/notebookRuns.js';
+import { getDatabricksRunLink, submitManagedNotebookRunBySlug } from '../services/notebookRuns.js';
 
 export function jobsRouter(db: DatabaseClient, env: Env): Router {
   const router = Router();
@@ -15,7 +15,7 @@ export function jobsRouter(db: DatabaseClient, env: Env): Router {
         return;
       }
       res.json(
-        await submitManagedNotebookRunById(env, db, req.user?.accessToken, parsed.data.notebook_id),
+        await submitManagedNotebookRunBySlug(env, db, req.user?.accessToken, parsed.data.slug),
       );
     } catch (err) {
       if (err instanceof DataSourceSetupError) {

@@ -40,22 +40,23 @@ export function Pricing() {
   const pricing = usePricingNotebook();
   const setup = useSetupPricingNotebook();
   const runNotebook = useRunNotebook();
-  const state = pricing.data;
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const workspaceUrl = me.data?.workspaceUrl ?? null;
-  const rows = state?.catalog ? [state] : [];
+  const rows = pricing.data?.items ?? [];
   const selected = rows.find((row) => row.slug === selectedSlug) ?? null;
   const setupError = messageOf(setup.error);
   const runError = messageOf(runNotebook.error);
+  const setupPendingSlug = setup.isPending ? (setup.variables ?? null) : null;
+  const runPendingSlug = runNotebook.isPending ? (runNotebook.variables ?? null) : null;
 
-  const onSetupNotebook = () => {
+  const onSetupNotebook = (slug: string) => {
     setup.reset();
-    setup.mutate();
+    setup.mutate(slug);
   };
 
-  const onRunNotebook = (notebookId: string) => {
+  const onRunNotebook = (slug: string) => {
     runNotebook.reset();
-    runNotebook.mutate(notebookId);
+    runNotebook.mutate(slug);
   };
 
   return (
@@ -82,13 +83,14 @@ export function Pricing() {
         <CardContent>
           <PricingBody
             pricing={pricing}
-            state={state}
             rows={rows}
             workspaceUrl={workspaceUrl}
             setup={setup}
             runNotebook={runNotebook}
             setupError={setupError}
             runError={runError}
+            setupPendingSlug={setupPendingSlug}
+            runPendingSlug={runPendingSlug}
             onSelectRow={setSelectedSlug}
             onSetupNotebook={onSetupNotebook}
             onRunNotebook={onRunNotebook}
@@ -99,8 +101,8 @@ export function Pricing() {
       <PricingDetailsSheet
         row={selected}
         workspaceUrl={workspaceUrl}
-        setupPending={setup.isPending}
-        runPending={runNotebook.isPending}
+        setupPending={setupPendingSlug !== null && setupPendingSlug === selected?.slug}
+        runPending={runPendingSlug !== null && runPendingSlug === selected?.slug}
         onClose={() => setSelectedSlug(null)}
         onSetupNotebook={onSetupNotebook}
         onRunNotebook={onRunNotebook}
@@ -115,28 +117,30 @@ type RunHook = ReturnType<typeof useRunNotebook>;
 
 function PricingBody({
   pricing,
-  state,
   rows,
   workspaceUrl,
   setup,
   runNotebook,
   setupError,
   runError,
+  setupPendingSlug,
+  runPendingSlug,
   onSelectRow,
   onSetupNotebook,
   onRunNotebook,
 }: {
   pricing: PricingHook;
-  state: PricingNotebookState | undefined;
   rows: PricingNotebookState[];
   workspaceUrl: string | null;
   setup: SetupHook;
   runNotebook: RunHook;
   setupError: string | null;
   runError: string | null;
+  setupPendingSlug: string | null;
+  runPendingSlug: string | null;
   onSelectRow: (slug: string) => void;
-  onSetupNotebook: () => void;
-  onRunNotebook: (notebookId: string) => void;
+  onSetupNotebook: (slug: string) => void;
+  onRunNotebook: (slug: string) => void;
 }) {
   const { t } = useI18n();
 
@@ -158,7 +162,7 @@ function PricingBody({
       </Alert>
     );
   }
-  if (!state?.catalog) {
+  if (rows.every((row) => !row.catalog)) {
     return (
       <Alert variant="destructive">
         <AlertCircle />
@@ -230,8 +234,8 @@ function PricingBody({
                 key={row.slug}
                 row={row}
                 workspaceUrl={workspaceUrl}
-                setupPending={setup.isPending}
-                runPending={runNotebook.isPending}
+                setupPending={setupPendingSlug === row.slug}
+                runPending={runPendingSlug === row.slug}
                 onSelect={() => onSelectRow(row.slug)}
                 onSetupNotebook={onSetupNotebook}
                 onRunNotebook={onRunNotebook}
@@ -258,8 +262,8 @@ function PricingRow({
   setupPending: boolean;
   runPending: boolean;
   onSelect: () => void;
-  onSetupNotebook: () => void;
-  onRunNotebook: (notebookId: string) => void;
+  onSetupNotebook: (slug: string) => void;
+  onRunNotebook: (slug: string) => void;
 }) {
   const { t } = useI18n();
   const notebookUrl = notebookEditorUrl(workspaceUrl, row.notebookId);
@@ -307,8 +311,8 @@ function PricingDetailsSheet({
   setupPending: boolean;
   runPending: boolean;
   onClose: () => void;
-  onSetupNotebook: () => void;
-  onRunNotebook: (notebookId: string) => void;
+  onSetupNotebook: (slug: string) => void;
+  onRunNotebook: (slug: string) => void;
 }) {
   const { t } = useI18n();
   const notebookUrl = row ? notebookEditorUrl(workspaceUrl, row.notebookId) : null;
@@ -370,8 +374,8 @@ function PricingActions({
   row: PricingNotebookState;
   setupPending: boolean;
   runPending: boolean;
-  onSetupNotebook: () => void;
-  onRunNotebook: (notebookId: string) => void;
+  onSetupNotebook: (slug: string) => void;
+  onRunNotebook: (slug: string) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -381,7 +385,7 @@ function PricingActions({
         size="sm"
         onClick={(event) => {
           event.stopPropagation();
-          onSetupNotebook();
+          onSetupNotebook(row.slug);
         }}
         disabled={setupPending}
       >
@@ -394,9 +398,9 @@ function PricingActions({
         variant="secondary"
         onClick={(event) => {
           event.stopPropagation();
-          if (row.notebookId) onRunNotebook(row.notebookId);
+          onRunNotebook(row.slug);
         }}
-        disabled={!row.notebookId || runPending}
+        disabled={runPending}
       >
         {runPending ? <Spinner /> : <Play />}
         {t('pricing.runNotebook')}

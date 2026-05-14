@@ -1,7 +1,13 @@
 import type { DatabaseClient } from '@finlake/db';
-import type { DatabricksRunLinkResult, Env, PricingNotebookRunResult } from '@finlake/shared';
+import type {
+  DatabricksRunLinkResult,
+  Env,
+  PricingData,
+  PricingNotebookRunResult,
+} from '@finlake/shared';
 import { DataSourceSetupError } from './dataSourceErrors.js';
 import { normalizeHost } from './normalizeHost.js';
+import { ensurePricingDataForSlug } from './pricingNotebook.js';
 import { buildUserWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
 
 interface NotebookRunDeps {
@@ -20,29 +26,33 @@ interface JobsRunGetResponse {
 const PRICING_SERVERLESS_ENVIRONMENT_KEY = 'pricing_serverless';
 const PRICING_SERVERLESS_ENVIRONMENT_VERSION = '4';
 
-export async function submitManagedNotebookRunById(
+export async function submitManagedNotebookRunBySlug(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  notebookId: string,
+  slug: string,
   deps: NotebookRunDeps = {},
 ): Promise<PricingNotebookRunResult> {
-  const trimmedNotebookId = notebookId.trim();
-  if (!trimmedNotebookId) {
-    throw new DataSourceSetupError('Notebook ID is required.', 400);
-  }
   if (!userToken) {
     throw new DataSourceSetupError('OBO access token required', 401);
   }
-
-  const pricingData = await db.repos.pricingData.getByNotebookId(trimmedNotebookId);
-  if (!pricingData) {
-    throw new DataSourceSetupError('Managed notebook not found.', 404);
+  const wc = deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken);
+  if (!wc) {
+    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
   }
+  const pricingData = await ensurePricingDataForSlug(env, db, userToken, slug, {
+    workspaceClient: wc,
+  });
+  return submitPricingNotebookRun(wc, pricingData);
+}
+
+async function submitPricingNotebookRun(
+  wc: WorkspaceClient,
+  pricingData: PricingData,
+): Promise<PricingNotebookRunResult> {
   if (!pricingData.notebookPath) {
     throw new DataSourceSetupError('Notebook path is not configured.', 400);
   }
-
   if (!pricingData.rawDataPath) {
     throw new DataSourceSetupError('Notebook volume_path parameter is not configured.', 400);
   }
@@ -50,9 +60,10 @@ export async function submitManagedNotebookRunById(
     throw new DataSourceSetupError('Notebook raw_table parameter is not configured.', 400);
   }
 
-  const wc = deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken);
-  if (!wc) {
-    throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
+  const sourceUrl =
+    typeof pricingData.metadata.source === 'string' ? pricingData.metadata.source : null;
+  if (!sourceUrl) {
+    throw new DataSourceSetupError('Notebook source_url parameter is not configured.', 400);
   }
 
   let response: JobsSubmitResponse;
@@ -84,9 +95,11 @@ export async function submitManagedNotebookRunById(
               notebook_path: pricingData.notebookPath,
               source: 'WORKSPACE',
               base_parameters: {
+                source_url: sourceUrl,
                 volume_path: pricingData.rawDataPath,
                 raw_table: pricingData.rawDataTable,
                 target_table: pricingData.table,
+                aws_service_code: pricingData.service,
               },
             },
           },

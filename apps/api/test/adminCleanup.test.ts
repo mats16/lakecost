@@ -107,6 +107,7 @@ function fakeDb(settings: Record<string, string>): DatabaseClient {
       },
       pricingData: {
         get: async () => null,
+        getBySlug: async () => null,
         getByNotebookId: async () => null,
         upsert: async (input) => ({ ...input, updatedAt: new Date(0).toISOString() }),
         clear: async () => 4,

@@ -28,6 +28,19 @@ export const PricingNotebookStateSchema = z.object({
 });
 export type PricingNotebookState = z.infer<typeof PricingNotebookStateSchema>;
 
+export const PricingNotebookListResponseSchema = z.object({
+  items: z.array(PricingNotebookStateSchema),
+});
+export type PricingNotebookListResponse = z.infer<typeof PricingNotebookListResponseSchema>;
+
+export const AWS_PRICING_SLUGS = ['aws_ec2', 'aws_rds'] as const;
+export type AwsPricingSlug = (typeof AWS_PRICING_SLUGS)[number];
+
+export const PricingNotebookSetupInputSchema = z.object({
+  slug: z.enum(AWS_PRICING_SLUGS),
+});
+export type PricingNotebookSetupInput = z.infer<typeof PricingNotebookSetupInputSchema>;
+
 export const PricingNotebookSetupResultSchema = PricingNotebookStateSchema.extend({
   notebookWorkspacePath: z.string(),
   warnings: z.array(z.string()),
@@ -43,7 +56,7 @@ export const PricingNotebookRunResultSchema = z.object({
 export type PricingNotebookRunResult = z.infer<typeof PricingNotebookRunResultSchema>;
 
 export const JobRunSubmitInputSchema = z.object({
-  notebook_id: z.string().trim().min(1),
+  slug: z.enum(AWS_PRICING_SLUGS),
 });
 export type JobRunSubmitInput = z.infer<typeof JobRunSubmitInputSchema>;
 

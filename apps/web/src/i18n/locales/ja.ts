@@ -53,7 +53,7 @@ export const ja: Dictionary = {
   },
   pricing: {
     title: '価格表',
-    desc: 'pricing.aws_ec2 を作成する AWS EC2 インスタンス価格表 Notebook を作成します。',
+    desc: 'EC2 と RDS の AWS 価格表テーブルを作成・実行します。',
     refresh: '更新',
     loadFailed: '価格表 Notebook の状態を読み込めませんでした',
     catalogMissingTitle: 'カタログが未設定です',

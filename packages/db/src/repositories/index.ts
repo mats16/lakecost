@@ -105,6 +105,7 @@ export type PricingDataUpsertInput = Omit<PricingDataValue, 'updatedAt'>;
 
 export interface PricingDataRepo {
   get(provider: string, service: string): Promise<PricingDataValue | null>;
+  getBySlug(slug: string): Promise<PricingDataValue | null>;
   getByNotebookId(notebookId: string): Promise<PricingDataValue | null>;
   upsert(input: PricingDataUpsertInput): Promise<PricingDataValue>;
   clear(): Promise<number>;

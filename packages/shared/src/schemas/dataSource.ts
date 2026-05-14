@@ -25,6 +25,7 @@ export const MEDALLION_SCHEMA_DEFAULTS = {
 export const PRICING_SCHEMA_DEFAULT = 'pricing';
 export const DOWNLOADS_VOLUME_DEFAULT = 'downloads';
 export const AWS_EC2_PRICING_TABLE_DEFAULT = 'aws_ec2';
+export const AWS_RDS_PRICING_TABLE_DEFAULT = 'aws_rds';
 export const PRICING_NOTEBOOK_WORKSPACE_PATH_SETTING_KEY = 'pricing_notebook_workspace_path';
 
 /** Materialized View names FinLake creates in the gold schema. */

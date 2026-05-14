@@ -26,8 +26,8 @@ import type {
   GovernedTagSyncResult,
   DatabricksRunLinkResult,
   PricingNotebookRunResult,
+  PricingNotebookListResponse,
   PricingNotebookSetupResult,
-  PricingNotebookState,
   ProvisionResult,
   SetupCheckResult,
   SetupStateResponse,
@@ -619,7 +619,7 @@ export function useRunSharedTransformationJob() {
 export function usePricingNotebook() {
   return useQuery({
     queryKey: ['pricing', 'notebook'],
-    queryFn: () => apiFetch<PricingNotebookState>('/api/pricing/notebook'),
+    queryFn: () => apiFetch<PricingNotebookListResponse>('/api/pricing/notebook'),
     staleTime: 60 * 1000,
     retry: false,
   });
@@ -628,10 +628,10 @@ export function usePricingNotebook() {
 export function useSetupPricingNotebook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (slug: string) =>
       apiFetch<PricingNotebookSetupResult>('/api/pricing/notebook/setup', {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify({ slug }),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pricing', 'notebook'] });
@@ -642,10 +642,10 @@ export function useSetupPricingNotebook() {
 
 export function useRunNotebook() {
   return useMutation({
-    mutationFn: (notebookId: string) =>
+    mutationFn: (slug: string) =>
       apiFetch<PricingNotebookRunResult>('/api/jobs/runs/submit', {
         method: 'POST',
-        body: JSON.stringify({ notebook_id: notebookId }),
+        body: JSON.stringify({ slug }),
       }),
   });
 }
