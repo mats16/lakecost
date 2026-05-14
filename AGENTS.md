@@ -86,7 +86,7 @@ The `usage` route caches results in `cached_aggregations` (5-minute TTL keyed by
 
 ### Configure / Data sources UX
 
-The `/configure/data-sources` page (modeled on Security Lakehouse's UI) is the customer-facing setup surface. Data source definitions live in `apps/web/src/pages/Configure/dataSourceCatalog.ts`. Each tile maps to one or more setup steps (`SetupStepId`); verification runs through `POST /api/setup/check/:step` which lives in `apps/api/src/services/setupChecks.ts`. The drawer (`DataSourceDrawer.tsx`) is where verify buttons + remediation snippets (SQL/Terraform/CLI) are rendered. Sources with `available: false` show under "Add data source" and only display a "coming soon" panel.
+The `/integration` page (modeled on Security Lakehouse's UI) is the customer-facing setup surface. Data source definitions live in `apps/web/src/pages/Configure/dataSourceCatalog.ts`. Each tile maps to one or more setup steps (`SetupStepId`); verification runs through `POST /api/setup/check/:step` which lives in `apps/api/src/services/setupChecks.ts`. The drawer (`DataSourceDrawer.tsx`) is where verify buttons + remediation snippets (SQL/Terraform/CLI) are rendered. Sources with `available: false` show under "Add data source" and only display a "coming soon" panel.
 
 When adding a new data source: add an entry to `dataSourceCatalog.ts`, add a step id to `packages/shared/src/schemas/setup.ts`, implement the check in `setupChecks.ts`, and (if the source has its own UI) add a branch in `DataSourceDrawer.tsx`'s `Configurator`.
 

@@ -471,7 +471,7 @@ export function useDeleteCredential() {
 export function useDataSources() {
   return useQuery({
     queryKey: ['dataSources'],
-    queryFn: () => apiFetch<{ items: DataSource[] }>('/api/data-sources/configurations'),
+    queryFn: () => apiFetch<{ items: DataSource[] }>('/api/integration/configurations'),
     staleTime: 60 * 1000,
   });
 }
@@ -479,7 +479,7 @@ export function useDataSources() {
 export function useDataSourceTemplates() {
   return useQuery({
     queryKey: ['dataSourceTemplates'],
-    queryFn: () => apiFetch<{ items: DataSourceTemplate[] }>('/api/data-sources/templates'),
+    queryFn: () => apiFetch<{ items: DataSourceTemplate[] }>('/api/integration/templates'),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -508,7 +508,7 @@ export function useSyncGovernedTags() {
 }
 
 function dsConfigPath(id: number, suffix = '') {
-  return `/api/data-sources/configurations/${id}${suffix}`;
+  return `/api/integration/configurations/${id}${suffix}`;
 }
 
 export function useDataSource(id: number | undefined) {
@@ -524,7 +524,7 @@ export function useCreateDataSource() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: DataSourceCreateBody) =>
-      apiFetch<DataSource>('/api/data-sources/configurations', {
+      apiFetch<DataSource>('/api/integration/configurations', {
         method: 'POST',
         body: JSON.stringify(body),
       }),

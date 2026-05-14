@@ -34,7 +34,7 @@ export function App() {
         />
 
         <Route element={<ConfigureLayout />}>
-          <Route path="/data-sources" element={<DataSources />} />
+          <Route path="/integration" element={<DataSources />} />
           <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
           <Route path="/pricing" element={<Pricing />} />
@@ -42,8 +42,9 @@ export function App() {
           <Route path="/admin" element={<Catalog />} />
         </Route>
 
-        <Route path="/configure" element={<Navigate to="/data-sources" replace />} />
-        <Route path="/configure/data-sources" element={<Navigate to="/data-sources" replace />} />
+        <Route path="/configure" element={<Navigate to="/integration" replace />} />
+        <Route path="/configure/data-sources" element={<Navigate to="/integration" replace />} />
+        <Route path="/data-sources" element={<Navigate to="/integration" replace />} />
         <Route path="/configure/credentials" element={<Navigate to="/credentials" replace />} />
         <Route
           path="/configure/transformations"
@@ -57,7 +58,7 @@ export function App() {
         <Route path="/bcm-credentials" element={<Navigate to="/credentials" replace />} />
 
         <Route path="/settings" element={<Navigate to="/admin" replace />} />
-        <Route path="/setup" element={<Navigate to="/data-sources" replace />} />
+        <Route path="/setup" element={<Navigate to="/integration" replace />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </AppShell>

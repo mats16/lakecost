@@ -57,12 +57,12 @@ const INFORM: NavGroup = {
   ],
 };
 
-const CONFIGURE: NavGroup = {
+export const CONFIGURE: NavGroup = {
   labelKey: 'nav.configure',
   icon: Bolt,
-  matchPrefix: '/data-sources',
+  matchPrefix: '/integration',
   items: [
-    { to: '/data-sources', labelKey: 'nav.dataSources', end: true },
+    { to: '/integration', labelKey: 'nav.dataSources', end: true },
     { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
     { to: '/pricing', labelKey: 'nav.pricing' },
@@ -263,7 +263,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <div className="nav-group-row">
               <NavLink
-                to={CONFIGURE.items[0]?.to ?? '/data-sources'}
+                to={CONFIGURE.items[0]!.to}
                 className={() => (onConfigureRoute ? 'group-head active' : 'group-head')}
               >
                 <CONFIGURE.icon className="nav-icon" aria-hidden="true" />

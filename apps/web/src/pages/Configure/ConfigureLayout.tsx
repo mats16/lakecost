@@ -1,15 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useI18n } from '../../i18n';
-
-const TABS = [
-  { to: '/data-sources', labelKey: 'nav.dataSources', end: true },
-  { to: '/tags', labelKey: 'nav.tags' },
-  { to: '/transformations', labelKey: 'nav.transformations' },
-  { to: '/pricing', labelKey: 'nav.pricing' },
-  { to: '/credentials', labelKey: 'nav.credentials' },
-  { to: '/admin', labelKey: 'nav.configureCatalog' },
-];
+import { CONFIGURE } from '../../components/layout/AppShell';
 
 export function ConfigureLayout({ children }: { children?: ReactNode }) {
   const { t } = useI18n();
@@ -18,7 +10,7 @@ export function ConfigureLayout({ children }: { children?: ReactNode }) {
       <header className="page-header configure-header">
         <h2>{t('configure.title')}</h2>
         <nav className="upper-tabs">
-          {TABS.map((tab) => (
+          {CONFIGURE.items.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}

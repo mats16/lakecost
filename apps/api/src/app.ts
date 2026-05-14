@@ -49,7 +49,7 @@ export async function buildApp({ env, db }: AppDeps): Promise<express.Express> {
   app.use('/api/settings', settingsRouter(db));
   app.use('/api/me', meRouter(env));
   app.use('/api/tags', governedTagsRouter(env));
-  app.use('/api/data-sources', dataSourcesRouter(db, env));
+  app.use('/api/integration', dataSourcesRouter(db, env));
   app.use('/api/transformations', transformationsRouter(db, env));
   app.use('/api/catalogs', catalogsRouter(env));
   app.use('/api/storage-credentials', storageCredentialsRouter(env));
