@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 export const PricingDataSchema = z.object({
+  id: z.string().min(1),
   provider: z.string().min(1),
   service: z.string().min(1),
-  slug: z.string().min(1),
   table: z.string().min(1),
   rawDataTable: z.string().nullable(),
   rawDataPath: z.string().nullable(),
@@ -36,9 +36,9 @@ export function isActivePricingRunStatus(status: PricingRunStatus): boolean {
 }
 
 export const PricingNotebookStateSchema = z.object({
+  id: z.string(),
   provider: z.string(),
   service: z.string(),
-  slug: z.string(),
   catalog: z.string().nullable(),
   table: z.string().nullable(),
   rawDataTable: z.string().nullable(),
@@ -60,11 +60,11 @@ export const PricingNotebookListResponseSchema = z.object({
 });
 export type PricingNotebookListResponse = z.infer<typeof PricingNotebookListResponseSchema>;
 
-export const AWS_PRICING_SLUGS = ['aws_ec2', 'aws_rds'] as const;
-export type AwsPricingSlug = (typeof AWS_PRICING_SLUGS)[number];
+export const AWS_PRICING_IDS = ['aws_ec2', 'aws_rds'] as const;
+export type AwsPricingId = (typeof AWS_PRICING_IDS)[number];
 
 export const PricingNotebookSetupInputSchema = z.object({
-  slug: z.enum(AWS_PRICING_SLUGS),
+  id: z.enum(AWS_PRICING_IDS),
 });
 export type PricingNotebookSetupInput = z.infer<typeof PricingNotebookSetupInputSchema>;
 
@@ -75,7 +75,7 @@ export const PricingNotebookSetupResultSchema = PricingNotebookStateSchema.exten
 export type PricingNotebookSetupResult = z.infer<typeof PricingNotebookSetupResultSchema>;
 
 export const PricingNotebookDeleteResultSchema = z.object({
-  slug: z.enum(AWS_PRICING_SLUGS),
+  id: z.enum(AWS_PRICING_IDS),
   table: z.string().nullable(),
   droppedTable: z.boolean(),
   deletedPricingData: z.boolean(),
@@ -83,9 +83,9 @@ export const PricingNotebookDeleteResultSchema = z.object({
 export type PricingNotebookDeleteResult = z.infer<typeof PricingNotebookDeleteResultSchema>;
 
 export const PricingNotebookRunResultSchema = z.object({
+  id: z.string(),
   provider: z.string(),
   service: z.string(),
-  slug: z.string(),
   runId: z.number(),
   runStatus: PricingRunStatusSchema,
   runUrl: z.string().nullable(),
@@ -93,7 +93,7 @@ export const PricingNotebookRunResultSchema = z.object({
 export type PricingNotebookRunResult = z.infer<typeof PricingNotebookRunResultSchema>;
 
 export const JobRunSubmitInputSchema = z.object({
-  slug: z.enum(AWS_PRICING_SLUGS),
+  id: z.enum(AWS_PRICING_IDS),
 });
 export type JobRunSubmitInput = z.infer<typeof JobRunSubmitInputSchema>;
 

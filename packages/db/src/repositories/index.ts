@@ -1,7 +1,7 @@
 import type {
   Budget,
   CreateBudgetInput,
-  PricingRunStatus,
+  PricingData,
   SetupCheckResult,
   UpdateBudgetInput,
 } from '@finlake/shared';
@@ -89,24 +89,7 @@ export interface DataSourcesRepo {
   clear(): Promise<number>;
 }
 
-export interface PricingDataValue {
-  provider: string;
-  service: string;
-  slug: string;
-  table: string;
-  rawDataTable: string | null;
-  rawDataPath: string | null;
-  notebookPath: string | null;
-  notebookId: string | null;
-  metadata: Record<string, unknown>;
-  runId: number | null;
-  runStatus: PricingRunStatus;
-  runUrl: string | null;
-  runStartedAt: string | null;
-  runFinishedAt: string | null;
-  runCheckedAt: string | null;
-  updatedAt: string;
-}
+export type PricingDataValue = PricingData;
 
 export type PricingDataUpsertInput = Omit<PricingDataValue, 'updatedAt'>;
 export type PricingDataRunPatch = Pick<
@@ -116,11 +99,11 @@ export type PricingDataRunPatch = Pick<
 
 export interface PricingDataRepo {
   get(provider: string, service: string): Promise<PricingDataValue | null>;
-  getBySlug(slug: string): Promise<PricingDataValue | null>;
+  getById(id: string): Promise<PricingDataValue | null>;
   getByNotebookId(notebookId: string): Promise<PricingDataValue | null>;
   upsert(input: PricingDataUpsertInput): Promise<PricingDataValue>;
-  updateRun(slug: string, patch: PricingDataRunPatch): Promise<PricingDataValue | null>;
-  deleteBySlug(slug: string): Promise<boolean>;
+  updateRun(id: string, patch: PricingDataRunPatch): Promise<PricingDataValue | null>;
+  deleteById(id: string): Promise<boolean>;
   clear(): Promise<number>;
 }
 

@@ -57,7 +57,7 @@ export const en = {
     catalogMissingDesc: 'Configure the FinLake catalog from Admin before creating pricing data.',
     provider: 'Provider',
     service: 'Service',
-    slug: 'Slug',
+    id: 'ID',
     catalog: 'Catalog',
     downloadsVolume: 'Volume path',
     outputTable: 'Table',

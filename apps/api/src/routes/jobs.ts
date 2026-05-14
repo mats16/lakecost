@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { DatabaseClient } from '@finlake/db';
 import { JobRunLinkQuerySchema, JobRunSubmitInputSchema, type Env } from '@finlake/shared';
 import { DataSourceSetupError } from '../services/dataSourceErrors.js';
-import { getDatabricksRunLink, submitManagedNotebookRunBySlug } from '../services/notebookRuns.js';
+import { getDatabricksRunLink, submitManagedNotebookRunById } from '../services/notebookRuns.js';
 
 export function jobsRouter(db: DatabaseClient, env: Env): Router {
   const router = Router();
@@ -14,9 +14,7 @@ export function jobsRouter(db: DatabaseClient, env: Env): Router {
         res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
         return;
       }
-      res.json(
-        await submitManagedNotebookRunBySlug(env, db, req.user?.accessToken, parsed.data.slug),
-      );
+      res.json(await submitManagedNotebookRunById(env, db, req.user?.accessToken, parsed.data.id));
     } catch (err) {
       if (err instanceof DataSourceSetupError) {
         res.status(err.statusCode).json({ error: { message: err.message } });

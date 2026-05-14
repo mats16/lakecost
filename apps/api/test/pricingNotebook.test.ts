@@ -6,13 +6,13 @@ import { CATALOG_SETTING_KEY, type Env, type PricingData } from '@finlake/shared
 import {
   deletePricingNotebookData,
   pricingNotebookState,
-  pricingNotebookStateBySlug,
+  pricingNotebookStateById,
   pricingNotebookWorkspacePath,
   setupPricingNotebookWithDeps,
 } from '../src/services/pricingNotebook.js';
 import {
   getDatabricksRunLink,
-  submitManagedNotebookRunBySlug,
+  submitManagedNotebookRunById,
 } from '../src/services/notebookRuns.js';
 import type { WorkspaceClient } from '../src/services/statementExecution.js';
 
@@ -59,7 +59,7 @@ function pricingDataRow(input: PricingDataInput): PricingData {
 }
 
 function createFakeDb(initial: PricingDataInput[] = []) {
-  const stored = new Map(initial.map((row) => [row.slug, pricingDataRow(row)]));
+  const stored = new Map(initial.map((row) => [row.id, pricingDataRow(row)]));
   const db = {
     backend: 'sqlite',
     repos: {
@@ -76,39 +76,39 @@ function createFakeDb(initial: PricingDataInput[] = []) {
             ) ?? null
           );
         },
-        async getBySlug(slug: string) {
-          return stored.get(slug) ?? null;
+        async getById(id: string) {
+          return stored.get(id) ?? null;
         },
         async getByNotebookId(notebookId: string) {
           return Array.from(stored.values()).find((row) => row.notebookId === notebookId) ?? null;
         },
         async upsert(input: Omit<PricingData, 'updatedAt'>) {
           const row = { ...input, updatedAt: UPDATED_AT };
-          stored.set(row.slug, row);
+          stored.set(row.id, row);
           return row;
         },
         async updateRun(
-          slug: string,
+          id: string,
           patch: Pick<
             PricingData,
             'runId' | 'runStatus' | 'runUrl' | 'runStartedAt' | 'runFinishedAt' | 'runCheckedAt'
           >,
         ) {
-          const current = stored.get(slug);
+          const current = stored.get(id);
           if (!current) return null;
           const next = { ...current, ...patch, updatedAt: UPDATED_AT };
-          stored.set(slug, next);
+          stored.set(id, next);
           return next;
         },
-        async deleteBySlug(slug: string) {
-          return stored.delete(slug);
+        async deleteById(id: string) {
+          return stored.delete(id);
         },
       },
     },
   } as unknown as DatabaseClient;
   return {
     db,
-    stored: (slug: string) => stored.get(slug) ?? null,
+    stored: (id: string) => stored.get(id) ?? null,
     storedItems: () => Array.from(stored.values()),
   };
 }
@@ -120,7 +120,7 @@ test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
 
   assert.equal(result.items.length, 2);
   assert.deepEqual(
-    result.items.map((item) => item.slug),
+    result.items.map((item) => item.id),
     ['aws_ec2', 'aws_rds'],
   );
   assert.equal(result.items[0]?.service, 'AmazonEC2');
@@ -170,7 +170,7 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
 
   assert.equal(result.provider, 'AWS');
   assert.equal(result.service, 'AmazonEC2');
-  assert.equal(result.slug, 'aws_ec2');
+  assert.equal(result.id, 'aws_ec2');
   assert.equal(result.table, 'finops.pricing.aws_ec2');
   assert.equal(result.rawDataTable, EC2_RAW_TABLE);
   assert.equal(result.rawDataPath, EC2_VOLUME_PATH);
@@ -183,7 +183,7 @@ test('setupPricingNotebook stores AWS EC2 pricing metadata in pricing_data', asy
   assert.deepEqual(fake.stored('aws_ec2'), {
     provider: 'AWS',
     service: 'AmazonEC2',
-    slug: 'aws_ec2',
+    id: 'aws_ec2',
     table: 'finops.pricing.aws_ec2',
     rawDataTable: EC2_RAW_TABLE,
     rawDataPath: EC2_VOLUME_PATH,
@@ -232,7 +232,7 @@ test('setupPricingNotebook stores AWS RDS pricing metadata in pricing_data', asy
 
   assert.equal(result.provider, 'AWS');
   assert.equal(result.service, 'AmazonRDS');
-  assert.equal(result.slug, 'aws_rds');
+  assert.equal(result.id, 'aws_rds');
   assert.equal(result.table, 'finops.pricing.aws_rds');
   assert.equal(result.rawDataTable, RDS_RAW_TABLE);
   assert.equal(result.rawDataPath, RDS_VOLUME_PATH);
@@ -276,7 +276,7 @@ test('pricingNotebookState refreshes active run status with service principal cl
     {
       provider: 'AWS',
       service: 'AmazonEC2',
-      slug: 'aws_ec2',
+      id: 'aws_ec2',
       table: 'finops.pricing.aws_ec2',
       rawDataTable: EC2_RAW_TABLE,
       rawDataPath: EC2_VOLUME_PATH,
@@ -305,7 +305,7 @@ test('pricingNotebookState refreshes active run status with service principal cl
     },
   } as unknown as WorkspaceClient;
 
-  const result = await pricingNotebookStateBySlug(
+  const result = await pricingNotebookStateById(
     fake.db,
     { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
     'aws_ec2',
@@ -323,7 +323,7 @@ test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_da
     {
       provider: 'AWS',
       service: 'AmazonEC2',
-      slug: 'aws_ec2',
+      id: 'aws_ec2',
       table: 'finops.pricing.aws_ec2',
       rawDataTable: EC2_RAW_TABLE,
       rawDataPath: EC2_VOLUME_PATH,
@@ -349,7 +349,7 @@ test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_da
 
   assert.equal(sqlText, 'DROP TABLE IF EXISTS `finops`.`pricing`.`aws_ec2`');
   assert.deepEqual(result, {
-    slug: 'aws_ec2',
+    id: 'aws_ec2',
     table: 'finops.pricing.aws_ec2',
     droppedTable: true,
     deletedPricingData: true,
@@ -357,12 +357,12 @@ test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_da
   assert.equal(fake.stored('aws_ec2'), null);
 });
 
-test('submitManagedNotebookRunBySlug submits an RDS run with service-specific parameters', async () => {
+test('submitManagedNotebookRunById submits an RDS run with service-specific parameters', async () => {
   const fake = createFakeDb([
     {
       provider: 'AWS',
       service: 'AmazonRDS',
-      slug: 'aws_rds',
+      id: 'aws_rds',
       table: 'finops.pricing.aws_rds',
       rawDataTable: RDS_RAW_TABLE,
       rawDataPath: RDS_VOLUME_PATH,
@@ -384,7 +384,7 @@ test('submitManagedNotebookRunBySlug submits an RDS run with service-specific pa
     },
   } as unknown as WorkspaceClient;
 
-  const result = await submitManagedNotebookRunBySlug(
+  const result = await submitManagedNotebookRunById(
     { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
     fake.db,
     'obo-token',
@@ -395,7 +395,7 @@ test('submitManagedNotebookRunBySlug submits an RDS run with service-specific pa
   assert.deepEqual(result, {
     provider: 'AWS',
     service: 'AmazonRDS',
-    slug: 'aws_rds',
+    id: 'aws_rds',
     runId: 67890,
     runStatus: 'pending',
     runUrl: null,
@@ -435,7 +435,7 @@ test('submitManagedNotebookRunBySlug submits an RDS run with service-specific pa
   });
 });
 
-test('submitManagedNotebookRunBySlug prepares missing pricing metadata before submit', async () => {
+test('submitManagedNotebookRunById prepares missing pricing metadata before submit', async () => {
   const fake = createFakeDb();
   let importedPath: string | null = null;
   let payload: unknown;
@@ -460,7 +460,7 @@ test('submitManagedNotebookRunBySlug prepares missing pricing metadata before su
     },
   } as unknown as WorkspaceClient;
 
-  await submitManagedNotebookRunBySlug(
+  await submitManagedNotebookRunById(
     {
       DATABRICKS_APP_NAME: APP_NAME,
       DATABRICKS_HOST: 'https://example.cloud.databricks.com',

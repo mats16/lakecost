@@ -633,8 +633,8 @@ export function usePricingNotebook() {
 export function useRunNotebook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      apiFetch<PricingNotebookRunResult>(`/api/pricing/${encodeURIComponent(slug)}`, {
+    mutationFn: (id: string) =>
+      apiFetch<PricingNotebookRunResult>(`/api/pricing/${encodeURIComponent(id)}`, {
         method: 'PUT',
       }),
     onSuccess: () => {
@@ -646,8 +646,8 @@ export function useRunNotebook() {
 export function useDeletePricingNotebook() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (slug: string) =>
-      apiFetch<PricingNotebookDeleteResult>(`/api/pricing/${encodeURIComponent(slug)}`, {
+    mutationFn: (id: string) =>
+      apiFetch<PricingNotebookDeleteResult>(`/api/pricing/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       }),
     onSuccess: () => {

@@ -132,9 +132,9 @@ export class SqliteClient implements DatabaseClient {
         UNIQUE(provider_name, billing_account_id)
       )`,
       `CREATE TABLE IF NOT EXISTS pricing_data (
+        id TEXT PRIMARY KEY,
         provider TEXT NOT NULL,
         service TEXT NOT NULL,
-        slug TEXT NOT NULL,
         "table" TEXT NOT NULL,
         raw_data_table TEXT,
         raw_data_path TEXT,
@@ -148,9 +148,8 @@ export class SqliteClient implements DatabaseClient {
         run_finished_at TEXT,
         run_checked_at TEXT,
         updated_at TEXT NOT NULL,
-        PRIMARY KEY (provider, service)
+        UNIQUE(provider, service)
       )`,
-      `CREATE UNIQUE INDEX IF NOT EXISTS pricing_data_slug_unique ON pricing_data(slug)`,
       `CREATE TABLE IF NOT EXISTS setup_state (
         workspace_id TEXT PRIMARY KEY,
         system_tables_ok INTEGER NOT NULL DEFAULT 0,
@@ -177,90 +176,8 @@ export class SqliteClient implements DatabaseClient {
     const columns = result.rows.map((row) => String(row.name));
     if (columns.length === 0) return;
 
-    if (columns.includes('id') && !columns.includes('provider')) {
-      await this.raw.execute('ALTER TABLE pricing_data RENAME TO pricing_data_legacy');
-      await this.raw.execute(`CREATE TABLE pricing_data (
-        provider TEXT NOT NULL,
-        service TEXT NOT NULL,
-        slug TEXT NOT NULL,
-        "table" TEXT NOT NULL,
-        raw_data_table TEXT,
-        raw_data_path TEXT,
-        notebook_path TEXT,
-        notebook_id TEXT,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        run_id INTEGER,
-        run_status TEXT NOT NULL DEFAULT 'not_started',
-        run_url TEXT,
-        run_started_at TEXT,
-        run_finished_at TEXT,
-        run_checked_at TEXT,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY (provider, service)
-      )`);
-      await this.raw.execute(`INSERT INTO pricing_data (
-        provider,
-        service,
-        slug,
-        "table",
-        raw_data_table,
-        raw_data_path,
-        notebook_path,
-        notebook_id,
-        metadata,
-        run_id,
-        run_status,
-        run_url,
-        run_started_at,
-        run_finished_at,
-        run_checked_at,
-        updated_at
-      )
-      SELECT
-        'AWS',
-        'AmazonEC2',
-        'aws_ec2',
-        "table",
-        NULL,
-        NULL,
-        notebook_path,
-        notebook_id,
-        metadata,
-        NULL,
-        'not_started',
-        NULL,
-        NULL,
-        NULL,
-        NULL,
-        updated_at
-      FROM pricing_data_legacy
-      WHERE id = 'aws_ec2'
-      LIMIT 1`);
-      return;
-    }
-
-    if (!columns.includes('provider')) return;
-    const addColumns: Array<{ name: string; type: string }> = [
-      { name: 'slug', type: 'TEXT' },
-      { name: 'raw_data_table', type: 'TEXT' },
-      { name: 'raw_data_path', type: 'TEXT' },
-      { name: 'run_id', type: 'INTEGER' },
-      { name: 'run_status', type: "TEXT NOT NULL DEFAULT 'not_started'" },
-      { name: 'run_url', type: 'TEXT' },
-      { name: 'run_started_at', type: 'TEXT' },
-      { name: 'run_finished_at', type: 'TEXT' },
-      { name: 'run_checked_at', type: 'TEXT' },
-    ];
-    for (const col of addColumns) {
-      if (!columns.includes(col.name)) {
-        await this.raw.execute(`ALTER TABLE pricing_data ADD COLUMN ${col.name} ${col.type}`);
-      }
-    }
-    if (!columns.includes('slug')) {
-      await this.raw.execute({
-        sql: `UPDATE pricing_data SET slug = ? WHERE provider = ? AND service = ?`,
-        args: ['aws_ec2', 'AWS', 'AmazonEC2'],
-      });
+    if (!columns.includes('id') || !columns.includes('provider') || columns.includes('slug')) {
+      await this.raw.execute('DROP TABLE pricing_data');
     }
   }
 
@@ -655,11 +572,11 @@ class SqlitePricingDataRepo implements PricingDataRepo {
     return row ? toPricingData(row) : null;
   }
 
-  async getBySlug(slug: string): Promise<PricingDataValue | null> {
+  async getById(id: string): Promise<PricingDataValue | null> {
     const rows = await this.db
       .select()
       .from(s.pricingData)
-      .where(eq(s.pricingData.slug, slug))
+      .where(eq(s.pricingData.id, id))
       .limit(1);
     const row = rows[0];
     return row ? toPricingData(row) : null;
@@ -677,9 +594,9 @@ class SqlitePricingDataRepo implements PricingDataRepo {
 
   async upsert(input: PricingDataUpsertInput): Promise<PricingDataValue> {
     const row = {
+      id: input.id,
       provider: input.provider,
       service: input.service,
-      slug: input.slug,
       tableName: input.table,
       rawDataTable: input.rawDataTable,
       rawDataPath: input.rawDataPath,
@@ -698,10 +615,11 @@ class SqlitePricingDataRepo implements PricingDataRepo {
       .insert(s.pricingData)
       .values(row)
       .onConflictDoUpdate({
-        target: [s.pricingData.provider, s.pricingData.service],
+        target: s.pricingData.id,
         set: {
+          provider: row.provider,
+          service: row.service,
           tableName: row.tableName,
-          slug: row.slug,
           rawDataTable: row.rawDataTable,
           rawDataPath: row.rawDataPath,
           notebookPath: row.notebookPath,
@@ -719,7 +637,7 @@ class SqlitePricingDataRepo implements PricingDataRepo {
     return toPricingData(row);
   }
 
-  async updateRun(slug: string, patch: PricingDataRunPatch): Promise<PricingDataValue | null> {
+  async updateRun(id: string, patch: PricingDataRunPatch): Promise<PricingDataValue | null> {
     const updatedAt = new Date().toISOString();
     const updated = await this.db
       .update(s.pricingData)
@@ -732,14 +650,14 @@ class SqlitePricingDataRepo implements PricingDataRepo {
         runCheckedAt: patch.runCheckedAt,
         updatedAt,
       })
-      .where(eq(s.pricingData.slug, slug))
+      .where(eq(s.pricingData.id, id))
       .returning();
     const row = updated[0];
     return row ? toPricingData(row) : null;
   }
 
-  async deleteBySlug(slug: string): Promise<boolean> {
-    const result = await this.db.delete(s.pricingData).where(eq(s.pricingData.slug, slug));
+  async deleteById(id: string): Promise<boolean> {
+    const result = await this.db.delete(s.pricingData).where(eq(s.pricingData.id, id));
     return result.rowsAffected > 0;
   }
 
@@ -751,9 +669,9 @@ class SqlitePricingDataRepo implements PricingDataRepo {
 
 function toPricingData(row: typeof s.pricingData.$inferSelect): PricingDataValue {
   return {
+    id: row.id,
     provider: row.provider,
     service: row.service,
-    slug: row.slug,
     table: row.tableName,
     rawDataTable: row.rawDataTable,
     rawDataPath: row.rawDataPath,

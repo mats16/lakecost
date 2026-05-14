@@ -60,7 +60,7 @@ export const ja: Dictionary = {
       '価格データを作成する前に、システム管理で FinLake カタログを設定してください。',
     provider: 'Provider',
     service: 'Service',
-    slug: 'Slug',
+    id: 'ID',
     catalog: 'カタログ',
     downloadsVolume: 'Volume path',
     outputTable: 'テーブル',

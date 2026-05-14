@@ -10,7 +10,7 @@ import {
   medallionSchemaNamesFromSettings,
   quoteIdent,
   unquotedFqn,
-  type AwsPricingSlug,
+  type AwsPricingId,
   type Env,
   type PricingData,
   type PricingNotebookDeleteResult,
@@ -35,7 +35,7 @@ const AWS_PROVIDER = 'AWS';
 
 interface AwsPricingService {
   service: string;
-  slug: AwsPricingSlug;
+  id: AwsPricingId;
   tableName: string;
   rawTableName: string;
   priceListFile: string;
@@ -44,15 +44,15 @@ interface AwsPricingService {
 
 function defineAwsPricingService(
   service: string,
-  slug: AwsPricingSlug,
+  id: AwsPricingId,
   tableName: string,
 ): AwsPricingService {
   return {
     service,
-    slug,
+    id,
     tableName,
-    rawTableName: `pricing_${slug}`,
-    priceListFile: `pricing_${slug}.csv`,
+    rawTableName: `pricing_${id}`,
+    priceListFile: `pricing_${id}.csv`,
     source: `https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/${service}/current/index.csv`,
   };
 }
@@ -77,10 +77,10 @@ export function pricingNotebookWorkspacePath(appName: string): string {
   return `/Workspace/Shared/${appName}/${PRICING_NOTEBOOK_NAME}`;
 }
 
-export function awsPricingServiceBySlug(slug: string): AwsPricingService {
-  const service = AWS_PRICING_SERVICES.find((candidate) => candidate.slug === slug);
+export function awsPricingServiceById(id: string): AwsPricingService {
+  const service = AWS_PRICING_SERVICES.find((candidate) => candidate.id === id);
   if (!service) {
-    throw new DataSourceSetupError(`Unsupported pricing service slug: ${slug}`, 400);
+    throw new DataSourceSetupError(`Unsupported pricing service id: ${id}`, 400);
   }
   return service;
 }
@@ -134,13 +134,13 @@ export async function pricingNotebookState(
   };
 }
 
-export async function pricingNotebookStateBySlug(
+export async function pricingNotebookStateById(
   db: DatabaseClient,
   env: Env,
-  slug: string,
+  id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookState> {
-  const service = awsPricingServiceBySlug(slug);
+  const service = awsPricingServiceById(id);
   const [settingsRows, pricingRow] = await Promise.all([
     db.repos.appSettings.list(),
     db.repos.pricingData.get(AWS_PROVIDER, service.service),
@@ -158,24 +158,24 @@ export async function setupPricingNotebook(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  slug: string,
+  id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookSetupResult> {
-  return setupPricingNotebookWithDeps(env, db, userToken, slug, deps);
+  return setupPricingNotebookWithDeps(env, db, userToken, id, deps);
 }
 
 export async function setupPricingNotebookWithDeps(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  slug: string,
+  id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookSetupResult> {
   const { settings, service, pricingData, notebookWorkspacePath } = await upsertPricingNotebook(
     env,
     db,
     userToken,
-    slug,
+    id,
     deps,
   );
   return {
@@ -188,13 +188,13 @@ export async function setupPricingNotebookWithDeps(
 export async function deletePricingNotebookData(
   env: Env,
   db: DatabaseClient,
-  slug: string,
+  id: string,
   deps: { executor?: StatementExecutor } = {},
 ): Promise<PricingNotebookDeleteResult> {
-  const service = awsPricingServiceBySlug(slug);
+  const service = awsPricingServiceById(id);
   const pricingData = await db.repos.pricingData.get(AWS_PROVIDER, service.service);
   if (!pricingData) {
-    throw new DataSourceSetupError(`Pricing data is not configured for ${slug}.`, 404);
+    throw new DataSourceSetupError(`Pricing data is not configured for ${id}.`, 404);
   }
 
   if (pricingData.table) {
@@ -212,9 +212,9 @@ export async function deletePricingNotebookData(
     );
   }
 
-  const deletedPricingData = await db.repos.pricingData.deleteBySlug(slug);
+  const deletedPricingData = await db.repos.pricingData.deleteById(id);
   return {
-    slug: service.slug,
+    id: service.id,
     table: pricingData.table,
     droppedTable: Boolean(pricingData.table),
     deletedPricingData,
@@ -232,10 +232,10 @@ async function upsertPricingNotebook(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  slug: string,
+  id: string,
   deps: PricingNotebookDeps,
 ): Promise<UpsertPricingNotebookResult> {
-  const service = awsPricingServiceBySlug(slug);
+  const service = awsPricingServiceById(id);
   const [settings, current] = await Promise.all([
     db.repos.appSettings.list().then(settingsToRecord),
     db.repos.pricingData.get(AWS_PROVIDER, service.service),
@@ -283,9 +283,9 @@ async function upsertPricingNotebook(
       ? null
       : String(notebookStatus.object_id);
   const pricingData = await db.repos.pricingData.upsert({
+    id: service.id,
     provider: AWS_PROVIDER,
     service: service.service,
-    slug: service.slug,
     table: targetTable,
     rawDataTable,
     rawDataPath,
@@ -301,17 +301,17 @@ async function upsertPricingNotebook(
   return { settings, service, pricingData, notebookWorkspacePath };
 }
 
-export async function ensurePricingDataForSlug(
+export async function ensurePricingDataForId(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  slug: string,
+  id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingData> {
-  const existing = await db.repos.pricingData.getBySlug(slug);
+  const existing = await db.repos.pricingData.getById(id);
   if (isRunnablePricingData(existing)) return existing;
 
-  const { pricingData } = await upsertPricingNotebook(env, db, userToken, slug, deps);
+  const { pricingData } = await upsertPricingNotebook(env, db, userToken, id, deps);
   if (isRunnablePricingData(pricingData)) return pricingData;
   throw new DataSourceSetupError('Pricing metadata could not be prepared.', 500);
 }
@@ -334,9 +334,9 @@ function stateFromSettings(
 ): PricingNotebookState {
   const catalog = settings[CATALOG_SETTING_KEY]?.trim() || null;
   return {
+    id: pricingData?.id ?? service.id,
     provider: pricingData?.provider ?? AWS_PROVIDER,
     service: pricingData?.service ?? service.service,
-    slug: pricingData?.slug ?? service.slug,
     catalog,
     table: pricingData?.table ?? null,
     rawDataTable: pricingData?.rawDataTable ?? null,
@@ -360,7 +360,7 @@ async function syncActivePricingRun(
   const snapshot = await getDatabricksRunSnapshot(wc, env, row.runId);
   if (!snapshot) return row;
   return (
-    (await db.repos.pricingData.updateRun(row.slug, {
+    (await db.repos.pricingData.updateRun(row.id, {
       runId: snapshot.runId,
       runStatus: snapshot.runStatus,
       runUrl: snapshot.runUrl,

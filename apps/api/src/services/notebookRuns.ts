@@ -7,7 +7,7 @@ import type {
 } from '@finlake/shared';
 import { getDatabricksRunSnapshot } from './databricksRunStatus.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
-import { ensurePricingDataForSlug } from './pricingNotebook.js';
+import { ensurePricingDataForId } from './pricingNotebook.js';
 import {
   buildAppWorkspaceClient,
   buildUserWorkspaceClient,
@@ -27,11 +27,11 @@ interface JobsSubmitResponse {
 const PRICING_SERVERLESS_ENVIRONMENT_KEY = 'pricing_serverless';
 const PRICING_SERVERLESS_ENVIRONMENT_VERSION = '4';
 
-export async function submitManagedNotebookRunBySlug(
+export async function submitManagedNotebookRunById(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  slug: string,
+  id: string,
   deps: NotebookRunDeps = {},
 ): Promise<PricingNotebookRunResult> {
   const wc = deps.workspaceClient ?? buildAppWorkspaceClient(env);
@@ -41,7 +41,7 @@ export async function submitManagedNotebookRunBySlug(
       400,
     );
   }
-  const pricingData = await ensureRunnablePricingData(env, db, userToken, slug, deps);
+  const pricingData = await ensureRunnablePricingData(env, db, userToken, id, deps);
   return submitPricingNotebookRun(db, wc, pricingData);
 }
 
@@ -77,7 +77,7 @@ async function submitPricingNotebookRun(
       }),
       raw: false,
       payload: {
-        run_name: `${pricingData.slug}-${Date.now()}`,
+        run_name: `${pricingData.id}-${Date.now()}`,
         performance_target: 'PERFORMANCE_OPTIMIZED',
         environments: [
           {
@@ -89,7 +89,7 @@ async function submitPricingNotebookRun(
         ],
         tasks: [
           {
-            task_key: safeTaskKey(pricingData.slug),
+            task_key: safeTaskKey(pricingData.id),
             environment_key: PRICING_SERVERLESS_ENVIRONMENT_KEY,
             notebook_task: {
               notebook_path: pricingData.notebookPath,
@@ -115,7 +115,7 @@ async function submitPricingNotebookRun(
   }
 
   const runUrl = response.run_page_url ?? null;
-  await db.repos.pricingData.updateRun(pricingData.slug, {
+  await db.repos.pricingData.updateRun(pricingData.id, {
     runId: response.run_id,
     runStatus: 'pending',
     runUrl,
@@ -125,9 +125,9 @@ async function submitPricingNotebookRun(
   });
 
   return {
+    id: pricingData.id,
     provider: pricingData.provider,
     service: pricingData.service,
-    slug: pricingData.slug,
     runId: response.run_id,
     runStatus: 'pending',
     runUrl,
@@ -155,18 +155,18 @@ export async function getDatabricksRunLink(
   };
 }
 
-function safeTaskKey(slug: string): string {
-  return slug.replace(/[^A-Za-z0-9_-]/g, '_') || 'notebook';
+function safeTaskKey(id: string): string {
+  return id.replace(/[^A-Za-z0-9_-]/g, '_') || 'notebook';
 }
 
 async function ensureRunnablePricingData(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  slug: string,
+  id: string,
   deps: NotebookRunDeps,
 ): Promise<PricingData> {
-  const existing = await db.repos.pricingData.getBySlug(slug);
+  const existing = await db.repos.pricingData.getById(id);
   if (
     existing?.notebookPath &&
     existing.rawDataPath &&
@@ -181,7 +181,7 @@ async function ensureRunnablePricingData(
     throw new DataSourceSetupError('OBO access token required to prepare pricing notebook.', 401);
   }
 
-  return ensurePricingDataForSlug(env, db, userToken, slug, {
+  return ensurePricingDataForId(env, db, userToken, id, {
     workspaceClient:
       deps.setupWorkspaceClient ?? deps.workspaceClient ?? buildUserWorkspaceClient(env, userToken),
   });

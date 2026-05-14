@@ -8,7 +8,6 @@ import {
   serial,
   timestamp,
   unique,
-  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 export const budgets = pgTable('budgets', {
@@ -88,9 +87,9 @@ export const dataSources = pgTable(
 export const pricingData = pgTable(
   'pricing_data',
   {
+    id: text('id').primaryKey(),
     provider: text('provider').notNull(),
     service: text('service').notNull(),
-    slug: text('slug').notNull(),
     tableName: text('table').notNull(),
     rawDataTable: text('raw_data_table'),
     rawDataPath: text('raw_data_path'),
@@ -106,8 +105,7 @@ export const pricingData = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    pk: primaryKey({ columns: [table.provider, table.service] }),
-    uniqSlug: unique().on(table.slug),
+    uniqProviderService: unique().on(table.provider, table.service),
   }),
 );
 

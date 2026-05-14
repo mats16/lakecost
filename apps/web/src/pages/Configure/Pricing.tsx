@@ -60,35 +60,35 @@ export function Pricing() {
   const pricing = usePricingNotebook();
   const runNotebook = useRunNotebook();
   const deletePricing = useDeletePricingNotebook();
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
-  const [pendingDeleteSlug, setPendingDeleteSlug] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const rows = pricing.data?.items ?? [];
-  const selected = rows.find((row) => row.slug === selectedSlug) ?? null;
-  const pendingDelete = rows.find((row) => row.slug === pendingDeleteSlug) ?? null;
+  const selected = rows.find((row) => row.id === selectedId) ?? null;
+  const pendingDelete = rows.find((row) => row.id === pendingDeleteId) ?? null;
   const runError = messageOf(runNotebook.error);
   const deleteError = messageOf(deletePricing.error);
-  const runPendingSlug = runNotebook.isPending ? (runNotebook.variables ?? null) : null;
-  const deletePendingSlug = deletePricing.isPending ? (deletePricing.variables ?? null) : null;
+  const runPendingId = runNotebook.isPending ? (runNotebook.variables ?? null) : null;
+  const deletePendingId = deletePricing.isPending ? (deletePricing.variables ?? null) : null;
 
-  const onRunNotebook = (slug: string) => {
+  const onRunNotebook = (id: string) => {
     runNotebook.reset();
-    runNotebook.mutate(slug);
+    runNotebook.mutate(id);
   };
 
-  const requestDelete = (slug: string) => {
+  const requestDelete = (id: string) => {
     deletePricing.reset();
-    setPendingDeleteSlug(slug);
+    setPendingDeleteId(id);
   };
 
   const confirmDelete = () => {
-    if (!pendingDeleteSlug) return;
-    deletePricing.mutate(pendingDeleteSlug, {
+    if (!pendingDeleteId) return;
+    deletePricing.mutate(pendingDeleteId, {
       onSuccess: () => {
-        if (selectedSlug === pendingDeleteSlug) setSelectedSlug(null);
+        if (selectedId === pendingDeleteId) setSelectedId(null);
       },
       onSettled: () => {
-        setPendingDeleteSlug(null);
+        setPendingDeleteId(null);
       },
     });
   };
@@ -107,9 +107,9 @@ export function Pricing() {
             workspaceUrl={workspaceUrl}
             runError={runError}
             deleteError={deleteError}
-            runPendingSlug={runPendingSlug}
-            deletePendingSlug={deletePendingSlug}
-            onSelectRow={setSelectedSlug}
+            runPendingId={runPendingId}
+            deletePendingId={deletePendingId}
+            onSelectRow={setSelectedId}
             onRunNotebook={onRunNotebook}
             onRequestDelete={requestDelete}
           />
@@ -119,9 +119,9 @@ export function Pricing() {
       <PricingDetailsSheet
         row={selected}
         workspaceUrl={workspaceUrl}
-        runPending={runPendingSlug !== null && runPendingSlug === selected?.slug}
-        deletePending={deletePendingSlug !== null && deletePendingSlug === selected?.slug}
-        onClose={() => setSelectedSlug(null)}
+        runPending={runPendingId === selected?.id}
+        deletePending={deletePendingId === selected?.id}
+        onClose={() => setSelectedId(null)}
         onRunNotebook={onRunNotebook}
         onRequestDelete={requestDelete}
       />
@@ -129,7 +129,7 @@ export function Pricing() {
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
-          if (!open && !deletePricing.isPending) setPendingDeleteSlug(null);
+          if (!open && !deletePricing.isPending) setPendingDeleteId(null);
         }}
       >
         <AlertDialogContent>
@@ -138,7 +138,7 @@ export function Pricing() {
             <AlertDialogDescription>
               {pendingDelete
                 ? t('pricing.deleteConfirmDescription', {
-                    name: pendingDelete.slug,
+                    name: pendingDelete.id,
                     table: pendingDelete.table ?? t('pricing.notCreated'),
                   })
                 : null}
@@ -178,8 +178,8 @@ function PricingBody({
   workspaceUrl,
   runError,
   deleteError,
-  runPendingSlug,
-  deletePendingSlug,
+  runPendingId,
+  deletePendingId,
   onSelectRow,
   onRunNotebook,
   onRequestDelete,
@@ -189,11 +189,11 @@ function PricingBody({
   workspaceUrl: string | null;
   runError: string | null;
   deleteError: string | null;
-  runPendingSlug: string | null;
-  deletePendingSlug: string | null;
-  onSelectRow: (slug: string) => void;
-  onRunNotebook: (slug: string) => void;
-  onRequestDelete: (slug: string) => void;
+  runPendingId: string | null;
+  deletePendingId: string | null;
+  onSelectRow: (id: string) => void;
+  onRunNotebook: (id: string) => void;
+  onRequestDelete: (id: string) => void;
 }) {
   const { t } = useI18n();
 
@@ -256,12 +256,12 @@ function PricingBody({
           <TableBody>
             {rows.map((row) => (
               <PricingRow
-                key={row.slug}
+                key={row.id}
                 row={row}
                 workspaceUrl={workspaceUrl}
-                runPending={runPendingSlug === row.slug}
-                deletePending={deletePendingSlug === row.slug}
-                onSelect={() => onSelectRow(row.slug)}
+                runPending={runPendingId === row.id}
+                deletePending={deletePendingId === row.id}
+                onSelect={() => onSelectRow(row.id)}
                 onRunNotebook={onRunNotebook}
                 onRequestDelete={onRequestDelete}
               />
@@ -287,8 +287,8 @@ function PricingRow({
   runPending: boolean;
   deletePending: boolean;
   onSelect: () => void;
-  onRunNotebook: (slug: string) => void;
-  onRequestDelete: (slug: string) => void;
+  onRunNotebook: (id: string) => void;
+  onRequestDelete: (id: string) => void;
 }) {
   const { t } = useI18n();
   const notebookUrl = notebookEditorUrl(workspaceUrl, row.notebookId);
@@ -300,7 +300,7 @@ function PricingRow({
   return (
     <TableRow className="cursor-pointer" onClick={onSelect}>
       <TableCell>
-        <span className="font-mono text-sm">{row.slug}</span>
+        <span className="font-mono text-sm">{row.id}</span>
       </TableCell>
       <TableCell>
         {row.table ? (
@@ -349,8 +349,8 @@ function PricingDetailsSheet({
   runPending: boolean;
   deletePending: boolean;
   onClose: () => void;
-  onRunNotebook: (slug: string) => void;
-  onRequestDelete: (slug: string) => void;
+  onRunNotebook: (id: string) => void;
+  onRequestDelete: (id: string) => void;
 }) {
   const { t } = useI18n();
   const notebookUrl = row ? notebookEditorUrl(workspaceUrl, row.notebookId) : null;
@@ -420,8 +420,8 @@ function PricingActions({
   row: PricingNotebookState;
   runPending: boolean;
   deletePending: boolean;
-  onRunNotebook: (slug: string) => void;
-  onRequestDelete: (slug: string) => void;
+  onRunNotebook: (id: string) => void;
+  onRequestDelete: (id: string) => void;
 }) {
   const { t } = useI18n();
   const activeRun = isActivePricingRunStatus(row.runStatus);
@@ -435,7 +435,7 @@ function PricingActions({
         size="sm"
         onClick={(event) => {
           event.stopPropagation();
-          onRunNotebook(row.slug);
+          onRunNotebook(row.id);
         }}
         disabled={runPending || activeRun}
       >
@@ -448,7 +448,7 @@ function PricingActions({
         variant="secondary"
         onClick={(event) => {
           event.stopPropagation();
-          onRequestDelete(row.slug);
+          onRequestDelete(row.id);
         }}
         disabled={deletePending || !hasPricingData || activeRun}
       >
