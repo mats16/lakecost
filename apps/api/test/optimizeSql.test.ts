@@ -17,6 +17,7 @@ const sources: DatabricksOptimizeSource[] = [
   {
     tableDisplay: 'finops.focus.databricks_usage',
     tableSql: '`finops`.`focus`.`databricks_usage`',
+    databricksListPricesTableSql: '`finops`.`pricing`.`databricks_list_prices`',
     billingAccountId: 'abc-123',
   },
 ];
@@ -48,10 +49,15 @@ test('resolveDatabricksOptimizeSources follows overview catalog defaults', () =>
   const [withoutCatalog] = resolveDatabricksOptimizeSources([], {});
   assert.equal(withoutCatalog?.tableDisplay, 'focus.databricks_usage');
   assert.equal(withoutCatalog?.tableSql, '`focus`.`databricks_usage`');
+  assert.equal(withoutCatalog?.databricksListPricesTableSql, '`pricing`.`databricks_list_prices`');
 
   const [withCatalog] = resolveDatabricksOptimizeSources([], { catalog_name: 'finops' });
   assert.equal(withCatalog?.tableDisplay, 'finops.focus.databricks_usage');
   assert.equal(withCatalog?.tableSql, '`finops`.`focus`.`databricks_usage`');
+  assert.equal(
+    withCatalog?.databricksListPricesTableSql,
+    '`finops`.`pricing`.`databricks_list_prices`',
+  );
 });
 
 test('databricks optimization params include date, workspace, and billing account filters', () => {
@@ -140,9 +146,14 @@ test('buildDatabricksServicesSql only returns target serverless migration servic
 });
 
 test('buildDatabricksRecommendationsSql excludes blank resources and uses eligibility weighting', () => {
-  const sql = buildDatabricksRecommendationsSql('-- cte --');
+  const sql = buildDatabricksRecommendationsSql(
+    '-- cte --',
+    '`finops`.`pricing`.`databricks_list_prices`',
+  );
 
   assert.match(sql, /FROM `finops`\.`pricing`\.`aws_ec2`/);
+  assert.match(sql, /FROM `finops`\.`pricing`\.`databricks_list_prices`/);
+  assert.match(sql, /databricks_serverless_prices AS/);
   assert.match(sql, /SkuPriceDetails\['InstanceType'\] = 'r6i\.xlarge'/);
   assert.match(sql, /PricingCategory = 'Standard'/);
   assert.match(sql, /SkuPriceDetails\['OperatingSystem'\] = 'Linux'/);
@@ -153,6 +164,24 @@ test('buildDatabricksRecommendationsSql excludes blank resources and uses eligib
   assert.match(sql, /MAX_BY\(sku_id, charge_period_start\) AS sku_id/);
   assert.match(sql, /MAX_BY\(instance_type, charge_period_start\) AS instance_type/);
   assert.match(sql, /AS dbu_quantity_estimate/);
+  assert.match(sql, /REGEXP_EXTRACT\(sku_id, '\^\(STANDARD\|PREMIUM\|ENTERPRISE\)_', 1\)/);
+  assert.match(sql, /'_ALL_PURPOSE_SERVERLESS_COMPUTE'/);
+  assert.match(sql, /'_SERVERLESS_SQL_COMPUTE'/);
+  assert.match(sql, /'_JOBS_SERVERLESS_COMPUTE'/);
+  assert.match(sql, /'_DLT_SERVERLESS_COMPUTE'/);
+  assert.match(sql, /GROUP BY x_SkuNameBase, RegionId, PricingUnit/);
+  assert.match(sql, /LEFT JOIN databricks_serverless_prices price/);
+  assert.match(sql, /target\.serverless_sku_name_base = price\.serverless_sku_name_base/);
+  assert.match(sql, /target\.region_id = price\.region_id/);
+  assert.match(sql, /target\.pricing_unit = price\.pricing_unit/);
+  assert.doesNotMatch(sql, /price\.EffectiveDate/);
+  assert.doesNotMatch(sql, /price\.x_PriceEndTime/);
+  assert.match(sql, /COALESCE\(EffectiveListUnitPrice, ListUnitPrice\)/);
+  assert.match(sql, /target\.base_dbu \* 0\.5 \* price\.serverless_unit_price_usd/);
+  assert.match(sql, /AS serverless_sku_name_base/);
+  assert.match(sql, /AS serverless_unit_price_usd/);
+  assert.match(sql, /AS estimated_serverless_cost_usd/);
+  assert.match(sql, /AS estimated_serverless_delta_usd/);
   assert.match(sql, /AS ec2_dbu_quantity_estimate/);
   assert.match(sql, /CASE WHEN x_photon = true THEN 2\.0 ELSE 1\.0 END/);
   assert.match(sql, /AS estimated_ec2_cost_usd/);
@@ -218,6 +247,10 @@ test('DatabricksOptimizationResponseSchema parses API response shape', () => {
         totalCostUsd: 800,
         nonServerlessCostUsd: 500,
         dbuQuantityEstimate: 123.4,
+        serverlessSkuNameBase: 'ENTERPRISE_SERVERLESS_SQL_COMPUTE',
+        serverlessUnitPriceUsd: 0.7,
+        estimatedServerlessCostUsd: 86.38,
+        estimatedServerlessDeltaUsd: -413.62,
         ec2ReferenceInstanceType: 'r6i.xlarge',
         ec2HourlyPriceUsd: 0.333,
         estimatedEc2CostUsd: 41.09,

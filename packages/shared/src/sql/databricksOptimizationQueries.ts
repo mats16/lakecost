@@ -2,11 +2,13 @@ import type { DataSource } from '../schemas/dataSource.js';
 import {
   CATALOG_SETTING_KEY,
   DEFAULT_DATABRICKS_ACCOUNT_ID,
+  DATABRICKS_LIST_PRICES_TABLE_DEFAULT,
   isDatabricksProvider,
   PROVIDER_DATABRICKS,
   isDatabricksDefaultAccount,
   MEDALLION_SCHEMA_DEFAULTS,
   medallionSchemaNamesFromSettings,
+  PRICING_SCHEMA_DEFAULT,
 } from '../schemas/dataSource.js';
 import type { DatabricksOptimizationRange } from '../schemas/optimization.js';
 import type { SqlParam } from '../schemas/sql.js';
@@ -17,12 +19,20 @@ const DEFAULT_DATABRICKS_TABLE = 'databricks_usage';
 const KNOWN_COST_DENOMINATOR = '(serverless_cost_usd + non_serverless_cost_usd)';
 const AWS_EC2_PRICING_TABLE_SQL = '`finops`.`pricing`.`aws_ec2`';
 const EC2_REFERENCE_INSTANCE_TYPE = 'r6i.xlarge';
+const SERVERLESS_STANDARD_MODE_DBU_FACTOR = 0.5;
+const DEFAULT_DATABRICKS_LIST_PRICES_TABLE_SQL = [
+  PRICING_SCHEMA_DEFAULT,
+  DATABRICKS_LIST_PRICES_TABLE_DEFAULT,
+]
+  .map((part) => quoteIdent(part))
+  .join('.');
 
 export type DatabricksTrendGrain = 'day' | 'month';
 
 export interface DatabricksOptimizeSource {
   tableDisplay: string;
   tableSql: string;
+  databricksListPricesTableSql: string;
   billingAccountId: string | null;
 }
 
@@ -113,8 +123,10 @@ export function buildDatabricksRecommendationsStatement(
   range: DatabricksOptimizationRange,
 ): SqlStatementInput {
   const cte = buildDatabricksOptimizeCte(sources);
+  const pricingTableSql =
+    sources[0]?.databricksListPricesTableSql ?? DEFAULT_DATABRICKS_LIST_PRICES_TABLE_SQL;
   return {
-    query: buildDatabricksRecommendationsSql(cte),
+    query: buildDatabricksRecommendationsSql(cte, pricingTableSql),
     params: databricksOptimizeParams(sources, range),
   };
 }
@@ -313,7 +325,10 @@ ORDER BY
 `;
 }
 
-export function buildDatabricksRecommendationsSql(cte: string): string {
+export function buildDatabricksRecommendationsSql(
+  cte: string,
+  databricksListPricesTableSql = DEFAULT_DATABRICKS_LIST_PRICES_TABLE_SQL,
+): string {
   return /* sql */ `
 ${cte}
 , ec2_reference_prices AS (
@@ -331,6 +346,16 @@ ec2_global_reference_price AS (
   SELECT CAST(MIN(ec2_hourly_price_usd) AS DOUBLE) AS ec2_hourly_price_usd
   FROM ec2_reference_prices
 ),
+databricks_serverless_prices AS (
+  SELECT
+    x_SkuNameBase AS serverless_sku_name_base,
+    RegionId AS region_id,
+    PricingUnit AS pricing_unit,
+    CAST(MIN(CAST(COALESCE(EffectiveListUnitPrice, ListUnitPrice) AS DOUBLE)) AS DOUBLE) AS serverless_unit_price_usd
+  FROM ${databricksListPricesTableSql}
+  WHERE COALESCE(EffectiveListUnitPrice, ListUnitPrice) IS NOT NULL
+  GROUP BY x_SkuNameBase, RegionId, PricingUnit
+),
 filtered_with_dbu AS (
   SELECT *,
     CASE
@@ -347,6 +372,38 @@ filtered_with_dbu AS (
   WHERE resource_id IS NOT NULL
     AND TRIM(resource_id) <> ''
 ),
+filtered_with_serverless_target AS (
+  SELECT *,
+    CASE
+      WHEN NULLIF(REGEXP_EXTRACT(sku_id, '^(STANDARD|PREMIUM|ENTERPRISE)_', 1), '') IS NULL THEN CAST(NULL AS STRING)
+      WHEN service_name IN ('ALL_PURPOSE', 'INTERACTIVE')
+        THEN CONCAT(REGEXP_EXTRACT(sku_id, '^(STANDARD|PREMIUM|ENTERPRISE)_', 1), '_ALL_PURPOSE_SERVERLESS_COMPUTE')
+      WHEN service_name = 'SQL'
+        THEN CONCAT(REGEXP_EXTRACT(sku_id, '^(STANDARD|PREMIUM|ENTERPRISE)_', 1), '_SERVERLESS_SQL_COMPUTE')
+      WHEN service_name = 'JOBS'
+        THEN CONCAT(REGEXP_EXTRACT(sku_id, '^(STANDARD|PREMIUM|ENTERPRISE)_', 1), '_JOBS_SERVERLESS_COMPUTE')
+      WHEN service_name = 'DLT'
+        THEN CONCAT(REGEXP_EXTRACT(sku_id, '^(STANDARD|PREMIUM|ENTERPRISE)_', 1), '_DLT_SERVERLESS_COMPUTE')
+      ELSE CAST(NULL AS STRING)
+    END AS serverless_sku_name_base
+  FROM filtered_with_dbu
+),
+filtered_with_serverless_price AS (
+  SELECT
+    target.*,
+    price.serverless_unit_price_usd,
+    CASE
+      WHEN target.base_dbu IS NOT NULL
+        AND price.serverless_unit_price_usd IS NOT NULL
+        THEN CAST(target.base_dbu * ${SERVERLESS_STANDARD_MODE_DBU_FACTOR} * price.serverless_unit_price_usd AS DOUBLE)
+      ELSE CAST(NULL AS DOUBLE)
+    END AS estimated_serverless_cost_usd
+  FROM filtered_with_serverless_target target
+    LEFT JOIN databricks_serverless_prices price
+      ON target.serverless_sku_name_base = price.serverless_sku_name_base
+      AND target.region_id = price.region_id
+      AND target.pricing_unit = price.pricing_unit
+),
 resource_metrics AS (
   SELECT
     workspace_id,
@@ -359,12 +416,15 @@ resource_metrics AS (
     MAX_BY(resource_name, charge_period_start) AS resource_name,
     MAX_BY(sku_id, charge_period_start) AS sku_id,
     MAX_BY(instance_type, charge_period_start) AS instance_type,
+    MAX_BY(serverless_sku_name_base, charge_period_start) AS serverless_sku_name_base,
+    CAST(MAX_BY(serverless_unit_price_usd, charge_period_start) AS DOUBLE) AS serverless_unit_price_usd,
     CAST(SUM(cost_usd) AS DOUBLE) AS total_cost_usd,
     CAST(SUM(CASE WHEN x_serverless = true THEN cost_usd ELSE 0 END) AS DOUBLE) AS serverless_cost_usd,
     CAST(SUM(CASE WHEN x_serverless = false THEN cost_usd ELSE 0 END) AS DOUBLE) AS non_serverless_cost_usd,
     CAST(SUM(base_dbu) AS DOUBLE) AS dbu_quantity_estimate,
+    CAST(SUM(estimated_serverless_cost_usd) AS DOUBLE) AS estimated_serverless_cost_usd,
     CAST(SUM(base_dbu / CASE WHEN x_photon = true THEN 2.0 ELSE 1.0 END) AS DOUBLE) AS ec2_dbu_quantity_estimate
-  FROM filtered_with_dbu
+  FROM filtered_with_serverless_price
   GROUP BY workspace_id, service_category, service_name, resource_type, resource_id
 ),
 scored AS (
@@ -415,6 +475,14 @@ SELECT
   total_cost_usd,
   non_serverless_cost_usd,
   dbu_quantity_estimate,
+  serverless_sku_name_base,
+  CAST(serverless_unit_price_usd AS DOUBLE) AS serverless_unit_price_usd,
+  estimated_serverless_cost_usd,
+  CASE
+    WHEN estimated_serverless_cost_usd IS NOT NULL
+      THEN CAST(estimated_serverless_cost_usd - non_serverless_cost_usd AS DOUBLE)
+    ELSE CAST(NULL AS DOUBLE)
+  END AS estimated_serverless_delta_usd,
   CASE
     WHEN ec2_hourly_price_usd IS NOT NULL THEN '${EC2_REFERENCE_INSTANCE_TYPE}'
     ELSE CAST(NULL AS STRING)
@@ -449,10 +517,16 @@ function databricksOptimizeSource(
   const parts = catalog
     ? [catalog, silverSchema, source.tableName]
     : [silverSchema, source.tableName];
+  const databricksListPricesTableParts = catalog
+    ? [catalog, PRICING_SCHEMA_DEFAULT, DATABRICKS_LIST_PRICES_TABLE_DEFAULT]
+    : [PRICING_SCHEMA_DEFAULT, DATABRICKS_LIST_PRICES_TABLE_DEFAULT];
   const tableDisplay = parts.join('.');
   return {
     tableDisplay,
     tableSql: parts.map((part) => quoteIdent(part)).join('.'),
+    databricksListPricesTableSql: databricksListPricesTableParts
+      .map((part) => quoteIdent(part))
+      .join('.'),
     billingAccountId: isDatabricksDefaultAccount(source) ? null : source.accountId,
   };
 }

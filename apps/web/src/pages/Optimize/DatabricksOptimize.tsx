@@ -103,7 +103,7 @@ function sqlError(tableName: string, error: unknown) {
 export function DatabricksOptimize() {
   const { t, locale } = useI18n();
   const formatUsd = useCurrencyUsd();
-  const [period, setPeriod] = useState<Period>('last12m');
+  const [period, setPeriod] = useState<Period>('last30');
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState('all');
   const baseRange = useMemo(() => rangeForPeriod(period), [period]);
   const trendGrain: DatabricksTrendGrain = period === 'last30' ? 'day' : 'month';
@@ -438,16 +438,28 @@ export function DatabricksOptimize() {
                     <TableHead>{t('optimize.databricks.table.priority')}</TableHead>
                     <TableHead>{t('optimize.databricks.table.resource')}</TableHead>
                     <TableHead>{t('optimize.databricks.table.service')}</TableHead>
-                    <TableHead>{t('optimize.databricks.table.sku')}</TableHead>
                     <TableHead>{t('optimize.databricks.table.instanceType')}</TableHead>
-                    <TableHead className="text-right">
-                      {t('optimize.databricks.table.dbuQuantityEstimate')}
-                    </TableHead>
                     <TableHead className="text-right">
                       {t('optimize.databricks.table.nonServerlessSpend')}
                     </TableHead>
                     <TableHead className="text-right">
-                      {t('optimize.databricks.table.estimatedCurrentTotal')}
+                      <div className="grid gap-0.5">
+                        <span>{t('optimize.databricks.table.estimatedCurrentTotal')}</span>
+                        <span className="text-muted-foreground text-xs font-normal">
+                          {t('optimize.databricks.table.estimatedEc2CostParen')}
+                        </span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <div className="grid gap-0.5">
+                        <span>{t('optimize.databricks.table.estimatedServerlessCost')}</span>
+                        <span className="text-muted-foreground text-xs font-normal">
+                          {t('optimize.databricks.table.standardMode')}
+                        </span>
+                      </div>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t('optimize.databricks.table.serverlessDelta')}
                     </TableHead>
                     <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
                   </TableRow>
@@ -564,8 +576,11 @@ function RecommendationRow({
     ? row.estimatedCurrentTotalCostUsd
     : null;
   const estimatedEc2Cost = isFiniteNumber(row.estimatedEc2CostUsd) ? row.estimatedEc2CostUsd : null;
-  const dbuQuantityEstimate = isFiniteNumber(row.dbuQuantityEstimate)
-    ? row.dbuQuantityEstimate
+  const estimatedServerlessCost = isFiniteNumber(row.estimatedServerlessCostUsd)
+    ? row.estimatedServerlessCostUsd
+    : null;
+  const estimatedServerlessDelta = isFiniteNumber(row.estimatedServerlessDeltaUsd)
+    ? row.estimatedServerlessDeltaUsd
     : null;
   return (
     <TableRow>
@@ -586,15 +601,7 @@ function RecommendationRow({
           <span className="text-muted-foreground text-xs">{row.serviceCategory}</span>
         </div>
       </TableCell>
-      <TableCell className="max-w-48 min-w-40">
-        <span className="block truncate">{row.skuId || t('dashboard.notAvailable')}</span>
-      </TableCell>
       <TableCell className="min-w-36">{row.instanceType || t('dashboard.notAvailable')}</TableCell>
-      <TableCell className="min-w-32 text-right">
-        {dbuQuantityEstimate !== null
-          ? formatDbu(dbuQuantityEstimate)
-          : t('dashboard.notAvailable')}
-      </TableCell>
       <TableCell className="text-right font-medium">
         {formatUsd(row.nonServerlessCostUsd)}
       </TableCell>
@@ -603,11 +610,25 @@ function RecommendationRow({
           <div className="grid gap-0.5">
             <span className="font-medium">{formatUsd(estimatedCurrentTotal)}</span>
             {estimatedEc2Cost !== null ? (
-              <span className="text-muted-foreground text-xs">
-                {t('optimize.databricks.table.estimatedEc2Cost')}: {formatUsd(estimatedEc2Cost)}
-              </span>
+              <span className="text-muted-foreground text-xs">{formatUsd(estimatedEc2Cost)}</span>
             ) : null}
           </div>
+        ) : (
+          t('dashboard.notAvailable')
+        )}
+      </TableCell>
+      <TableCell className="min-w-44 text-right">
+        {estimatedServerlessCost !== null ? (
+          <span className="font-medium">{formatUsd(estimatedServerlessCost)}</span>
+        ) : (
+          t('dashboard.notAvailable')
+        )}
+      </TableCell>
+      <TableCell className="min-w-32 text-right">
+        {estimatedServerlessDelta !== null ? (
+          <span className={estimatedServerlessDelta <= 0 ? 'text-(--success)' : 'text-(--danger)'}>
+            {formatSignedUsd(estimatedServerlessDelta, formatUsd)}
+          </span>
         ) : (
           t('dashboard.notAvailable')
         )}
@@ -755,11 +776,9 @@ function isFiniteNumber(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function formatDbu(value: number): string {
-  if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString('en-US');
-  if (Math.abs(value) >= 100) return value.toFixed(0);
-  if (Math.abs(value) >= 10) return value.toFixed(1);
-  return value.toFixed(2);
+function formatSignedUsd(value: number, formatUsd: (value: number) => string): string {
+  if (value === 0) return formatUsd(0);
+  return `${value > 0 ? '+' : '-'}${formatUsd(Math.abs(value))}`;
 }
 
 function compactUsd(value: number): string {
