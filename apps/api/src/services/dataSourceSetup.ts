@@ -10,6 +10,8 @@ import {
   LAKEFLOW_PIPELINE_SETTING_KEYS,
   focusSourceTables,
   focusViewFqn,
+  isAwsProvider,
+  isDatabricksProvider,
   medallionSchemaNamesFromSettings,
   normalizeS3Prefix,
   quoteIdent,
@@ -17,7 +19,10 @@ import {
   s3ExportPath,
   tableLeafName,
   validateAccountPricesTable,
+  dataSourceKeyString,
+  toDataSourceKey,
   type DataSource,
+  type DataSourceKey,
   type DataSourceSetupBody,
   type DataSourceSetupResult,
   type Env,
@@ -189,10 +194,10 @@ function readAwsFocusConfig(config: Record<string, unknown>): AwsFocusConfig {
 
 export function workspacePathFor(
   appName: string,
-  dataSourceId: number,
+  key: DataSourceKey,
   filename = 'databricksFocusTransformPipeline.sql',
 ): string {
-  return `/Workspace/Shared/${appName}/data_sources/${dataSourceId}/${filename}`;
+  return `/Workspace/Shared/${appName}/data_sources/${dataSourceKeySlug(key)}/${filename}`;
 }
 
 /**
@@ -201,29 +206,33 @@ export function workspacePathFor(
  * the name is always unique even before the per-provider config is filled in.
  */
 function resourceSlug(source: {
-  id: number;
   providerName: string;
+  accountId: string;
   config: Record<string, unknown>;
 }): string {
   const fromConfig = (k: string): string | null => {
     const v = source.config[k];
     return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
   };
-  if (source.providerName === 'Databricks') return 'focus';
-  if (isAwsProvider(source.providerName)) return fromConfig('awsAccountId') ?? String(source.id);
-  if (source.providerName === 'Azure') return fromConfig('subscriptionId') ?? String(source.id);
-  return String(source.id);
+  if (isDatabricksProvider(source.providerName)) return 'focus';
+  if (isAwsProvider(source.providerName)) return fromConfig('awsAccountId') ?? source.accountId;
+  if (source.providerName === 'Azure') return fromConfig('subscriptionId') ?? source.accountId;
+  return source.accountId;
 }
 
 export function resourceLabelBase(source: {
-  id: number;
   providerName: string;
+  accountId: string;
   config: Record<string, unknown>;
 }): string {
   const providerSlug = isAwsProvider(source.providerName)
     ? 'aws'
     : source.providerName.toLowerCase();
   return `finops-${providerSlug}-${resourceSlug(source)}`;
+}
+
+function dataSourceKeySlug(key: DataSourceKey): string {
+  return `${key.providerName}_${key.accountId}`.replace(/[^A-Za-z0-9_-]+/g, '_');
 }
 
 /**
@@ -234,7 +243,7 @@ export async function setupFocusDataSource(
   env: Env,
   db: DatabaseClient,
   userToken: string | undefined,
-  dataSourceId: number,
+  key: DataSourceKey,
   body: DataSourceSetupBody,
 ): Promise<DataSourceSetupResult> {
   if (!env.DATABRICKS_HOST) {
@@ -244,17 +253,17 @@ export async function setupFocusDataSource(
     throw new DataSourceSetupError('DATABRICKS_APP_NAME must be configured.', 400);
   }
   const [source, settingsRows] = await Promise.all([
-    db.repos.dataSources.get(dataSourceId),
+    db.repos.dataSources.get(key),
     db.repos.appSettings.list(),
   ]);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
-  if (source.providerName !== 'Databricks' && !isAwsProvider(source.providerName)) {
+  if (!isDatabricksProvider(source.providerName) && !isAwsProvider(source.providerName)) {
     throw new DataSourceSetupError(
       `Setup is only supported for Databricks and AWS data sources (got '${source.providerName}')`,
       400,
     );
   }
-  if (source.providerName === 'Databricks' && !userToken) {
+  if (isDatabricksProvider(source.providerName) && !userToken) {
     throw new DataSourceSetupError(
       'Missing OBO access token. Run behind Databricks Apps or `databricks apps run-local`.',
       401,
@@ -277,7 +286,7 @@ export async function setupFocusDataSource(
   let tableName: string;
   let databricksAccountPricesTable: string | null = null;
   try {
-    if (source.providerName === 'Databricks') {
+    if (isDatabricksProvider(source.providerName)) {
       const existing = readFocusConfig(source.config);
       tableName = body.tableName ?? tableLeafName(source.tableName);
       const accountPricesRaw = body.accountPricesTable ?? existing.accountPricesTable;
@@ -316,7 +325,7 @@ export async function setupFocusDataSource(
     );
   }
 
-  if (source.providerName === 'Databricks') {
+  if (isDatabricksProvider(source.providerName)) {
     await assertCanReadUsageTable(env, userToken as string);
     await grantAppSystemTableAccess(env, userToken as string, databricksAccountPricesTable);
     await assertAppCanReadSystemTables(env, databricksAccountPricesTable);
@@ -331,7 +340,7 @@ export async function setupFocusDataSource(
   };
   const allSources = await db.repos.dataSources.list();
   const candidateSources = allSources.map((row) =>
-    row.id === dataSourceId ? candidateSource : row,
+    dataSourceKeyString(row) === dataSourceKeyString(key) ? candidateSource : row,
   ) as DataSource[];
   let result;
   try {
@@ -348,7 +357,7 @@ export async function setupFocusDataSource(
     );
   }
 
-  const updated = await db.repos.dataSources.update(dataSourceId, {
+  const updated = await db.repos.dataSources.update(key, {
     tableName,
     focusVersion,
     enabled: true,
@@ -356,7 +365,7 @@ export async function setupFocusDataSource(
   });
 
   return {
-    dataSourceId: updated.id,
+    dataSourceKey: toDataSourceKey(updated),
     jobId: result.jobId,
     pipelineId: result.pipelineId,
     fqn,
@@ -369,10 +378,6 @@ export async function setupFocusDataSource(
     timezoneId: result.timezoneId,
     createdView: false,
   };
-}
-
-function isAwsProvider(providerName: string): boolean {
-  return providerName === 'AWS' || providerName === 'Amazon Web Services';
 }
 
 function readAwsFocusSource(config: AwsFocusConfig): {
@@ -543,13 +548,13 @@ export async function runDataSourceJob(
   env: Env,
   db: DatabaseClient,
   _userToken: string | undefined,
-  dataSourceId: number,
-): Promise<{ dataSourceId: number; jobId: number; runId: number }> {
+  key: DataSourceKey,
+): Promise<{ dataSourceKey: DataSourceKey; jobId: number; runId: number }> {
   if (!env.DATABRICKS_HOST) {
     throw new DataSourceSetupError('DATABRICKS_HOST must be configured.', 400);
   }
 
-  const source = await db.repos.dataSources.get(dataSourceId);
+  const source = await db.repos.dataSources.get(key);
   if (!source) throw new DataSourceSetupError('Data source not found', 404);
   const appSettings = settingsToRecord(await db.repos.appSettings.list());
   const jobId = sharedJobIdSetting(appSettings);
@@ -574,7 +579,7 @@ export async function runDataSourceJob(
     throw new DataSourceSetupError(`Databricks Jobs API returned no run_id`, 500);
   }
 
-  return { dataSourceId: source.id, jobId, runId: run.run_id };
+  return { dataSourceKey: toDataSourceKey(source), jobId, runId: run.run_id };
 }
 
 export async function runSharedFocusJob(
@@ -753,13 +758,13 @@ function sourcePipelineFile(
   workspaceRoot: string,
   source: DataSource,
 ): PipelineSourceFile & { tableName: string; providerName: string } {
-  if (source.providerName === 'Databricks') {
+  if (isDatabricksProvider(source.providerName)) {
     const config = readFocusConfig(source.config);
     const tableName = tableLeafName(source.tableName);
     return {
       tableName,
       providerName: source.providerName,
-      workspacePath: `${workspaceRoot}/databricks_${source.id}.sql`,
+      workspacePath: `${workspaceRoot}/databricks_${source.accountId}.sql`,
       pipelineSql: buildFocusSilverPipelineSql({
         table: tableName,
         accountPricesTable: config.accountPricesTable,
@@ -922,7 +927,7 @@ function sourceHasUsageDetailColumn(source: { providerName: string }, columnName
   if (isAwsProvider(source.providerName)) {
     return AWS_EXTENSION_COLUMNS.some((column) => column.name === columnName);
   }
-  if (source.providerName === 'Databricks') {
+  if (isDatabricksProvider(source.providerName)) {
     return DATABRICKS_EXTENSION_COLUMNS.some((column) => column.name === columnName);
   }
   return false;

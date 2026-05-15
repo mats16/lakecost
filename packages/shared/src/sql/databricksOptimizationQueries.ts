@@ -1,6 +1,10 @@
 import type { DataSource } from '../schemas/dataSource.js';
 import {
   CATALOG_SETTING_KEY,
+  DEFAULT_DATABRICKS_ACCOUNT_ID,
+  isDatabricksProvider,
+  PROVIDER_DATABRICKS,
+  isDatabricksDefaultAccount,
   MEDALLION_SCHEMA_DEFAULTS,
   medallionSchemaNamesFromSettings,
 } from '../schemas/dataSource.js';
@@ -28,18 +32,15 @@ export function resolveDatabricksOptimizeSources(
   const silverSchema =
     medallionSchemaNamesFromSettings(settings).silver || MEDALLION_SCHEMA_DEFAULTS.silver;
   const configured = dataSources
-    .filter(
-      (source) =>
-        source.enabled &&
-        (source.providerName === 'Databricks' || source.templateId === 'databricks_focus13'),
-    )
+    .filter((source) => source.enabled && isDatabricksProvider(source.providerName))
     .map((source) => databricksOptimizeSource(catalog, silverSchema, source));
   return configured.length > 0
     ? configured
     : [
         databricksOptimizeSource(catalog, silverSchema, {
           tableName: DEFAULT_DATABRICKS_TABLE,
-          billingAccountId: null,
+          providerName: PROVIDER_DATABRICKS,
+          accountId: DEFAULT_DATABRICKS_ACCOUNT_ID,
         }),
       ];
 }
@@ -375,7 +376,7 @@ ORDER BY recommendation_rank
 function databricksOptimizeSource(
   catalog: string,
   silverSchema: string,
-  source: Pick<DataSource, 'tableName' | 'billingAccountId'>,
+  source: Pick<DataSource, 'providerName' | 'tableName' | 'accountId'>,
 ): DatabricksOptimizeSource {
   const parts = catalog
     ? [catalog, silverSchema, source.tableName]
@@ -384,6 +385,6 @@ function databricksOptimizeSource(
   return {
     tableDisplay,
     tableSql: parts.map((part) => quoteIdent(part)).join('.'),
-    billingAccountId: source.billingAccountId,
+    billingAccountId: isDatabricksDefaultAccount(source) ? null : source.accountId,
   };
 }

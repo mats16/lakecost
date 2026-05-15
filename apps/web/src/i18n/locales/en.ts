@@ -5,7 +5,7 @@ export const en = {
     inform: 'Inform',
     overview: 'Overview',
     configure: 'Configure',
-    dataSources: 'Data sources',
+    dataSources: 'Integrations',
     credentials: 'Credentials',
     externalData: 'External Data',
     externalLocations: 'External Locations',
@@ -516,7 +516,7 @@ export const en = {
     createCredential: 'Create credential',
     createShort: 'Create',
     createDesc:
-      'Choose the IAM role name before creating the AWS role. The Unity Catalog credential name is fixed as finlake_service_credential_<aws_account_id>.',
+      'First create the service credential in Databricks, then create the IAM role in AWS using the generated External ID.',
     credentialName: 'Credential name',
     awsAccountId: 'AWS account ID',
     roleName: 'IAM role name',
@@ -528,7 +528,7 @@ export const en = {
     showSetup: 'Show setup',
     setup: 'Setup',
     deleteConfirm: 'Delete credential {name}?',
-    awsSetupTitle: 'Setup IAM Role',
+    awsSetupTitle: 'Create an IAM Role',
     awsSetupDesc:
       'Create the IAM role in AWS with this trust policy, then attach the permission policy. FinLake does not use the credential yet.',
     externalIdLabel: 'External ID',
@@ -536,10 +536,11 @@ export const en = {
     trustPolicy: 'Trust policy',
     permissionPolicy: 'Permission policy',
     awsCli: 'AWS CLI',
-    createBoundaryPolicyCli: 'Create storage role permissions boundary',
+    stepLabel: 'Step {n}',
     createRoleCli: 'Create IAM role',
     updateTrustPolicyCli: 'Update trust policy',
-    putRolePolicyCli: 'Attach inline policy',
+    putStorageRolePolicyCli: 'Attach the policy for creating Storage Roles',
+    putBcmPolicyCli: 'Attach the policy for Billing and Cost Management',
     permissionTypes: {
       fullSetup: 'Full setup',
       readOnly: 'Read only',
@@ -723,12 +724,28 @@ export const en = {
     },
   },
   dataSources: {
-    currentTitle: 'Current data sources',
-    filterPlaceholder: 'Filter sources…',
-    addTitle: 'Add data source',
+    currentTitle: 'Connected Data Sources & Pricing Data',
+    currentDesc: 'Monitor and manage your connected data sources and pricing data.',
+    addTitle: 'Data Sources',
+    addDesc: 'Connect your cost data sources.',
+    pricingTitle: 'Pricing Data',
+    pricingDesc: 'Connect provider pricing tables.',
     empty: 'No data sources yet — add one from the catalog below.',
     delete: 'Delete data source',
+    edit: 'Edit data source',
+    editPricingData: 'Edit pricing data',
     confirmDelete: 'Delete "{name}"? Its scheduled refresh job will also be removed.',
+    columns: {
+      provider: 'Provider',
+      status: 'Connection status',
+      type: 'Type',
+      table: 'Table',
+      actions: 'Actions',
+    },
+    type: {
+      dataSource: 'Data source',
+      pricingData: 'Pricing data',
+    },
     badges: {
       enabled: 'Enabled',
       disabled: 'Disabled',
@@ -745,6 +762,60 @@ export const en = {
     drawer: {
       notImplemented:
         "This provider is not yet implemented. We're tracking it on the FinLake roadmap.",
+    },
+    detail: {
+      eyebrow: 'Integrations',
+      backToIntegrations: 'Back to integrations',
+      docs: 'Docs',
+      searchAws: 'Search by account ID, ARN, or name...',
+      connected: 'Connected',
+      awsEmpty: 'No AWS accounts match this view.',
+      selectedSettings: 'Settings for AWS account {account}',
+      configureAccount: 'Configure AWS account {account}',
+      moreActions: 'More actions',
+      openInAws: 'Open in AWS',
+      remove: 'Remove',
+      tabs: {
+        manage: 'Manage',
+        connect: 'Connect',
+      },
+      connectIntro: {
+        title: 'Connect Your Account',
+        description:
+          'FinLake connects AWS cost data with a cross-account IAM role and AWS Billing and Cost Management Data Exports.',
+        serviceCredentialTitle: 'Service credential',
+        serviceCredentialDesc:
+          'If the AWS account does not have a FinLakeServiceRole service credential yet, create it first and then create the IAM role in AWS with the generated External ID.',
+        setupPathTitle: 'Choose a setup path',
+        setupPathServiceRole:
+          'To let FinLake provision the required resources, choose Connect with service role and select an existing FinLakeServiceRole service credential.',
+        setupPathExternalLocation:
+          'To reuse an existing Storage Credential and External Location, choose Connect via existing external location.',
+        noteLabel: 'Note:',
+        note: 'AWS Billing and Cost Management Data Exports are created in us-east-1, regardless of where your workloads run.',
+        afterSetupTitle: 'After setup',
+        returnLabel: 'Return to this page after setup completes.',
+        afterSetupDesc:
+          'FinLake registers the data export destination and schedules the Lakeflow job that ingests the exported FOCUS data. The first export and ingest run can take a few minutes.',
+        actions: {
+          serviceRole: 'Connect with service role',
+          externalLocation: 'Connect via existing external location',
+          createServiceRole: 'Create service role',
+        },
+        actionDescriptions: {
+          serviceRole:
+            'Use an existing FinLakeServiceRole service credential and let FinLake create the required S3 bucket, Storage Credential, External Location, Data Export, and Lakeflow resources.',
+          externalLocation:
+            'Use an existing storage credential and external location, then register the AWS Billing and Cost Management Data Export destination.',
+        },
+      },
+      columns: {
+        account: 'Account',
+        costsAggregation: 'Costs Aggregation',
+        perResourceCosts: 'Per-Resource Costs',
+        lastUpdated: 'Last Updated',
+        status: 'Status',
+      },
     },
     name: {
       title: 'Display name',
@@ -907,6 +978,10 @@ export const en = {
       custom: {
         description: 'Bring your own cost feed via Auto Loader or Lakeflow Connect',
         subtitle: 'by your team',
+      },
+      pricing_aws: {
+        description: 'EC2 and RDS list pricing tables',
+        subtitle: '',
       },
     },
   },

@@ -1130,7 +1130,7 @@ function normalizeProvider(value: string): ProviderKey {
 }
 
 function providerForSource(source: DataSource): ProviderMeta {
-  return PROVIDERS[normalizeProvider(`${source.templateId} ${source.providerName}`)];
+  return PROVIDERS[normalizeProvider(source.providerName)];
 }
 
 function uniqueProviders(sources: DataSource[]): ProviderMeta[] {

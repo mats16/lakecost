@@ -4,6 +4,10 @@ import { Dashboard } from './pages/Dashboard';
 import { Budgets } from './pages/Budgets';
 import { ConfigureLayout } from './pages/Configure/ConfigureLayout';
 import { DataSources } from './pages/Configure/DataSources';
+import {
+  AwsIntegrationDetail,
+  DatabricksIntegrationDetail,
+} from './pages/Configure/IntegrationDetails';
 import { Catalog } from './pages/Configure/Catalog';
 import { Transformations } from './pages/Configure/Transformations';
 import { GovernedTags } from './pages/Configure/GovernedTags';
@@ -34,22 +38,26 @@ export function App() {
         />
 
         <Route element={<ConfigureLayout />}>
-          <Route path="/data-sources" element={<DataSources />} />
+          <Route path="/integrations" element={<DataSources />} />
+          <Route path="/integrations/databricks" element={<DatabricksIntegrationDetail />} />
+          <Route path="/integrations/aws" element={<AwsIntegrationDetail />} />
           <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
-          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/pricing" element={<Navigate to="/pricing/aws" replace />} />
+          <Route path="/pricing/aws" element={<Pricing />} />
           <Route path="/credentials" element={<Credentials />} />
           <Route path="/admin" element={<Catalog />} />
         </Route>
 
-        <Route path="/configure" element={<Navigate to="/data-sources" replace />} />
-        <Route path="/configure/data-sources" element={<Navigate to="/data-sources" replace />} />
+        <Route path="/configure" element={<Navigate to="/integrations" replace />} />
+        <Route path="/configure/data-sources" element={<Navigate to="/integrations" replace />} />
+        <Route path="/data-sources" element={<Navigate to="/integrations" replace />} />
         <Route path="/configure/credentials" element={<Navigate to="/credentials" replace />} />
         <Route
           path="/configure/transformations"
           element={<Navigate to="/transformations" replace />}
         />
-        <Route path="/configure/pricing" element={<Navigate to="/pricing" replace />} />
+        <Route path="/configure/pricing" element={<Navigate to="/pricing/aws" replace />} />
         <Route path="/configure/catalog" element={<Navigate to="/admin" replace />} />
         <Route path="/catalog" element={<Navigate to="/admin" replace />} />
 
@@ -57,7 +65,7 @@ export function App() {
         <Route path="/bcm-credentials" element={<Navigate to="/credentials" replace />} />
 
         <Route path="/settings" element={<Navigate to="/admin" replace />} />
-        <Route path="/setup" element={<Navigate to="/data-sources" replace />} />
+        <Route path="/setup" element={<Navigate to="/integrations" replace />} />
         <Route path="*" element={<Navigate to="/overview" replace />} />
       </Routes>
     </AppShell>

@@ -83,7 +83,7 @@ export function Transformations() {
               <EmptyDescription>{t('transformations.emptyDesc')}</EmptyDescription>
             </EmptyHeader>
             <Button asChild>
-              <Link to="/data-sources">{t('transformations.configureSources')}</Link>
+              <Link to="/integrations">{t('transformations.configureSources')}</Link>
             </Button>
           </Empty>
         ) : (

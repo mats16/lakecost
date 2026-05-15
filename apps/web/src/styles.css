@@ -329,37 +329,11 @@ a {
   outline-color: var(--warning);
 }
 
-/* Configure page header tabs */
-
 .configure-header {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 16px;
-}
-
-.upper-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-  margin-top: 8px;
-}
-
-.upper-tabs a {
-  padding: 10px 14px;
-  font-size: 14px;
-  color: var(--muted-foreground);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.upper-tabs a:hover {
-  color: var(--foreground);
-}
-
-.upper-tabs a.active {
-  color: var(--foreground);
-  border-bottom-color: var(--primary);
-  font-weight: 500;
 }
 
 /* Account menu trigger button used in sidebar footer. */

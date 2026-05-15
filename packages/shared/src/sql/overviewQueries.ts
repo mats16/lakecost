@@ -1,7 +1,9 @@
 import type { DataSource } from '../schemas/dataSource.js';
 import {
   CATALOG_SETTING_KEY,
+  dataSourceKeyString,
   GOLD_USAGE_TABLES,
+  isDatabricksDefaultAccount,
   MEDALLION_SCHEMA_DEFAULTS,
   medallionSchemaNamesFromSettings,
 } from '../schemas/dataSource.js';
@@ -10,7 +12,7 @@ import type { UsageRange } from '../schemas/usage.js';
 import { quoteIdent } from './focusView.sql.js';
 
 export interface FocusOverviewDailyRow {
-  dataSourceId: number;
+  dataSourceId: string;
   usageDate: string;
   providerName: string;
   serviceCategory: string;
@@ -19,21 +21,21 @@ export interface FocusOverviewDailyRow {
 }
 
 export interface FocusOverviewServiceRow {
-  dataSourceId: number;
+  dataSourceId: string;
   providerName: string;
   serviceName: string;
   costUsd: number;
 }
 
 export interface FocusOverviewSkuRow {
-  dataSourceId: number;
+  dataSourceId: string;
   providerName: string;
   skuName: string;
   costUsd: number;
 }
 
 export interface FocusOverviewCoverageRow {
-  dataSourceId: number;
+  dataSourceId: string;
   providerName: string;
   subAccountId: string | null;
   subAccountName: string | null;
@@ -133,11 +135,11 @@ export function baseParams(sources: DataSource[], range: UsageRange): SqlParam[]
 
 export function sourceJoinParams(sources: DataSource[]): SqlParam[] {
   return sources.flatMap((source, i) => [
-    { name: `data_source_id_${i}`, value: source.id, type: 'BIGINT' as const },
+    { name: `data_source_id_${i}`, value: dataSourceKeyString(source), type: 'STRING' as const },
     { name: `provider_name_${i}`, value: source.providerName, type: 'STRING' as const },
     {
-      name: `billing_account_id_${i}`,
-      value: source.billingAccountId,
+      name: `account_id_${i}`,
+      value: billingAccountFilter(source),
       type: 'STRING' as const,
     },
   ]);
@@ -148,9 +150,9 @@ export function requestedSourcesSql(sources: DataSource[]): string {
     .map(
       (_source, i) => `
   SELECT
-    CAST(:data_source_id_${i} AS BIGINT) AS data_source_id,
+    :data_source_id_${i} AS data_source_id,
     :provider_name_${i} AS provider_name,
-    :billing_account_id_${i} AS billing_account_id`,
+    :account_id_${i} AS account_id`,
     )
     .join('\n  UNION ALL\n');
 }
@@ -168,15 +170,19 @@ matched AS (
   FROM ${table} b
   JOIN requested r
     ON (
-      r.billing_account_id IS NOT NULL
-      AND b.BillingAccountId = r.billing_account_id
+      r.account_id IS NOT NULL
+      AND b.BillingAccountId = r.account_id
     )
     OR (
-      r.billing_account_id IS NULL
-      AND COALESCE(b.ProviderName, r.provider_name) = r.provider_name
+      r.account_id IS NULL
+      AND LOWER(TRIM(COALESCE(b.ProviderName, r.provider_name))) = r.provider_name
     )
 )
 `;
+}
+
+function billingAccountFilter(source: DataSource): string | null {
+  return isDatabricksDefaultAccount(source) ? null : source.accountId;
 }
 
 export function buildDailySql(cte: string): string {
