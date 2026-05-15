@@ -431,30 +431,39 @@ export function DatabricksOptimize() {
               description={t('optimize.databricks.empty.noNonServerless')}
             />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('optimize.databricks.table.priority')}</TableHead>
-                  <TableHead>{t('optimize.databricks.table.resource')}</TableHead>
-                  <TableHead>{t('optimize.databricks.table.service')}</TableHead>
-                  <TableHead>{t('optimize.databricks.table.instanceType')}</TableHead>
-                  <TableHead className="text-right">
-                    {t('optimize.databricks.table.nonServerlessSpend')}
-                  </TableHead>
-                  <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recommendationsQuery.rows.map((row) => (
-                  <RecommendationRow
-                    key={`${row.rank}-${row.resourceId}`}
-                    row={row}
-                    workspaceUrl={me.data?.workspaceUrl ?? null}
-                    currentWorkspaceId={me.data?.workspaceId ?? null}
-                  />
-                ))}
-              </TableBody>
-            </Table>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('optimize.databricks.table.priority')}</TableHead>
+                    <TableHead>{t('optimize.databricks.table.resource')}</TableHead>
+                    <TableHead>{t('optimize.databricks.table.service')}</TableHead>
+                    <TableHead>{t('optimize.databricks.table.sku')}</TableHead>
+                    <TableHead>{t('optimize.databricks.table.instanceType')}</TableHead>
+                    <TableHead className="text-right">
+                      {t('optimize.databricks.table.dbuQuantityEstimate')}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t('optimize.databricks.table.nonServerlessSpend')}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {t('optimize.databricks.table.estimatedCurrentTotal')}
+                    </TableHead>
+                    <TableHead>{t('optimize.databricks.table.workspace')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recommendationsQuery.rows.map((row) => (
+                    <RecommendationRow
+                      key={`${row.rank}-${row.resourceId}`}
+                      row={row}
+                      workspaceUrl={me.data?.workspaceUrl ?? null}
+                      currentWorkspaceId={me.data?.workspaceId ?? null}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -551,6 +560,13 @@ function RecommendationRow({
   const resourceUrl = databricksResourceUrl(row, workspaceUrl, currentWorkspaceId);
   const workspacePrimary = row.workspaceName || row.workspaceId || t('dashboard.notAvailable');
   const workspaceSecondary = row.workspaceName ? row.workspaceId : null;
+  const estimatedCurrentTotal = isFiniteNumber(row.estimatedCurrentTotalCostUsd)
+    ? row.estimatedCurrentTotalCostUsd
+    : null;
+  const estimatedEc2Cost = isFiniteNumber(row.estimatedEc2CostUsd) ? row.estimatedEc2CostUsd : null;
+  const dbuQuantityEstimate = isFiniteNumber(row.dbuQuantityEstimate)
+    ? row.dbuQuantityEstimate
+    : null;
   return (
     <TableRow>
       <TableCell>
@@ -570,9 +586,31 @@ function RecommendationRow({
           <span className="text-muted-foreground text-xs">{row.serviceCategory}</span>
         </div>
       </TableCell>
+      <TableCell className="max-w-48 min-w-40">
+        <span className="block truncate">{row.skuId || t('dashboard.notAvailable')}</span>
+      </TableCell>
       <TableCell className="min-w-36">{row.instanceType || t('dashboard.notAvailable')}</TableCell>
+      <TableCell className="min-w-32 text-right">
+        {dbuQuantityEstimate !== null
+          ? formatDbu(dbuQuantityEstimate)
+          : t('dashboard.notAvailable')}
+      </TableCell>
       <TableCell className="text-right font-medium">
         {formatUsd(row.nonServerlessCostUsd)}
+      </TableCell>
+      <TableCell className="min-w-56 text-right">
+        {estimatedCurrentTotal !== null ? (
+          <div className="grid gap-0.5">
+            <span className="font-medium">{formatUsd(estimatedCurrentTotal)}</span>
+            {estimatedEc2Cost !== null ? (
+              <span className="text-muted-foreground text-xs">
+                {t('optimize.databricks.table.estimatedEc2Cost')}: {formatUsd(estimatedEc2Cost)}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          t('dashboard.notAvailable')
+        )}
       </TableCell>
       <TableCell className="min-w-40">
         <div className="grid gap-0.5">
@@ -711,6 +749,17 @@ function formatRatio(value: number | null | undefined): string {
 function normalizeRatio(value: number | null | undefined): number | null {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
   return Math.max(0, Math.min(100, value));
+}
+
+function isFiniteNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function formatDbu(value: number): string {
+  if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString('en-US');
+  if (Math.abs(value) >= 100) return value.toFixed(0);
+  if (Math.abs(value) >= 10) return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 function compactUsd(value: number): string {

@@ -66,9 +66,15 @@ export const DatabricksOptimizationRecommendationSchema = z.object({
   resourceType: z.string().nullable(),
   resourceId: z.string(),
   resourceName: z.string().nullable(),
+  skuId: z.string().nullable(),
   instanceType: z.string().nullable(),
   totalCostUsd: z.number(),
   nonServerlessCostUsd: z.number(),
+  dbuQuantityEstimate: z.number().nullable(),
+  ec2ReferenceInstanceType: z.string().nullable(),
+  ec2HourlyPriceUsd: z.number().nullable(),
+  estimatedEc2CostUsd: z.number().nullable(),
+  estimatedCurrentTotalCostUsd: z.number().nullable(),
   serverlessRatio: z.number().nullable(),
 });
 

@@ -25,8 +25,15 @@ test('buildDatabricksOptimizeCte reads x_Serverless and EffectiveCost from quote
   const sql = buildDatabricksOptimizeCte(sources);
 
   assert.match(sql, /FROM `finops`\.`focus`\.`databricks_usage`/);
+  assert.match(sql, /NULLIF\(TRIM\(SkuId\), ''\) AS sku_id/);
+  assert.match(sql, /RegionId AS region_id/);
+  assert.match(sql, /CAST\(ConsumedQuantity AS DOUBLE\) AS consumed_quantity/);
+  assert.match(sql, /CAST\(ListCost AS DOUBLE\) AS list_cost_usd/);
+  assert.match(sql, /CAST\(ListUnitPrice AS DOUBLE\) AS list_unit_price_usd/);
+  assert.match(sql, /NULLIF\(TRIM\(PricingUnit\), ''\) AS pricing_unit/);
   assert.match(sql, /CAST\(COALESCE\(EffectiveCost, 0\) AS DOUBLE\) AS cost_usd/);
   assert.match(sql, /CAST\(`x_Serverless` AS BOOLEAN\) AS x_serverless/);
+  assert.match(sql, /CAST\(`x_Photon` AS BOOLEAN\) AS x_photon/);
   assert.match(sql, /NULLIF\(TRIM\(SkuPriceDetails\['InstanceType'\]\), ''\) AS instance_type/);
   assert.match(sql, /ProviderName = 'Databricks'/);
   assert.match(sql, /CAST\(ChargePeriodStart AS TIMESTAMP\) >= :start_ts/);
@@ -135,10 +142,22 @@ test('buildDatabricksServicesSql only returns target serverless migration servic
 test('buildDatabricksRecommendationsSql excludes blank resources and uses eligibility weighting', () => {
   const sql = buildDatabricksRecommendationsSql('-- cte --');
 
+  assert.match(sql, /FROM `finops`\.`pricing`\.`aws_ec2`/);
+  assert.match(sql, /SkuPriceDetails\['InstanceType'\] = 'r6i\.xlarge'/);
+  assert.match(sql, /PricingCategory = 'Standard'/);
+  assert.match(sql, /SkuPriceDetails\['OperatingSystem'\] = 'Linux'/);
+  assert.doesNotMatch(sql, /ec2_instance_prices AS/);
   assert.match(sql, /resource_id IS NOT NULL/);
   assert.match(sql, /TRIM\(resource_id\) <> ''/);
   assert.match(sql, /service_name IN \('SQL', 'JOBS', 'DLT'\) THEN 1\.35/);
+  assert.match(sql, /MAX_BY\(sku_id, charge_period_start\) AS sku_id/);
   assert.match(sql, /MAX_BY\(instance_type, charge_period_start\) AS instance_type/);
+  assert.match(sql, /AS dbu_quantity_estimate/);
+  assert.match(sql, /AS ec2_dbu_quantity_estimate/);
+  assert.match(sql, /CASE WHEN x_photon = true THEN 2\.0 ELSE 1\.0 END/);
+  assert.match(sql, /AS estimated_ec2_cost_usd/);
+  assert.match(sql, /AS estimated_current_total_cost_usd/);
+  assert.match(sql, /ec2_dbu_quantity_estimate \* ec2_hourly_price_usd/);
   assert.match(sql, /ORDER BY non_serverless_cost_usd \* eligibility_weight DESC/);
   assert.match(sql, /WHERE recommendation_rank <= 25/);
 });
@@ -194,9 +213,15 @@ test('DatabricksOptimizationResponseSchema parses API response shape', () => {
         resourceType: 'SQL Warehouse',
         resourceId: 'warehouse-1',
         resourceName: 'BI Warehouse',
+        skuId: 'ENTERPRISE_SQL_COMPUTE',
         instanceType: '2X-Small',
         totalCostUsd: 800,
         nonServerlessCostUsd: 500,
+        dbuQuantityEstimate: 123.4,
+        ec2ReferenceInstanceType: 'r6i.xlarge',
+        ec2HourlyPriceUsd: 0.333,
+        estimatedEc2CostUsd: 41.09,
+        estimatedCurrentTotalCostUsd: 541.09,
         serverlessRatio: 37.5,
       },
     ],
