@@ -536,6 +536,7 @@ export const en = {
     trustPolicy: 'Trust policy',
     permissionPolicy: 'Permission policy',
     awsCli: 'AWS CLI',
+    stepLabel: 'Step {n}',
     createRoleCli: 'Create IAM role',
     updateTrustPolicyCli: 'Update trust policy',
     putStorageRolePolicyCli: 'Attach the policy for creating Storage Roles',

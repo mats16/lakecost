@@ -490,10 +490,11 @@ function CredentialActions({
 }
 
 function ArtifactBlock({ step, title, body }: { step: number; title: string; body: string }) {
+  const { t } = useI18n();
   return (
     <section className="space-y-2">
       <h3 className="text-sm font-semibold">
-        {`Step ${step}:`} {title}
+        {`${t('credentials.stepLabel', { n: step })}: ${title}`}
       </h3>
       <CodeBlock>{body}</CodeBlock>
     </section>

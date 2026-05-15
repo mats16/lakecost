@@ -68,7 +68,7 @@ export class SqliteClient implements DatabaseClient {
   }
 
   private async bootstrapSchema(): Promise<void> {
-    await this.dropLegacyDataSourcesTable();
+    await this.migrateLegacyDataSourcesTable();
     const statements = [
       `CREATE TABLE IF NOT EXISTS budgets (
         id TEXT PRIMARY KEY,
@@ -184,18 +184,26 @@ export class SqliteClient implements DatabaseClient {
     });
   }
 
-  private async dropLegacyDataSourcesTable(): Promise<void> {
+  /**
+   * Pre-release one-time migration: drops `data_sources` when it still uses the
+   * pre-(provider_name, account_id) schema. Logs the discarded row count so the
+   * dev who hits this can recreate sources from `/integrations` after boot.
+   */
+  private async migrateLegacyDataSourcesTable(): Promise<void> {
     const info = await this.raw.execute('PRAGMA table_info(data_sources)');
     const columns = new Set(info.rows.map((row) => String(row.name)));
     if (columns.size === 0) return;
-    if (
-      columns.has('id') ||
-      columns.has('template_id') ||
-      columns.has('billing_account_id') ||
-      !columns.has('account_id')
-    ) {
-      await this.raw.execute('DROP TABLE data_sources');
-    }
+    const legacyColumns = ['id', 'template_id', 'billing_account_id'].filter((c) => columns.has(c));
+    const isLegacy = legacyColumns.length > 0 || !columns.has('account_id');
+    if (!isLegacy) return;
+    const countResult = await this.raw.execute('SELECT COUNT(*) AS n FROM data_sources');
+    const rowCount = Number(countResult.rows[0]?.n ?? 0);
+    logger.warn(
+      { legacyColumns, rowCount },
+      'Dropping legacy data_sources table (pre-release one-time migration). ' +
+        'Recreate sources from /integrations after boot.',
+    );
+    await this.raw.execute('DROP TABLE data_sources');
   }
 
   private async dropColumnIfExists(table: string, column: string): Promise<void> {

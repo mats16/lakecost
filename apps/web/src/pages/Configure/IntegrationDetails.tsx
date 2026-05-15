@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Alert,
+  AlertDescription,
   Button,
   Card,
   CardContent,
@@ -19,6 +21,7 @@ import {
 import {
   ExternalLink,
   HardDrive,
+  Info,
   KeyRound,
   MoreHorizontal,
   Plug,
@@ -77,6 +80,9 @@ function isRegisteredAwsSource(row: DataSource): boolean {
   );
 }
 
+// `row.accountId` is the AWS account id under the new (provider_name, account_id)
+// PK. We still read `config.awsAccountId` first to keep legacy rows (created
+// before the migration) rendering correctly until they are re-saved.
 function awsAccountIdFor(row: DataSource): string {
   return configString(row.config, 'awsAccountId') || row.accountId;
 }
@@ -547,11 +553,11 @@ function AwsAccountsTable({
 }) {
   const { t } = useI18n();
   const deleteDs = useDeleteDataSource();
+  const deleteErrorMessage = messageOf(deleteDs.error);
 
-  const onRemove = async (row: DataSource) => {
+  const onRemove = (row: DataSource) => {
     if (!window.confirm(t('dataSources.confirmDelete', { name: awsAccountIdFor(row) }))) return;
-    await deleteDs.mutateAsync(toDataSourceKey(row));
-    onRemoved(row);
+    deleteDs.mutate(toDataSourceKey(row), { onSuccess: () => onRemoved(row) });
   };
 
   if (rows.length === 0) {
@@ -565,88 +571,98 @@ function AwsAccountsTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t('dataSources.detail.columns.account')}</TableHead>
-            <TableHead>{t('dataSources.columns.table')}</TableHead>
-            <TableHead>{t('dataSources.detail.columns.costsAggregation')}</TableHead>
-            <TableHead>{t('dataSources.detail.columns.perResourceCosts')}</TableHead>
-            <TableHead>{t('dataSources.detail.columns.lastUpdated')}</TableHead>
-            <TableHead>{t('dataSources.detail.columns.status')}</TableHead>
-            <TableHead className="text-right" aria-label={t('dataSources.columns.actions')} />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={dataSourceKeyString(row)}>
-              <TableCell>
-                <div className="min-w-40 font-medium">{awsAccountIdFor(row)}</div>
-              </TableCell>
-              <TableCell>
-                <span className="text-muted-foreground font-mono text-xs">{row.tableName}</span>
-              </TableCell>
-              <TableCell>
-                {row.enabled
-                  ? t('dataSources.badges.enabled')
-                  : t('dataSources.badges.setupRequired')}
-              </TableCell>
-              <TableCell>-</TableCell>
-              <TableCell>{formatUpdatedAt(row.updatedAt, locale)}</TableCell>
-              <TableCell>
-                {isRegisteredAwsSource(row)
-                  ? t('dataSources.detail.connected')
-                  : t('dataSources.badges.setupRequired')}
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="size-8"
-                    aria-label={t('dataSources.detail.configureAccount', {
-                      account: awsAccountIdFor(row),
-                    })}
-                    onClick={() => onConfigure(row)}
-                  >
-                    <Settings className="size-4" aria-hidden="true" />
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="size-8"
-                        aria-label={t('dataSources.detail.moreActions')}
-                      >
-                        <MoreHorizontal className="size-4" aria-hidden="true" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <a href="https://console.aws.amazon.com/" target="_blank" rel="noreferrer">
-                          {t('dataSources.detail.openInAws')}
-                        </a>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={deleteDs.isPending}
-                        onClick={() => {
-                          void onRemove(row);
-                        }}
-                      >
-                        {t('dataSources.detail.remove')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </TableCell>
+    <div className="grid gap-3">
+      {deleteErrorMessage ? (
+        <Alert variant="destructive">
+          <Info />
+          <AlertDescription>{deleteErrorMessage}</AlertDescription>
+        </Alert>
+      ) : null}
+      <div className="overflow-x-auto rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t('dataSources.detail.columns.account')}</TableHead>
+              <TableHead>{t('dataSources.columns.table')}</TableHead>
+              <TableHead>{t('dataSources.detail.columns.costsAggregation')}</TableHead>
+              <TableHead>{t('dataSources.detail.columns.perResourceCosts')}</TableHead>
+              <TableHead>{t('dataSources.detail.columns.lastUpdated')}</TableHead>
+              <TableHead>{t('dataSources.detail.columns.status')}</TableHead>
+              <TableHead className="text-right" aria-label={t('dataSources.columns.actions')} />
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={dataSourceKeyString(row)}>
+                <TableCell>
+                  <div className="min-w-40 font-medium">{awsAccountIdFor(row)}</div>
+                </TableCell>
+                <TableCell>
+                  <span className="text-muted-foreground font-mono text-xs">{row.tableName}</span>
+                </TableCell>
+                <TableCell>
+                  {row.enabled
+                    ? t('dataSources.badges.enabled')
+                    : t('dataSources.badges.setupRequired')}
+                </TableCell>
+                <TableCell>-</TableCell>
+                <TableCell>{formatUpdatedAt(row.updatedAt, locale)}</TableCell>
+                <TableCell>
+                  {isRegisteredAwsSource(row)
+                    ? t('dataSources.detail.connected')
+                    : t('dataSources.badges.setupRequired')}
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-8"
+                      aria-label={t('dataSources.detail.configureAccount', {
+                        account: awsAccountIdFor(row),
+                      })}
+                      onClick={() => onConfigure(row)}
+                    >
+                      <Settings className="size-4" aria-hidden="true" />
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-8"
+                          aria-label={t('dataSources.detail.moreActions')}
+                        >
+                          <MoreHorizontal className="size-4" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <a
+                            href="https://console.aws.amazon.com/"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {t('dataSources.detail.openInAws')}
+                          </a>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          disabled={deleteDs.isPending}
+                          onClick={() => onRemove(row)}
+                        >
+                          {t('dataSources.detail.remove')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

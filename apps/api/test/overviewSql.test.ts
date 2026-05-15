@@ -13,7 +13,7 @@ function fakeSource(overrides: Partial<DataSource> = {}): DataSource {
   const accountId = overrides.accountId ?? 'default';
   return {
     name: `source-${accountId}`,
-    providerName: 'Databricks',
+    providerName: 'databricks',
     accountId,
     tableName: 'usage',
     focusVersion: null,
@@ -41,8 +41,8 @@ test('requestedSourcesSql generates single SELECT for one source', () => {
 
 test('baseParams includes time range and per-source params', () => {
   const sources = [
-    fakeSource({ providerName: 'Databricks', accountId: 'default' }),
-    fakeSource({ providerName: 'AWS', accountId: '123456789012' }),
+    fakeSource({ providerName: 'databricks', accountId: 'default' }),
+    fakeSource({ providerName: 'aws', accountId: '123456789012' }),
   ];
   const range = { start: '2025-01-01T00:00:00Z', end: '2025-02-01T00:00:00Z' };
   const params = baseParams(sources, range);
@@ -63,14 +63,21 @@ test('baseParams includes time range and per-source params', () => {
 });
 
 test('joinedBillingRowsSql generates CTE with requested + matched', () => {
-  const sources = [fakeSource({ accountId: '123456789012' })];
+  const sources = [
+    fakeSource({ providerName: 'databricks', accountId: 'default' }),
+    fakeSource({ providerName: 'aws', accountId: '123456789012' }),
+  ];
   const sql = joinedBillingRowsSql(sources, '`catalog`.`gold`.`usage_daily`');
 
   assert.ok(sql.includes('WITH requested AS'));
   assert.ok(sql.includes('matched AS'));
   assert.ok(sql.includes('`catalog`.`gold`.`usage_daily`'));
   assert.ok(sql.includes('r.account_id IS NOT NULL'));
+  assert.ok(sql.includes('b.BillingAccountId = r.account_id'));
   assert.ok(sql.includes('r.account_id IS NULL'));
+  assert.ok(
+    sql.includes('LOWER(TRIM(COALESCE(b.ProviderName, r.provider_name))) = r.provider_name'),
+  );
 });
 
 test('buildDailySql preserves all months and groups by 5 dimensions', () => {

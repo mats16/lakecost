@@ -542,6 +542,7 @@ export const ja: Dictionary = {
     trustPolicy: 'Trust policy',
     permissionPolicy: 'Permission policy',
     awsCli: 'AWS CLI',
+    stepLabel: 'ステップ {n}',
     createRoleCli: 'IAM Role を作成',
     updateTrustPolicyCli: 'Trust policy を更新',
     putStorageRolePolicyCli: 'Storage Role 作成用の Policy を追加',

@@ -175,7 +175,7 @@ matched AS (
     )
     OR (
       r.account_id IS NULL
-      AND COALESCE(b.ProviderName, r.provider_name) = r.provider_name
+      AND LOWER(TRIM(COALESCE(b.ProviderName, r.provider_name))) = r.provider_name
     )
 )
 `;
