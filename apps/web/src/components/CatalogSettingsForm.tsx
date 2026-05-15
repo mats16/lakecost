@@ -50,16 +50,19 @@ const MEDALLION_SCHEMA_FIELDS = [
     key: MEDALLION_SCHEMA_SETTING_KEYS.bronze,
     defaultValue: MEDALLION_SCHEMA_DEFAULTS.bronze,
     labelKey: 'settings.medallion.bronzeLabel',
+    helpKey: 'settings.medallion.bronzeHelp',
   },
   {
     key: MEDALLION_SCHEMA_SETTING_KEYS.silver,
     defaultValue: MEDALLION_SCHEMA_DEFAULTS.silver,
     labelKey: 'settings.medallion.silverLabel',
+    helpKey: 'settings.medallion.silverHelp',
   },
   {
     key: MEDALLION_SCHEMA_SETTING_KEYS.gold,
     defaultValue: MEDALLION_SCHEMA_DEFAULTS.gold,
     labelKey: 'settings.medallion.goldLabel',
+    helpKey: 'settings.medallion.goldHelp',
   },
 ] as const;
 
@@ -200,10 +203,10 @@ export function CatalogSettingsForm({ variant = 'page', onSaved }: CatalogSettin
 
       <div className="grid max-w-3xl gap-3 md:grid-cols-[160px_minmax(0,1fr)]">
         <FieldLabel className="md:pt-2">{t('settings.medallion.schemaLabel')}</FieldLabel>
-        <div className="grid gap-3 md:grid-cols-3">
-          {MEDALLION_SCHEMA_FIELDS.map(({ key, defaultValue, labelKey }) => (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {MEDALLION_SCHEMA_FIELDS.map(({ key, defaultValue, labelKey, helpKey }) => (
             <Field key={key}>
-              <FieldLabel>{t(labelKey)}</FieldLabel>
+              <SchemaFieldLabel label={t(labelKey)} help={t(helpKey)} />
               <Input
                 value={medallionSchemas[key]}
                 onChange={(e) => setMedallionSchemas((cur) => ({ ...cur, [key]: e.target.value }))}
@@ -212,6 +215,13 @@ export function CatalogSettingsForm({ variant = 'page', onSaved }: CatalogSettin
               />
             </Field>
           ))}
+          <Field>
+            <SchemaFieldLabel
+              label={t('settings.medallion.pricingLabel')}
+              help={t('settings.medallion.pricingHelp')}
+            />
+            <Input value={PRICING_SCHEMA_DEFAULT} readOnly disabled />
+          </Field>
         </div>
       </div>
 
@@ -314,6 +324,20 @@ export function CatalogSettingsForm({ variant = 'page', onSaved }: CatalogSettin
         <CardContent>{formBody}</CardContent>
       </Card>
     </form>
+  );
+}
+
+function SchemaFieldLabel({ label, help }: { label: string; help: string }) {
+  return (
+    <FieldLabel className="inline-flex items-center gap-1.5">
+      {label}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Info className="text-muted-foreground size-3.5 cursor-help" aria-label={help} />
+        </TooltipTrigger>
+        <TooltipContent>{help}</TooltipContent>
+      </Tooltip>
+    </FieldLabel>
   );
 }
 

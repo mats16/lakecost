@@ -4,3 +4,4 @@ export * from './usageTopWorkloads.sql.js';
 export * from './focusView.sql.js';
 export * from './overviewQueries.js';
 export * from './databricksOptimizationQueries.js';
+export * from './costExploreQueries.js';

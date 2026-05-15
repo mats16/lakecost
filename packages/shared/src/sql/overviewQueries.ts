@@ -250,7 +250,7 @@ ORDER BY tag_coverage_pct DESC, row_count DESC
 `;
 }
 
-function usageTableName(
+export function usageTableName(
   kind: keyof typeof GOLD_USAGE_TABLES,
   settings: Record<string, string | undefined>,
 ): { display: string; sql: string } {
