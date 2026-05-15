@@ -4,11 +4,6 @@ import {
   AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Skeleton,
   Table,
   TableBody,
@@ -51,107 +46,104 @@ export function GovernedTags() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <CardTitle>{t('governedTags.title')}</CardTitle>
-            </div>
-            <CardDescription>{t('governedTags.desc')}</CardDescription>
+    <>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="m-0 text-base font-semibold">{t('governedTags.title')}</h3>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="h-7 gap-1.5 px-3"
-            aria-label={t('governedTags.refresh')}
-            onClick={() => governedTags.refetch()}
-            disabled={governedTags.isFetching || syncTags.isPending}
-          >
-            <RefreshCcw
-              className={governedTags.isFetching ? 'animate-spin' : undefined}
-              aria-hidden="true"
-            />
-            {t('governedTags.refresh')}
-          </Button>
+          <p className="text-muted-foreground mt-1 text-sm">{t('governedTags.desc')}</p>
         </div>
-      </CardHeader>
-      <CardContent>
-        {loadError ? (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.loadFailed')}</AlertTitle>
-            <AlertDescription>{loadError}</AlertDescription>
-          </Alert>
-        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="h-7 gap-1.5 px-3"
+          aria-label={t('governedTags.refresh')}
+          onClick={() => governedTags.refetch()}
+          disabled={governedTags.isFetching || syncTags.isPending}
+        >
+          <RefreshCcw
+            className={governedTags.isFetching ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+          {t('governedTags.refresh')}
+        </Button>
+      </div>
 
-        {syncError ? (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.syncFailed')}</AlertTitle>
-            <AlertDescription>{syncError}</AlertDescription>
-          </Alert>
-        ) : null}
+      {loadError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.loadFailed')}</AlertTitle>
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      ) : null}
 
-        {result ? <SyncResult result={result} /> : null}
+      {syncError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.syncFailed')}</AlertTitle>
+          <AlertDescription>{syncError}</AlertDescription>
+        </Alert>
+      ) : null}
 
-        {governedTags.data?.warnings.length ? (
-          <Alert className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.warningTitle')}</AlertTitle>
-            <AlertDescription>
-              <ul className="m-0 list-disc pl-4">
-                {governedTags.data.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        ) : null}
+      {result ? <SyncResult result={result} /> : null}
 
-        {!hasAwsAccounts && !governedTags.isLoading ? (
-          <Alert className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.noAwsAccountsTitle')}</AlertTitle>
-            <AlertDescription>{t('governedTags.noAwsAccountsDesc')}</AlertDescription>
-          </Alert>
-        ) : null}
+      {governedTags.data?.warnings.length ? (
+        <Alert className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.warningTitle')}</AlertTitle>
+          <AlertDescription>
+            <ul className="m-0 list-disc pl-4">
+              {governedTags.data.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
-        {governedTags.isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('governedTags.columns.tag')}</TableHead>
-                  <TableHead>{t('governedTags.columns.databricks')}</TableHead>
-                  <TableHead>{t('governedTags.columns.aws')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <GovernedTagTableRow
-                    key={row.definition.key}
-                    row={row}
-                    locale={locale}
-                    workspaceUrl={workspaceUrl}
-                    syncPending={syncTags.isPending}
-                    onSyncDatabricks={syncDatabricks}
-                    onSyncAws={syncAws}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {!hasAwsAccounts && !governedTags.isLoading ? (
+        <Alert className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.noAwsAccountsTitle')}</AlertTitle>
+          <AlertDescription>{t('governedTags.noAwsAccountsDesc')}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {governedTags.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('governedTags.columns.tag')}</TableHead>
+                <TableHead>{t('governedTags.columns.databricks')}</TableHead>
+                <TableHead>{t('governedTags.columns.aws')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <GovernedTagTableRow
+                  key={row.definition.key}
+                  row={row}
+                  locale={locale}
+                  workspaceUrl={workspaceUrl}
+                  syncPending={syncTags.isPending}
+                  onSyncDatabricks={syncDatabricks}
+                  onSyncAws={syncAws}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </>
   );
 }
 

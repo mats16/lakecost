@@ -4,8 +4,8 @@ export const ja: Dictionary = {
   appName: 'FinLake',
   nav: {
     finops: 'FinOps Lakehouse',
-    inform: '可視化',
     overview: '概要',
+    costExplore: 'Cost Explore',
     configure: '構成',
     dataSources: 'Integrations',
     credentials: '資格情報',
@@ -17,9 +17,7 @@ export const ja: Dictionary = {
     transformations: '変換パイプライン',
     pricing: '価格表',
     configureCatalog: 'システム管理',
-    explore: '探索',
     genie: 'Genie',
-    query: 'クエリ',
     optimize: '最適化',
     optimizeDatabricks: 'Databricks',
     optimizeAws: 'AWS',
@@ -102,13 +100,13 @@ export const ja: Dictionary = {
   explore: {
     underConstructionTitle: '工事中',
     underConstructionDesc: 'この Explore 画面は準備中です。',
+    costExplore: {
+      title: 'Cost Explore',
+      desc: 'FinLake データセットのコスト要因、配賦、利用トレンドを探索するための画面です。',
+    },
     genie: {
       title: 'Genie',
       desc: '自然言語で質問し、FinOps シグナルを探索するための画面です。',
-    },
-    query: {
-      title: 'クエリ',
-      desc: 'FinLake データセットに対する探索クエリを作成・実行するための画面です。',
     },
   },
   optimize: {

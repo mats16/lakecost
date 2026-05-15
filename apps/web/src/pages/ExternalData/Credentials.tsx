@@ -5,11 +5,6 @@ import {
   AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -117,68 +112,63 @@ export function Credentials() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <CardTitle>{t('credentials.serviceTitle')}</CardTitle>
-              <CardDescription>{t('credentials.desc')}</CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => credentials.refetch()}
-                disabled={credentials.isFetching}
-                aria-label={t('credentials.refresh')}
-                title={t('credentials.refresh')}
-              >
-                <RefreshCcw className={credentials.isFetching ? 'animate-spin' : undefined} />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => {
-                  createCredential.reset();
-                  setServiceCredentialNameEdited(false);
-                  setServiceCredentialName(
-                    normalizedAccountId
-                      ? `finlake_service_credential_${normalizedAccountId}`
-                      : DEFAULT_CREDENTIAL_NAME,
-                  );
-                  setCreateModalOpen(true);
-                }}
-              >
-                {t('credentials.createCredential')}
-              </Button>
-            </div>
+      <section>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="m-0 text-base font-semibold">{t('credentials.serviceTitle')}</h3>
+            <p className="text-muted-foreground mt-1 text-sm">{t('credentials.desc')}</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          {listError ? (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle />
-              <AlertTitle>{t('credentials.loadFailed')}</AlertTitle>
-              <AlertDescription>{listError}</AlertDescription>
-            </Alert>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => credentials.refetch()}
+              disabled={credentials.isFetching}
+              aria-label={t('credentials.refresh')}
+              title={t('credentials.refresh')}
+            >
+              <RefreshCcw className={credentials.isFetching ? 'animate-spin' : undefined} />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                createCredential.reset();
+                setServiceCredentialNameEdited(false);
+                setServiceCredentialName(
+                  normalizedAccountId
+                    ? `finlake_service_credential_${normalizedAccountId}`
+                    : DEFAULT_CREDENTIAL_NAME,
+                );
+                setCreateModalOpen(true);
+              }}
+            >
+              {t('credentials.createCredential')}
+            </Button>
+          </div>
+        </div>
 
-          {credentials.isLoading ? (
-            <LoadingRows />
-          ) : (
-            <ServiceCredentialTable
-              rows={credentials.data?.serviceCredentials ?? []}
-              workspaceUrl={workspaceUrl}
-              onSelect={openSetupModal}
-              onDelete={onDeleteCredential}
-              deletingName={
-                deleteCredential.isPending ? (deleteCredential.variables ?? null) : null
-              }
-            />
-          )}
-        </CardContent>
-      </Card>
+        {listError ? (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle />
+            <AlertTitle>{t('credentials.loadFailed')}</AlertTitle>
+            <AlertDescription>{listError}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {credentials.isLoading ? (
+          <LoadingRows />
+        ) : (
+          <ServiceCredentialTable
+            rows={credentials.data?.serviceCredentials ?? []}
+            workspaceUrl={workspaceUrl}
+            onSelect={openSetupModal}
+            onDelete={onDeleteCredential}
+            deletingName={deleteCredential.isPending ? (deleteCredential.variables ?? null) : null}
+          />
+        )}
+      </section>
 
       <CreateCredentialModal
         open={createModalOpen}
@@ -378,15 +368,12 @@ function ServiceCredentialTable({
 
   if (rows.length === 0) {
     return (
-      <div className="border-border rounded-md border p-6 text-sm">
-        <div className="font-medium">{t('credentials.emptyTitle')}</div>
-        <p className="text-muted-foreground mt-1 mb-0">{t('credentials.emptyDesc')}</p>
-      </div>
+      <p className="text-muted-foreground text-sm italic">{t('credentials.emptyDesc')}</p>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>

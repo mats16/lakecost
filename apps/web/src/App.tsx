@@ -24,12 +24,17 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<Dashboard />} />
+        <Route
+          path="/cost-explore"
+          element={
+            <ExploreStub
+              titleKey="explore.costExplore.title"
+              descKey="explore.costExplore.desc"
+            />
+          }
+        />
         <Route path="/budgets" element={<Budgets />} />
         <Route path="/genie" element={<Genie />} />
-        <Route
-          path="/query"
-          element={<ExploreStub titleKey="explore.query.title" descKey="explore.query.desc" />}
-        />
         <Route path="/optimize" element={<Navigate to="/optimize/databricks" replace />} />
         <Route path="/optimize/databricks" element={<DatabricksOptimize />} />
         <Route

@@ -2,8 +2,8 @@ export const en = {
   appName: 'FinLake',
   nav: {
     finops: 'FinOps Lakehouse',
-    inform: 'Inform',
     overview: 'Overview',
+    costExplore: 'Cost Explore',
     configure: 'Configure',
     dataSources: 'Integrations',
     credentials: 'Credentials',
@@ -15,9 +15,7 @@ export const en = {
     transformations: 'Transformations',
     pricing: 'Pricing',
     configureCatalog: 'Admin',
-    explore: 'Explore',
     genie: 'Genie',
-    query: 'Query',
     optimize: 'Optimize',
     optimizeDatabricks: 'Databricks',
     optimizeAws: 'AWS',
@@ -99,13 +97,13 @@ export const en = {
   explore: {
     underConstructionTitle: 'Under construction',
     underConstructionDesc: 'This Explore surface is being prepared.',
+    costExplore: {
+      title: 'Cost Explore',
+      desc: 'Explore cost drivers, allocation, and usage trends across FinLake datasets.',
+    },
     genie: {
       title: 'Genie',
       desc: 'Ask questions and explore FinOps signals with natural language.',
-    },
-    query: {
-      title: 'Query',
-      desc: 'Build and run exploratory queries against FinLake datasets.',
     },
   },
   optimize: {

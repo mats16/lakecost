@@ -3,11 +3,6 @@ import {
   AlertDescription,
   AlertTitle,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -42,80 +37,79 @@ export function Transformations() {
   const error = messageOf(pipelines.error);
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>{t('configure.transformations.title')}</CardTitle>
-            <CardDescription>{t('configure.transformations.desc')}</CardDescription>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => pipelines.refetch()}
-            disabled={pipelines.isFetching}
-          >
-            <RefreshCcw className={pipelines.isFetching ? 'animate-spin' : undefined} />
-            {t('transformations.refresh')}
-          </Button>
+    <>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="m-0 text-base font-semibold">{t('configure.transformations.title')}</h3>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {t('configure.transformations.desc')}
+          </p>
         </div>
-      </CardHeader>
-      <CardContent>
-        {error ? (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('transformations.loadFailed')}</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => pipelines.refetch()}
+          disabled={pipelines.isFetching}
+        >
+          <RefreshCcw className={pipelines.isFetching ? 'animate-spin' : undefined} />
+          {t('transformations.refresh')}
+        </Button>
+      </div>
 
-        {pipelines.isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+      {error ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('transformations.loadFailed')}</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {pipelines.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : resources.length === 0 ? (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>{t('transformations.emptyTitle')}</EmptyTitle>
+            <EmptyDescription>{t('transformations.emptyDesc')}</EmptyDescription>
+          </EmptyHeader>
+          <Button asChild>
+            <Link to="/integrations">{t('transformations.configureSources')}</Link>
+          </Button>
+        </Empty>
+      ) : (
+        <div className="grid gap-4">
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('transformations.columns.name')}</TableHead>
+                  <TableHead>{t('transformations.columns.type')}</TableHead>
+                  <TableHead>{t('transformations.columns.trigger')}</TableHead>
+                  <TableHead>{t('transformations.columns.lastUpdate')}</TableHead>
+                  <TableHead className="text-right">
+                    {t('transformations.columns.status')}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {resources.map((resource) => (
+                  <ResourceRow
+                    key={`${resource.resourceType}:${resource.resourceId}`}
+                    resource={resource}
+                    locale={locale}
+                  />
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        ) : resources.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>{t('transformations.emptyTitle')}</EmptyTitle>
-              <EmptyDescription>{t('transformations.emptyDesc')}</EmptyDescription>
-            </EmptyHeader>
-            <Button asChild>
-              <Link to="/integrations">{t('transformations.configureSources')}</Link>
-            </Button>
-          </Empty>
-        ) : (
-          <div className="grid gap-4">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('transformations.columns.name')}</TableHead>
-                    <TableHead>{t('transformations.columns.type')}</TableHead>
-                    <TableHead>{t('transformations.columns.trigger')}</TableHead>
-                    <TableHead>{t('transformations.columns.lastUpdate')}</TableHead>
-                    <TableHead className="text-right">
-                      {t('transformations.columns.status')}
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {resources.map((resource) => (
-                    <ResourceRow
-                      key={`${resource.resourceType}:${resource.resourceId}`}
-                      resource={resource}
-                      locale={locale}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+    </>
   );
 }
 
