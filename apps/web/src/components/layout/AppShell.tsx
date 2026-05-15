@@ -61,8 +61,8 @@ export const CONFIGURE: NavGroup = {
   matchPrefix: '/integrations',
   items: [
     { to: '/integrations', labelKey: 'nav.dataSources' },
-    { to: '/tags', labelKey: 'nav.tags' },
     { to: '/transformations', labelKey: 'nav.transformations' },
+    { to: '/tags', labelKey: 'nav.tags' },
     { to: '/credentials', labelKey: 'nav.credentials' },
     { to: '/admin', labelKey: 'nav.configureCatalog' },
   ],
