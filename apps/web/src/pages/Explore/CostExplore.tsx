@@ -132,6 +132,7 @@ interface DailyTableRow extends SummaryRow {
 const DATE_PRESETS: DatePreset[] = ['thisMonth', 'lastMonth', 'last30', 'last90', 'ytd'];
 const AGGREGATIONS: Aggregation[] = ['cumulative', 'daily', 'weekly', 'monthly', 'quarterly'];
 const SERIES_LIMIT = 12;
+const MAX_TABLE_ROWS = 100;
 const OTHER_SERIES = '__other__';
 const OTHER_COLOR = '#6B7280';
 const PALETTE = [
@@ -596,68 +597,78 @@ function SummaryCostTable({
   onFilter: (key: CostExploreFilterKey, mode: 'include' | 'exclude', value: string) => void;
 }) {
   const { t } = useI18n();
+  const visibleRows = rows.slice(0, MAX_TABLE_ROWS);
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {groupBy.length === 0 ? (
-              <TableHead>{t('explore.costExplore.groupColumns.ungrouped')}</TableHead>
-            ) : (
-              groupBy.map((key) => <TableHead key={key}>{groupLabel(key, t)}</TableHead>)
-            )}
-            <TableHead className="text-right">
-              <ColumnWithPeriod
-                label={t('explore.costExplore.columns.currentCost')}
-                period={rangeLabel(range, locale)}
-              />
-            </TableHead>
-            <TableHead className="text-right">
-              <ColumnWithPeriod
-                label={t('explore.costExplore.columns.previousCost')}
-                period={rangeLabel(previousRange, locale)}
-              />
-            </TableHead>
-            <TableHead className="text-right">{t('explore.costExplore.columns.change')}</TableHead>
-            <TableHead className="text-right">{t('explore.costExplore.columns.actions')}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.slice(0, 100).map((row) => (
-            <TableRow key={row.id}>
+    <>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
               {groupBy.length === 0 ? (
-                <TableCell className="font-medium">{row.groupPath}</TableCell>
+                <TableHead>{t('explore.costExplore.groupColumns.ungrouped')}</TableHead>
               ) : (
-                groupBy.map((key, index) => (
-                  <TableCell key={`${row.id}:${key}`} className="min-w-40">
-                    <span className="block truncate" title={row.groupLabels[index]}>
-                      {row.groupLabels[index] ?? row.groupValues[index] ?? ''}
-                    </span>
-                  </TableCell>
-                ))
+                groupBy.map((key) => <TableHead key={key}>{groupLabel(key, t)}</TableHead>)
               )}
-              <TableCell className="text-right font-medium">{formatUsd(row.currentCost)}</TableCell>
-              <TableCell className="text-right">{formatUsd(row.previousCost)}</TableCell>
-              <TableCell
-                className={cn(
-                  'text-right',
-                  row.changePct !== null && row.changePct > 0
-                    ? 'text-destructive'
-                    : 'text-muted-foreground',
-                )}
-              >
-                {changeDisplay === 'percent'
-                  ? formatDelta(row.changePct)
-                  : formatCurrencyDelta(row.currentCost - row.previousCost, formatUsd)}
-              </TableCell>
-              <TableCell className="text-right">
-                <RowActions row={row} groupBy={groupBy} onFilter={onFilter} />
-              </TableCell>
+              <TableHead className="text-right">
+                <ColumnWithPeriod
+                  label={t('explore.costExplore.columns.currentCost')}
+                  period={rangeLabel(range, locale)}
+                />
+              </TableHead>
+              <TableHead className="text-right">
+                <ColumnWithPeriod
+                  label={t('explore.costExplore.columns.previousCost')}
+                  period={rangeLabel(previousRange, locale)}
+                />
+              </TableHead>
+              <TableHead className="text-right">
+                {t('explore.costExplore.columns.change')}
+              </TableHead>
+              <TableHead className="text-right">
+                {t('explore.costExplore.columns.actions')}
+              </TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {visibleRows.map((row) => (
+              <TableRow key={row.id}>
+                {groupBy.length === 0 ? (
+                  <TableCell className="font-medium">{row.groupPath}</TableCell>
+                ) : (
+                  groupBy.map((key, index) => (
+                    <TableCell key={`${row.id}:${key}`} className="min-w-40">
+                      <span className="block truncate" title={row.groupLabels[index]}>
+                        {row.groupLabels[index] ?? row.groupValues[index] ?? ''}
+                      </span>
+                    </TableCell>
+                  ))
+                )}
+                <TableCell className="text-right font-medium">
+                  {formatUsd(row.currentCost)}
+                </TableCell>
+                <TableCell className="text-right">{formatUsd(row.previousCost)}</TableCell>
+                <TableCell
+                  className={cn(
+                    'text-right',
+                    row.changePct !== null && row.changePct > 0
+                      ? 'text-destructive'
+                      : 'text-muted-foreground',
+                  )}
+                >
+                  {changeDisplay === 'percent'
+                    ? formatDelta(row.changePct)
+                    : formatCurrencyDelta(row.currentCost - row.previousCost, formatUsd)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <RowActions row={row} groupBy={groupBy} onFilter={onFilter} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <TruncationNotice total={rows.length} />
+    </>
   );
 }
 
@@ -682,73 +693,87 @@ function DailyCostTable({
 }) {
   const { t } = useI18n();
   const totalCost = rows.reduce((sum, row) => sum + row.currentCost, 0);
+  const visibleRows = rows.slice(0, MAX_TABLE_ROWS);
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="sticky left-0 z-20 w-56 min-w-56 max-w-56 bg-background">
-              {groupBy.length === 0
-                ? t('explore.costExplore.groupColumns.ungrouped')
-                : groupBy.map((key) => groupLabel(key, t)).join(' / ')}
-            </TableHead>
-            <TableHead className="sticky left-56 z-20 w-48 min-w-48 max-w-48 border-r bg-background text-right">
-              <ColumnWithPeriod
-                label={t('explore.costExplore.columns.currentCost')}
-                period={rangeLabel(range, locale)}
-              />
-            </TableHead>
-            {periods.map((period) => (
-              <TableHead key={period.value} className="min-w-32 text-right">
-                {period.label}
+    <>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="sticky left-0 z-20 w-56 min-w-56 max-w-56 bg-background">
+                {groupBy.length === 0
+                  ? t('explore.costExplore.groupColumns.ungrouped')
+                  : groupBy.map((key) => groupLabel(key, t)).join(' / ')}
               </TableHead>
-            ))}
-            <TableHead className="min-w-20 text-right">
-              {t('explore.costExplore.columns.actions')}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          <TableRow className="bg-muted/40">
-            <TableCell className="sticky left-0 z-10 w-56 min-w-56 max-w-56 bg-muted font-semibold">
-              {t('explore.costExplore.rows.totalCosts')}
-            </TableCell>
-            <TableCell className="sticky left-56 z-10 w-48 min-w-48 max-w-48 border-r bg-muted text-right font-semibold">
-              {formatUsd(totalCost)}
-            </TableCell>
-            {periods.map((period) => (
-              <TableCell key={period.value} className="text-right font-semibold">
-                {formatUsd(totals[period.value] ?? 0)}
+              <TableHead className="sticky left-56 z-20 w-48 min-w-48 max-w-48 border-r bg-background text-right">
+                <ColumnWithPeriod
+                  label={t('explore.costExplore.columns.currentCost')}
+                  period={rangeLabel(range, locale)}
+                />
+              </TableHead>
+              {periods.map((period) => (
+                <TableHead key={period.value} className="min-w-32 text-right">
+                  {period.label}
+                </TableHead>
+              ))}
+              <TableHead className="min-w-20 text-right">
+                {t('explore.costExplore.columns.actions')}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow className="bg-muted/40">
+              <TableCell className="sticky left-0 z-10 w-56 min-w-56 max-w-56 bg-muted font-semibold">
+                {t('explore.costExplore.rows.totalCosts')}
               </TableCell>
-            ))}
-            <TableCell />
-          </TableRow>
-          {rows.slice(0, 100).map((row) => (
-            <TableRow key={row.id}>
-              <TableCell className="sticky left-0 z-10 w-56 min-w-56 max-w-56 bg-background font-medium">
-                {groupBy.length === 0 ? (
-                  row.groupPath
-                ) : (
-                  <span className="block truncate" title={row.groupLabels.join(' / ')}>
-                    {row.groupLabels.join(' / ')}
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="sticky left-56 z-10 w-48 min-w-48 max-w-48 border-r bg-background text-right font-medium">
-                {formatUsd(row.currentCost)}
+              <TableCell className="sticky left-56 z-10 w-48 min-w-48 max-w-48 border-r bg-muted text-right font-semibold">
+                {formatUsd(totalCost)}
               </TableCell>
               {periods.map((period) => (
-                <TableCell key={period.value} className="text-right">
-                  {formatUsd(row.byPeriod[period.value] ?? 0)}
+                <TableCell key={period.value} className="text-right font-semibold">
+                  {formatUsd(totals[period.value] ?? 0)}
                 </TableCell>
               ))}
-              <TableCell className="text-right">
-                <RowActions row={row} groupBy={groupBy} onFilter={onFilter} />
-              </TableCell>
+              <TableCell />
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+            {visibleRows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="sticky left-0 z-10 w-56 min-w-56 max-w-56 bg-background font-medium">
+                  {groupBy.length === 0 ? (
+                    row.groupPath
+                  ) : (
+                    <span className="block truncate" title={row.groupLabels.join(' / ')}>
+                      {row.groupLabels.join(' / ')}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="sticky left-56 z-10 w-48 min-w-48 max-w-48 border-r bg-background text-right font-medium">
+                  {formatUsd(row.currentCost)}
+                </TableCell>
+                {periods.map((period) => (
+                  <TableCell key={period.value} className="text-right">
+                    {formatUsd(row.byPeriod[period.value] ?? 0)}
+                  </TableCell>
+                ))}
+                <TableCell className="text-right">
+                  <RowActions row={row} groupBy={groupBy} onFilter={onFilter} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <TruncationNotice total={rows.length} />
+    </>
+  );
+}
+
+function TruncationNotice({ total }: { total: number }) {
+  const { t } = useI18n();
+  if (total <= MAX_TABLE_ROWS) return null;
+  return (
+    <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+      {t('explore.costExplore.rows.truncated', { limit: MAX_TABLE_ROWS, total })}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   type GovernedTagsResponse,
 } from '@finlake/shared';
 import { logger } from '../config/logger.js';
+import { mapWithConcurrency } from '../utils/mapWithConcurrency.js';
 import {
   AWS_BCM_REGION,
   AWS_SERVICE_ROLE_NAME,
@@ -28,6 +29,8 @@ import {
 import { requireAppWorkspaceClient } from './servicePrincipalIdentity.js';
 import { listAccessibleServiceCredentials } from './serviceCredentials.js';
 import { WorkspaceServiceError } from './workspaceClientErrors.js';
+
+const DATABRICKS_TAG_SYNC_CONCURRENCY = 4;
 
 interface TagPolicyLike {
   id?: string;
@@ -136,8 +139,10 @@ async function syncDatabricksGovernedTags(
       awsAccounts: [],
     };
   }
-  const tags: GovernedTagSyncTagResult[] = await Promise.all(
-    definitions.map(async (definition): Promise<GovernedTagSyncTagResult> => {
+  const tags: GovernedTagSyncTagResult[] = await mapWithConcurrency(
+    definitions,
+    DATABRICKS_TAG_SYNC_CONCURRENCY,
+    async (definition): Promise<GovernedTagSyncTagResult> => {
       if (!enabled) {
         try {
           if (!existing.has(definition.key)) {
@@ -175,7 +180,7 @@ async function syncDatabricksGovernedTags(
         logger.error({ err, tagKey: definition.key }, 'Databricks governed tag sync failed');
         return { key: definition.key, status: 'failed', message: (err as Error).message };
       }
-    }),
+    },
   );
 
   return { platform: 'databricks', syncedAt, tags, awsAccounts: [] };

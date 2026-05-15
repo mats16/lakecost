@@ -174,6 +174,8 @@ export const ja: Dictionary = {
       },
       rows: {
         totalCosts: '合計コスト',
+        truncated:
+          '{total} 件中 {limit} 件を表示しています。フィルタや Group By を調整してください。',
       },
       rowActions: {
         include: '{value} を含める',
@@ -794,6 +796,11 @@ export const ja: Dictionary = {
     syncedAwsAccount: '{account} のコスト配分タグを有効化しました。',
     syncedDatabricks:
       'アプリのサービスプリンシパルで Governed Tag Policy を作成、更新、または削除しました。',
+    confirmDeleteTitle: 'Databricks Governed Tag を削除しますか?',
+    confirmDeleteDesc:
+      '「{tag}」の Governed Tag Policy を Unity Catalog から削除します。リソースに付与済みのタグはガバナンス制約を失います。',
+    confirmDeleteAction: 'Governed Tag を削除',
+    confirmDeleteInProgress: '削除中',
     warningTitle: '一部のプラットフォームを確認できませんでした',
     noAwsAccountsTitle: 'AWS アカウントが未連携です',
     noAwsAccountsDesc:

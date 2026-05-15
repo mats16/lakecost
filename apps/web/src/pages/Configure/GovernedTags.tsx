@@ -1,10 +1,20 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   AlertDescription,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   AlertTitle,
   Badge,
   Button,
   Skeleton,
+  Spinner,
   Switch,
   Table,
   TableBody,
@@ -20,6 +30,7 @@ import type {
   GovernedTagSyncResult,
 } from '@finlake/shared';
 import { AlertCircle, CheckCircle2, ExternalLink, Plus, RefreshCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { useGovernedTags, useMe, useSyncGovernedTags } from '../../api/hooks';
 import { useI18n } from '../../i18n';
 import { messageOf } from './utils';
@@ -29,6 +40,19 @@ export function GovernedTags() {
   const governedTags = useGovernedTags();
   const syncTags = useSyncGovernedTags();
   const me = useMe();
+  const lastToastSyncedAt = useRef<string | null>(null);
+
+  useEffect(() => {
+    const result = syncTags.data;
+    if (!result || result.syncedAt === lastToastSyncedAt.current) return;
+    if (result.platform !== 'databricks') return;
+    const failed = result.tags.filter((tag) => tag.status === 'failed').length;
+    if (failed > 0) return;
+    lastToastSyncedAt.current = result.syncedAt;
+    toast.success(t('governedTags.syncDatabricksComplete'), {
+      description: t('governedTags.syncedDatabricks'),
+    });
+  }, [syncTags.data, t]);
 
   const rows = governedTags.data?.items ?? [];
   const awsAccounts = governedTags.data?.awsAccounts ?? [];
@@ -247,9 +271,24 @@ function DatabricksGovernedSwitch({
 }) {
   const { t } = useI18n();
   const isGoverned = status.status === 'governed';
+  const [pendingDelete, setPendingDelete] = useState(false);
   const governedTagUrl = workspaceUrl
     ? `${workspaceUrl.replace(/\/$/, '')}/governance/governed-tags/${encodeURIComponent(tagKey)}`
     : null;
+
+  const handleToggle = (checked: boolean) => {
+    if (!checked && isGoverned) {
+      setPendingDelete(true);
+      return;
+    }
+    onSyncDatabricks(tagKey, checked);
+  };
+
+  const confirmDelete = () => {
+    setPendingDelete(false);
+    onSyncDatabricks(tagKey, false);
+  };
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
@@ -260,7 +299,7 @@ function DatabricksGovernedSwitch({
             isGoverned ? 'governedTags.disableDatabricksTag' : 'governedTags.enableDatabricksTag',
             { tag: tagKey },
           )}
-          onCheckedChange={(checked) => onSyncDatabricks(tagKey, checked)}
+          onCheckedChange={handleToggle}
         />
         {isGoverned && governedTagUrl ? (
           <a href={governedTagUrl} target="_blank" rel="noreferrer" className="w-fit">
@@ -280,6 +319,39 @@ function DatabricksGovernedSwitch({
       {status.message ? (
         <span className="text-muted-foreground text-xs">{status.message}</span>
       ) : null}
+      <AlertDialog
+        open={pendingDelete}
+        onOpenChange={(next) => {
+          if (!next && !syncPending) setPendingDelete(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('governedTags.confirmDeleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('governedTags.confirmDeleteDesc', { tag: tagKey })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={syncPending}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                confirmDelete();
+              }}
+              disabled={syncPending}
+            >
+              {syncPending ? (
+                <>
+                  <Spinner /> {t('governedTags.confirmDeleteInProgress')}
+                </>
+              ) : (
+                t('governedTags.confirmDeleteAction')
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

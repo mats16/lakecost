@@ -171,6 +171,7 @@ export const en = {
       },
       rows: {
         totalCosts: 'Total Costs',
+        truncated: 'Showing {limit} of {total} rows. Refine filters or group by to see more.',
       },
       rowActions: {
         include: 'Include {value}',
@@ -786,6 +787,11 @@ export const en = {
     syncedAwsAccount: 'Cost allocation tags were activated for {account}.',
     syncedDatabricks:
       'Governed tag policies were created, updated, or deleted by the app service principal.',
+    confirmDeleteTitle: 'Delete Databricks governed tag?',
+    confirmDeleteDesc:
+      'This removes the "{tag}" governed tag policy from Unity Catalog. Existing tag assignments on resources will lose their governance constraint.',
+    confirmDeleteAction: 'Delete governed tag',
+    confirmDeleteInProgress: 'Deleting',
     warningTitle: 'Some platforms could not be checked',
     noAwsAccountsTitle: 'No AWS account linked',
     noAwsAccountsDesc:
