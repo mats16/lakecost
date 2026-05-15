@@ -39,12 +39,7 @@ export function Transformations() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="m-0 text-base font-semibold">{t('configure.transformations.title')}</h3>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {t('configure.transformations.desc')}
-          </p>
-        </div>
+        <p className="text-muted-foreground m-0 text-sm">{t('configure.transformations.desc')}</p>
         <Button
           type="button"
           variant="secondary"

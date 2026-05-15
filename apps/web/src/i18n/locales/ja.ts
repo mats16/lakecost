@@ -678,10 +678,12 @@ export const ja: Dictionary = {
   },
   governedTags: {
     title: 'Governed Tags',
-    desc: 'FinLake のコスト配賦タグを管理し、Databricks Governed Tags と Amazon Web Services へ同期します。',
+    desc: '複数のプラットフォームをまたいで、コスト配賦タグを一貫して管理します。',
     refresh: '更新',
     syncDatabricks: 'Databricks に同期',
     syncDatabricksTag: '{tag} を Databricks に同期',
+    enableDatabricksTag: '{tag} の Databricks Governed Tag を作成',
+    disableDatabricksTag: '{tag} の Databricks Governed Tag を削除',
     syncTag: '同期',
     createGovernedTag: '作成',
     syncAws: 'Amazon Web Services に同期',
@@ -705,18 +707,21 @@ export const ja: Dictionary = {
     syncUnknownError: '詳細不明のエラー',
     syncedAwsAccount: '{account} のコスト配分タグを有効化しました。',
     syncedDatabricks:
-      'アプリのサービスプリンシパルで Governed Tag Policy を作成または更新しました。',
+      'アプリのサービスプリンシパルで Governed Tag Policy を作成、更新、または削除しました。',
     warningTitle: '一部のプラットフォームを確認できませんでした',
     noAwsAccountsTitle: 'AWS アカウントが未連携です',
     noAwsAccountsDesc:
       'Amazon Web Services へ同期するには、先に FinLakeServiceRole の Unity Catalog サービス資格情報を作成してください。',
     required: '必須',
     awsNotLinked: 'AWS 未連携',
+    allowedValuesAny: '任意の値',
     columns: {
-      tag: 'タグ',
-      policy: 'ポリシー',
+      tag: '名前',
+      allowedValues: '許可された値',
       databricks: 'Databricks',
+      databricksDetail: 'Governed タグ',
       aws: 'Amazon Web Services',
+      awsDetail: 'コスト配分タグ',
     },
     status: {
       governed: 'Governed',

@@ -37,6 +37,7 @@ export const GovernedTagDatabricksStatusSchema = z.object({
   status: z.enum(['governed', 'missing', 'error']),
   policyId: z.string().min(1).nullable(),
   updatedAt: z.string().nullable(),
+  allowedValues: z.array(z.string().min(1).max(256)),
   message: z.string().nullable(),
 });
 export type GovernedTagDatabricksStatus = z.infer<typeof GovernedTagDatabricksStatusSchema>;
@@ -77,6 +78,7 @@ export const GovernedTagSyncBodySchema = z.discriminatedUnion('platform', [
   z.object({
     platform: z.literal('databricks'),
     tagKey: tagKeyField,
+    enabled: z.boolean().optional(),
   }),
   z.object({
     platform: z.literal('aws'),

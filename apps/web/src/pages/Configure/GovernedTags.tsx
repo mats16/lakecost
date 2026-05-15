@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Skeleton,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -24,7 +25,7 @@ import { useI18n } from '../../i18n';
 import { messageOf } from './utils';
 
 export function GovernedTags() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const governedTags = useGovernedTags();
   const syncTags = useSyncGovernedTags();
   const me = useMe();
@@ -37,8 +38,8 @@ export function GovernedTags() {
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const result = syncTags.data ?? null;
 
-  const syncDatabricks = (tagKey: string) => {
-    syncTags.mutate({ platform: 'databricks', tagKey });
+  const syncDatabricks = (tagKey: string, enabled: boolean) => {
+    syncTags.mutate({ platform: 'databricks', tagKey, enabled });
   };
 
   const syncAws = (tagKey: string, awsAccountId: string) => {
@@ -48,12 +49,7 @@ export function GovernedTags() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="m-0 text-base font-semibold">{t('governedTags.title')}</h3>
-          </div>
-          <p className="text-muted-foreground mt-1 text-sm">{t('governedTags.desc')}</p>
-        </div>
+        <p className="text-muted-foreground m-0 text-sm">{t('governedTags.desc')}</p>
         <Button
           type="button"
           variant="secondary"
@@ -123,8 +119,19 @@ export function GovernedTags() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('governedTags.columns.tag')}</TableHead>
-                <TableHead>{t('governedTags.columns.databricks')}</TableHead>
-                <TableHead>{t('governedTags.columns.aws')}</TableHead>
+                <TableHead>{t('governedTags.columns.allowedValues')}</TableHead>
+                <TableHead>
+                  <ColumnHeader
+                    title={t('governedTags.columns.databricks')}
+                    subtitle={t('governedTags.columns.databricksDetail')}
+                  />
+                </TableHead>
+                <TableHead>
+                  <ColumnHeader
+                    title={t('governedTags.columns.aws')}
+                    subtitle={t('governedTags.columns.awsDetail')}
+                  />
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -132,7 +139,6 @@ export function GovernedTags() {
                 <GovernedTagTableRow
                   key={row.definition.key}
                   row={row}
-                  locale={locale}
                   workspaceUrl={workspaceUrl}
                   syncPending={syncTags.isPending}
                   onSyncDatabricks={syncDatabricks}
@@ -147,19 +153,26 @@ export function GovernedTags() {
   );
 }
 
+function ColumnHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <span className="flex flex-col leading-tight">
+      <span>{title}</span>
+      <span className="text-muted-foreground text-xs font-normal">{subtitle}</span>
+    </span>
+  );
+}
+
 function GovernedTagTableRow({
   row,
-  locale,
   workspaceUrl,
   syncPending,
   onSyncDatabricks,
   onSyncAws,
 }: {
   row: GovernedTagRow;
-  locale: 'en' | 'ja';
   workspaceUrl: string | null;
   syncPending: boolean;
-  onSyncDatabricks: (tagKey: string) => void;
+  onSyncDatabricks: (tagKey: string, enabled: boolean) => void;
   onSyncAws: (tagKey: string, awsAccountId: string) => void;
 }) {
   const { t } = useI18n();
@@ -168,26 +181,17 @@ function GovernedTagTableRow({
       <TableCell className="min-w-52">
         <span className="font-mono text-sm font-medium">{row.definition.key}</span>
       </TableCell>
+      <TableCell className="min-w-52">
+        <AllowedValuesCell status={row.databricks} />
+      </TableCell>
       <TableCell className="min-w-44">
-        {row.databricks.status === 'governed' ? (
-          <DatabricksStatusBadge
-            status={row.databricks}
-            tagKey={row.definition.key}
-            locale={locale}
-            workspaceUrl={workspaceUrl}
-          />
-        ) : (
-          <button
-            type="button"
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-primary px-3 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label={t('governedTags.syncDatabricksTag', { tag: row.definition.key })}
-            disabled={syncPending}
-            onClick={() => onSyncDatabricks(row.definition.key)}
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('governedTags.createGovernedTag')}
-          </button>
-        )}
+        <DatabricksGovernedSwitch
+          status={row.databricks}
+          tagKey={row.definition.key}
+          workspaceUrl={workspaceUrl}
+          syncPending={syncPending}
+          onSyncDatabricks={onSyncDatabricks}
+        />
       </TableCell>
       <TableCell className="min-w-72">
         <div className="flex flex-wrap items-center gap-2">
@@ -210,41 +214,71 @@ function GovernedTagTableRow({
   );
 }
 
-function DatabricksStatusBadge({
+function AllowedValuesCell({ status }: { status: GovernedTagDatabricksStatus }) {
+  const { t } = useI18n();
+  if (status.status !== 'governed' || status.allowedValues.length === 0) {
+    return (
+      <span className="text-muted-foreground text-xs">{t('governedTags.allowedValuesAny')}</span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {status.allowedValues.map((value) => (
+        <Badge key={value} variant="outline" className="font-mono">
+          {value}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function DatabricksGovernedSwitch({
   status,
   tagKey,
-  locale,
   workspaceUrl,
+  syncPending,
+  onSyncDatabricks,
 }: {
   status: GovernedTagDatabricksStatus;
   tagKey: string;
-  locale: 'en' | 'ja';
   workspaceUrl: string | null;
+  syncPending: boolean;
+  onSyncDatabricks: (tagKey: string, enabled: boolean) => void;
 }) {
   const { t } = useI18n();
+  const isGoverned = status.status === 'governed';
   const governedTagUrl = workspaceUrl
     ? `${workspaceUrl.replace(/\/$/, '')}/governance/governed-tags/${encodeURIComponent(tagKey)}`
     : null;
   return (
-    <div className="flex flex-col gap-1">
-      {governedTagUrl ? (
-        <a href={governedTagUrl} target="_blank" rel="noreferrer" className="w-fit">
-          <Badge variant="secondary" className="gap-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {t('governedTags.status.governed')}
-            <ExternalLink className="h-3 w-3" />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Switch
+          checked={isGoverned}
+          disabled={syncPending}
+          aria-label={t(
+            isGoverned ? 'governedTags.disableDatabricksTag' : 'governedTags.enableDatabricksTag',
+            { tag: tagKey },
+          )}
+          onCheckedChange={(checked) => onSyncDatabricks(tagKey, checked)}
+        />
+        {isGoverned && governedTagUrl ? (
+          <a href={governedTagUrl} target="_blank" rel="noreferrer" className="w-fit">
+            <Badge variant="secondary" className="gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {t('governedTags.status.governed')}
+              <ExternalLink className="h-3 w-3" />
+            </Badge>
+          </a>
+        ) : isGoverned || status.status === 'error' ? (
+          <Badge variant={isGoverned ? 'secondary' : 'outline'} className="w-fit gap-1.5">
+            {isGoverned ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+            {t(`governedTags.status.${status.status}`)}
           </Badge>
-        </a>
-      ) : (
-        <Badge variant="secondary" className="w-fit gap-1.5">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          {t('governedTags.status.governed')}
-        </Badge>
-      )}
-      {status.updatedAt ? (
-        <span className="text-muted-foreground text-xs">
-          {formatDate(status.updatedAt, locale)}
-        </span>
+        ) : null}
+      </div>
+      {status.message ? (
+        <span className="text-muted-foreground text-xs">{status.message}</span>
       ) : null}
     </div>
   );
@@ -318,6 +352,7 @@ function SyncResult({ result }: { result: GovernedTagSyncResult }) {
   const failedCount = tagCounts.failed + accountCounts.failed;
   const successCount = tagCounts.synced + accountCounts.synced;
   const isFailure = failedCount > 0;
+  if (result.platform === 'databricks' && !isFailure) return null;
   const isPartialFailure = isFailure && successCount > 0;
   const platformKey = result.platform === 'aws' ? 'Aws' : 'Databricks';
   const titleKey = isFailure
@@ -372,13 +407,4 @@ function countStatuses<T extends { status: string }>(items: T[]) {
     synced: items.filter((item) => item.status === 'synced').length,
     failed: items.filter((item) => item.status === 'failed').length,
   };
-}
-
-function formatDate(value: string, locale: 'en' | 'ja'): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
 }
