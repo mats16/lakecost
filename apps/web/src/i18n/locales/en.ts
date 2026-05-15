@@ -49,7 +49,7 @@ export const en = {
   },
   pricing: {
     title: 'Pricing',
-    desc: 'Create and run AWS pricing data for EC2 and RDS pricing tables.',
+    desc: 'Create and run provider pricing data tables.',
     loadFailed: 'Could not load pricing data status',
     catalogMissingTitle: 'Catalog is not configured',
     catalogMissingDesc: 'Configure the FinLake catalog from Admin before creating pricing data.',
@@ -1080,6 +1080,10 @@ export const en = {
       },
       pricing_aws: {
         description: 'EC2 and RDS list pricing tables',
+        subtitle: '',
+      },
+      pricing_databricks: {
+        description: 'Databricks list and account pricing tables',
         subtitle: '',
       },
     },

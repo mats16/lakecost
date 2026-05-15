@@ -51,7 +51,7 @@ export const ja: Dictionary = {
   },
   pricing: {
     title: '価格表',
-    desc: 'EC2 と RDS の AWS 価格データを作成・実行します。',
+    desc: 'プロバイダーの価格データテーブルを作成・実行します。',
     loadFailed: '価格データの状態を読み込めませんでした',
     catalogMissingTitle: 'カタログが未設定です',
     catalogMissingDesc:
@@ -1088,6 +1088,10 @@ export const ja: Dictionary = {
       },
       pricing_aws: {
         description: 'EC2 と RDS の料金表データ',
+        subtitle: '',
+      },
+      pricing_databricks: {
+        description: 'Databricks の list/account 料金表データ',
         subtitle: '',
       },
     },

@@ -132,6 +132,19 @@ export const PRICING_AWS_TEMPLATE: DataSourceTemplate = {
   },
 };
 
+export const PRICING_DATABRICKS_TEMPLATE: DataSourceTemplate = {
+  id: 'pricing_databricks',
+  name: 'Databricks Pricing',
+  description: '',
+  subtitle: '',
+  focus_version: null,
+  available: true,
+  appearance: {
+    brandColor: '#FF3621',
+  },
+};
+
+
 export function displayNameForRow(row: { name: string }, template: DataSourceTemplate): string {
   const defaultNames = [template.name, ...(LEGACY_TEMPLATE_NAMES[template.id] ?? [])];
   return defaultNames.includes(row.name) ? template.name : row.name;

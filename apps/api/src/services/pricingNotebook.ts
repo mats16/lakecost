@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { settingsToRecord, type DatabaseClient } from '@finlake/db';
 import {
+  DATABRICKS_ACCOUNT_PRICES_TABLE_DEFAULT,
+  DATABRICKS_LIST_PRICES_TABLE_DEFAULT,
   AWS_EC2_PRICING_TABLE_DEFAULT,
   AWS_RDS_PRICING_TABLE_DEFAULT,
   DOWNLOADS_VOLUME_DEFAULT,
@@ -11,8 +13,10 @@ import {
   quoteIdent,
   unquotedFqn,
   type AwsPricingId,
+  type DatabricksPricingId,
   type Env,
   type PricingData,
+  type PricingId,
   type PricingNotebookDeleteResult,
   type PricingNotebookListResponse,
   type PricingNotebookState,
@@ -28,17 +32,35 @@ import {
 } from './statementExecution.js';
 import { z } from 'zod';
 
-const PRICING_NOTEBOOK_NAME = 'pricing_ingest_aws.ipynb';
+const AWS_PRICING_NOTEBOOK_NAME = 'pricing_ingest_aws.ipynb';
+const DATABRICKS_PRICING_NOTEBOOK_NAME = 'pricing_ingest_databricks.ipynb';
 const AWS_PROVIDER = 'AWS';
+const DATABRICKS_PROVIDER = 'Databricks';
 
-interface AwsPricingService {
+interface BasePricingService {
   service: string;
-  id: AwsPricingId;
+  id: PricingId;
+  provider: string;
   tableName: string;
   rawTableName: string;
-  priceListFile: string;
+  notebookName: string;
   source: string;
 }
+
+interface AwsPricingService extends BasePricingService {
+  id: AwsPricingId;
+  provider: typeof AWS_PROVIDER;
+  kind: 'aws';
+  priceListFile: string;
+}
+
+interface DatabricksPricingService extends BasePricingService {
+  id: DatabricksPricingId;
+  provider: typeof DATABRICKS_PROVIDER;
+  kind: 'databricks';
+}
+
+export type PricingService = AwsPricingService | DatabricksPricingService;
 
 function defineAwsPricingService(
   service: string,
@@ -48,37 +70,79 @@ function defineAwsPricingService(
   return {
     service,
     id,
+    provider: AWS_PROVIDER,
     tableName,
     rawTableName: `pricing_${id}`,
+    notebookName: AWS_PRICING_NOTEBOOK_NAME,
+    kind: 'aws',
     priceListFile: `pricing_${id}.csv`,
     source: `https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/${service}/current/index.csv`,
   };
 }
 
-const AWS_PRICING_SERVICES: readonly AwsPricingService[] = [
+const PRICING_SERVICES: readonly PricingService[] = [
   defineAwsPricingService('AmazonEC2', 'aws_ec2', AWS_EC2_PRICING_TABLE_DEFAULT),
   defineAwsPricingService('AmazonRDS', 'aws_rds', AWS_RDS_PRICING_TABLE_DEFAULT),
+  defineDatabricksPricingService(
+    'List Prices',
+    'databricks_list_prices',
+    DATABRICKS_LIST_PRICES_TABLE_DEFAULT,
+    'system.billing.list_prices',
+  ),
+  defineDatabricksPricingService(
+    'Account Prices',
+    'databricks_account_prices',
+    DATABRICKS_ACCOUNT_PRICES_TABLE_DEFAULT,
+    'system.billing.account_prices',
+  ),
 ];
 
-const PRICING_NOTEBOOK_SOURCE_URL = new URL(
-  '../notebooks/pricing_ingest_aws.ipynb',
-  import.meta.url,
-);
-
-let cachedNotebookContent: string | null = null;
-async function readPricingNotebook(): Promise<string> {
-  cachedNotebookContent ??= await readFile(PRICING_NOTEBOOK_SOURCE_URL, 'utf8');
-  return cachedNotebookContent;
+function defineDatabricksPricingService(
+  service: string,
+  id: DatabricksPricingId,
+  tableName: string,
+  source: string,
+): DatabricksPricingService {
+  return {
+    id,
+    provider: DATABRICKS_PROVIDER,
+    service,
+    tableName,
+    rawTableName: `pricing_${id}`,
+    notebookName: DATABRICKS_PRICING_NOTEBOOK_NAME,
+    source,
+    kind: 'databricks',
+  };
 }
 
-export function pricingNotebookWorkspacePath(appName: string): string {
-  return `/Workspace/Shared/${appName}/pricing/${PRICING_NOTEBOOK_NAME}`;
+const cachedNotebookContent = new Map<string, string>();
+async function readPricingNotebook(notebookName: string): Promise<string> {
+  const cached = cachedNotebookContent.get(notebookName);
+  if (cached) return cached;
+  const content = await readFile(new URL(`../notebooks/${notebookName}`, import.meta.url), 'utf8');
+  cachedNotebookContent.set(notebookName, content);
+  return content;
+}
+
+export function pricingNotebookWorkspacePath(
+  appName: string,
+  notebookName = AWS_PRICING_NOTEBOOK_NAME,
+): string {
+  return `/Workspace/Shared/${appName}/pricing/${notebookName}`;
+}
+
+export function pricingServiceById(id: string): PricingService {
+  const service = PRICING_SERVICES.find((candidate) => candidate.id === id);
+  if (!service) {
+    throw new DataSourceSetupError(`Unsupported pricing service id: ${id}`, 400);
+  }
+  return service;
 }
 
 export function awsPricingServiceById(id: string): AwsPricingService {
-  const service = AWS_PRICING_SERVICES.find((candidate) => candidate.id === id);
-  if (!service) {
-    throw new DataSourceSetupError(`Unsupported pricing service id: ${id}`, 400);
+  const service = pricingServiceById(id);
+  if (service.kind !== 'aws') {
+    throw new DataSourceSetupError(`Unsupported AWS pricing service id: ${id}`, 400);
   }
   return service;
 }
@@ -94,7 +158,7 @@ function pricingDownloadFilePath(
 function pricingRawTableFqn(
   catalog: string,
   bronzeSchema: string,
-  service: AwsPricingService,
+  service: PricingService,
 ): string {
   return unquotedFqn(catalog, bronzeSchema, service.rawTableName);
 }
@@ -102,8 +166,9 @@ function pricingRawTableFqn(
 export async function uploadPricingNotebook(
   wc: WorkspaceClient,
   workspacePath: string,
+  notebookName = AWS_PRICING_NOTEBOOK_NAME,
 ): Promise<string> {
-  const content = await readPricingNotebook();
+  const content = await readPricingNotebook(notebookName);
   await uploadPipelineFile(wc, workspacePath, content, { format: 'JUPYTER', language: 'PYTHON' });
   return workspacePath;
 }
@@ -114,13 +179,13 @@ export async function pricingNotebookState(
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookListResponse> {
   const pricingRows = await Promise.all(
-    AWS_PRICING_SERVICES.map((service) => db.repos.pricingData.get(AWS_PROVIDER, service.service)),
+    PRICING_SERVICES.map((service) => db.repos.pricingData.get(service.provider, service.service)),
   );
   const resolvedRows = await Promise.all(
     pricingRows.map((row) => syncActivePricingRun(env, db, row ?? null, deps)),
   );
   return {
-    items: AWS_PRICING_SERVICES.map((service, index) =>
+    items: PRICING_SERVICES.map((service, index) =>
       stateFromPricingData(resolvedRows[index] ?? null, service),
     ),
   };
@@ -132,15 +197,19 @@ export async function pricingNotebookStateById(
   id: string,
   deps: PricingNotebookDeps = {},
 ): Promise<PricingNotebookState> {
-  const service = awsPricingServiceById(id);
-  const pricingRow = await db.repos.pricingData.get(AWS_PROVIDER, service.service);
+  const service = pricingServiceById(id);
+  const pricingRow = await db.repos.pricingData.get(service.provider, service.service);
   const resolvedRow = await syncActivePricingRun(env, db, pricingRow, deps);
   return stateFromPricingData(resolvedRow, service);
 }
 
 interface PricingNotebookDeps {
   workspaceClient?: WorkspaceClient;
-  uploadNotebook?: (wc: WorkspaceClient, workspacePath: string) => Promise<string>;
+  uploadNotebook?: (
+    wc: WorkspaceClient,
+    workspacePath: string,
+    notebookName?: string,
+  ) => Promise<string>;
 }
 
 export async function deletePricingNotebookData(
@@ -150,8 +219,8 @@ export async function deletePricingNotebookData(
   id: string,
   deps: { executor?: StatementExecutor } = {},
 ): Promise<PricingNotebookDeleteResult> {
-  const service = awsPricingServiceById(id);
-  const pricingData = await db.repos.pricingData.get(AWS_PROVIDER, service.service);
+  const service = pricingServiceById(id);
+  const pricingData = await db.repos.pricingData.getById(service.id);
   if (!pricingData) {
     throw new DataSourceSetupError(`Pricing data is not configured for ${id}.`, 404);
   }
@@ -189,10 +258,10 @@ async function upsertPricingNotebook(
   id: string,
   deps: PricingNotebookDeps,
 ): Promise<PricingData> {
-  const service = awsPricingServiceById(id);
+  const service = pricingServiceById(id);
   const [settings, current] = await Promise.all([
     db.repos.appSettings.list().then(settingsToRecord),
-    db.repos.pricingData.get(AWS_PROVIDER, service.service),
+    db.repos.pricingData.get(service.provider, service.service),
   ]);
   const catalog = catalogFromSettings(settings);
   if (!catalog) {
@@ -202,7 +271,8 @@ async function upsertPricingNotebook(
   const targetTable =
     current?.table ?? unquotedFqn(catalog, PRICING_SCHEMA_DEFAULT, service.tableName);
   const rawDataPath =
-    current?.rawDataPath ?? pricingDownloadFilePath(catalog, medallion.bronze, service);
+    current?.rawDataPath ??
+    (service.kind === 'aws' ? pricingDownloadFilePath(catalog, medallion.bronze, service) : null);
   const rawDataTable =
     current?.rawDataTable ?? pricingRawTableFqn(catalog, medallion.bronze, service);
   const appName = env.DATABRICKS_APP_NAME?.trim();
@@ -219,17 +289,18 @@ async function upsertPricingNotebook(
   if (!targetTable) {
     throw new DataSourceSetupError('Pricing target table could not be resolved.', 500);
   }
-  if (!rawDataPath) {
+  if (service.kind === 'aws' && !rawDataPath) {
     throw new DataSourceSetupError('Raw data path could not be resolved.', 500);
   }
   if (!rawDataTable) {
     throw new DataSourceSetupError('Raw data table could not be resolved.', 500);
   }
 
-  const desiredWorkspacePath = pricingNotebookWorkspacePath(appName);
+  const desiredWorkspacePath = pricingNotebookWorkspacePath(appName, service.notebookName);
   const notebookWorkspacePath = await (deps.uploadNotebook ?? uploadPricingNotebook)(
     wc,
     desiredWorkspacePath,
+    service.notebookName,
   );
   const notebookStatus = await wc.workspace.getStatus({ path: notebookWorkspacePath });
   const notebookId =
@@ -238,7 +309,7 @@ async function upsertPricingNotebook(
       : String(notebookStatus.object_id);
   return db.repos.pricingData.upsert({
     id: service.id,
-    provider: AWS_PROVIDER,
+    provider: service.provider,
     service: service.service,
     table: targetTable,
     rawDataTable,
@@ -268,23 +339,25 @@ export async function ensurePricingDataForId(
 }
 
 function isRunnablePricingData(pricingData: PricingData | null): pricingData is PricingData {
+  if (!pricingData?.notebookPath || !pricingData.table) {
+    return false;
+  }
+  const service = PRICING_SERVICES.find((candidate) => candidate.id === pricingData.id);
+  if (!service) return false;
   return Boolean(
-    pricingData?.notebookPath &&
-    pricingData.notebookPath.endsWith(`/${PRICING_NOTEBOOK_NAME}`) &&
-    pricingData.rawDataPath &&
-    pricingData.rawDataTable &&
-    pricingData.table &&
+    pricingData.notebookPath.endsWith(`/${service.notebookName}`) &&
+    (service.kind !== 'aws' || (pricingData.rawDataPath && pricingData.rawDataTable)) &&
     typeof pricingData.metadata.source === 'string',
   );
 }
 
 function stateFromPricingData(
   pricingData: Awaited<ReturnType<DatabaseClient['repos']['pricingData']['get']>>,
-  service: AwsPricingService,
+  service: PricingService,
 ): PricingNotebookState {
   return {
     id: pricingData?.id ?? service.id,
-    provider: pricingData?.provider ?? AWS_PROVIDER,
+    provider: pricingData?.provider ?? service.provider,
     service: pricingData?.service ?? service.service,
     table: pricingData?.table ?? null,
     rawDataTable: pricingData?.rawDataTable ?? null,

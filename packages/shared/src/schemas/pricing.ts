@@ -61,14 +61,21 @@ export type PricingNotebookListResponse = z.infer<typeof PricingNotebookListResp
 
 export const AWS_PRICING_IDS = ['aws_ec2', 'aws_rds'] as const;
 export type AwsPricingId = (typeof AWS_PRICING_IDS)[number];
+export const DATABRICKS_PRICING_IDS = [
+  'databricks_list_prices',
+  'databricks_account_prices',
+] as const;
+export type DatabricksPricingId = (typeof DATABRICKS_PRICING_IDS)[number];
+export const PRICING_IDS = [...AWS_PRICING_IDS, ...DATABRICKS_PRICING_IDS] as const;
+export type PricingId = (typeof PRICING_IDS)[number];
 
 export const PricingNotebookSetupInputSchema = z.object({
-  id: z.enum(AWS_PRICING_IDS),
+  id: z.enum(PRICING_IDS),
 });
 export type PricingNotebookSetupInput = z.infer<typeof PricingNotebookSetupInputSchema>;
 
 export const PricingNotebookDeleteResultSchema = z.object({
-  id: z.enum(AWS_PRICING_IDS),
+  id: z.enum(PRICING_IDS),
   table: z.string().nullable(),
   droppedTable: z.boolean(),
   deletedPricingData: z.boolean(),
@@ -86,7 +93,7 @@ export const PricingNotebookRunResultSchema = z.object({
 export type PricingNotebookRunResult = z.infer<typeof PricingNotebookRunResultSchema>;
 
 export const JobRunSubmitInputSchema = z.object({
-  id: z.enum(AWS_PRICING_IDS),
+  id: z.enum(PRICING_IDS),
 });
 export type JobRunSubmitInput = z.infer<typeof JobRunSubmitInputSchema>;
 

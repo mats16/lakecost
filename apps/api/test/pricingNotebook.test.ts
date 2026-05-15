@@ -20,14 +20,22 @@ import type { WorkspaceClient } from '../src/services/statementExecution.js';
 const UPDATED_AT = '2026-05-14T00:00:00.000Z';
 const APP_NAME = 'finlake-dev';
 const PRICING_NOTEBOOK_WORKSPACE_PATH = pricingNotebookWorkspacePath(APP_NAME);
+const DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH = pricingNotebookWorkspacePath(
+  APP_NAME,
+  'pricing_ingest_databricks.ipynb',
+);
 const EC2_SOURCE_URL =
   'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.csv';
 const RDS_SOURCE_URL =
   'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/current/index.csv';
+const DATABRICKS_LIST_PRICES_SOURCE_TABLE = 'system.billing.list_prices';
+const DATABRICKS_ACCOUNT_PRICES_SOURCE_TABLE = 'system.billing.account_prices';
 const EC2_VOLUME_PATH = '/Volumes/finops/ingest/downloads/pricing_aws_ec2.csv';
 const RDS_VOLUME_PATH = '/Volumes/finops/ingest/downloads/pricing_aws_rds.csv';
 const EC2_RAW_TABLE = 'finops.ingest.pricing_aws_ec2';
 const RDS_RAW_TABLE = 'finops.ingest.pricing_aws_rds';
+const DATABRICKS_LIST_PRICES_RAW_TABLE = 'finops.ingest.pricing_databricks_list_prices';
+const DATABRICKS_ACCOUNT_PRICES_RAW_TABLE = 'finops.ingest.pricing_databricks_account_prices';
 
 type PricingDataInput = Omit<
   PricingData,
@@ -119,17 +127,21 @@ test('pricingNotebookWorkspacePath stores pricing notebooks under the pricing di
     pricingNotebookWorkspacePath(APP_NAME),
     `/Workspace/Shared/${APP_NAME}/pricing/pricing_ingest_aws.ipynb`,
   );
+  assert.equal(
+    pricingNotebookWorkspacePath(APP_NAME, 'pricing_ingest_databricks.ipynb'),
+    `/Workspace/Shared/${APP_NAME}/pricing/pricing_ingest_databricks.ipynb`,
+  );
 });
 
-test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
+test('pricingNotebookState returns AWS and Databricks defaults', async () => {
   const fake = createFakeDb();
 
   const result = await pricingNotebookState(fake.db, {} as Env);
 
-  assert.equal(result.items.length, 2);
+  assert.equal(result.items.length, 4);
   assert.deepEqual(
     result.items.map((item) => item.id),
-    ['aws_ec2', 'aws_rds'],
+    ['aws_ec2', 'aws_rds', 'databricks_list_prices', 'databricks_account_prices'],
   );
   assert.equal(result.items[0]?.service, 'AmazonEC2');
   assert.equal(result.items[0]?.table, null);
@@ -145,6 +157,22 @@ test('pricingNotebookState returns AWS EC2 and RDS defaults', async () => {
   assert.equal(result.items[1]?.runStatus, 'not_started');
   assert.equal(result.items[1]?.runId, null);
   assert.deepEqual(result.items[1]?.metadata, { source: RDS_SOURCE_URL });
+  assert.equal(result.items[2]?.provider, 'Databricks');
+  assert.equal(result.items[2]?.service, 'List Prices');
+  assert.equal(result.items[2]?.table, null);
+  assert.equal(result.items[2]?.rawDataTable, null);
+  assert.equal(result.items[2]?.rawDataPath, null);
+  assert.equal(result.items[2]?.runStatus, 'not_started');
+  assert.equal(result.items[2]?.runId, null);
+  assert.deepEqual(result.items[2]?.metadata, { source: DATABRICKS_LIST_PRICES_SOURCE_TABLE });
+  assert.equal(result.items[3]?.provider, 'Databricks');
+  assert.equal(result.items[3]?.service, 'Account Prices');
+  assert.equal(result.items[3]?.table, null);
+  assert.equal(result.items[3]?.rawDataTable, null);
+  assert.equal(result.items[3]?.rawDataPath, null);
+  assert.equal(result.items[3]?.runStatus, 'not_started');
+  assert.equal(result.items[3]?.runId, null);
+  assert.deepEqual(result.items[3]?.metadata, { source: DATABRICKS_ACCOUNT_PRICES_SOURCE_TABLE });
 });
 
 test('ensurePricingDataForId stores AWS EC2 pricing metadata with service principal client', async () => {
@@ -248,6 +276,90 @@ test('ensurePricingDataForId stores AWS RDS pricing metadata in pricing_data', a
     source: RDS_SOURCE_URL,
   });
   assert.equal(fake.stored('aws_ec2'), null);
+});
+
+test('ensurePricingDataForId stores Databricks list pricing metadata in pricing_data', async () => {
+  const fake = createFakeDb();
+  const workspaceClient = {
+    workspace: {
+      async getStatus({ path }: { path: string }) {
+        assert.equal(path, DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH);
+        return { object_id: 98765 };
+      },
+    },
+  } as unknown as WorkspaceClient;
+
+  const result = await ensurePricingDataForId(
+    {
+      DATABRICKS_APP_NAME: APP_NAME,
+      DATABRICKS_HOST: 'https://example.cloud.databricks.com',
+    } as Env,
+    fake.db,
+    'databricks_list_prices',
+    {
+      workspaceClient,
+      async uploadNotebook(wc, workspacePath, notebookName) {
+        assert.equal(wc, workspaceClient);
+        assert.equal(workspacePath, DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH);
+        assert.equal(notebookName, 'pricing_ingest_databricks.ipynb');
+        return workspacePath;
+      },
+    },
+  );
+
+  assert.equal(result.provider, 'Databricks');
+  assert.equal(result.service, 'List Prices');
+  assert.equal(result.id, 'databricks_list_prices');
+  assert.equal(result.table, 'finops.pricing.databricks_list_prices');
+  assert.equal(result.rawDataTable, DATABRICKS_LIST_PRICES_RAW_TABLE);
+  assert.equal(result.rawDataPath, null);
+  assert.equal(result.notebookPath, DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH);
+  assert.equal(result.notebookId, '98765');
+  assert.deepEqual(result.metadata, {
+    source: DATABRICKS_LIST_PRICES_SOURCE_TABLE,
+  });
+});
+
+test('ensurePricingDataForId stores Databricks account pricing metadata in pricing_data', async () => {
+  const fake = createFakeDb();
+  const workspaceClient = {
+    workspace: {
+      async getStatus({ path }: { path: string }) {
+        assert.equal(path, DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH);
+        return { object_id: 98766 };
+      },
+    },
+  } as unknown as WorkspaceClient;
+
+  const result = await ensurePricingDataForId(
+    {
+      DATABRICKS_APP_NAME: APP_NAME,
+      DATABRICKS_HOST: 'https://example.cloud.databricks.com',
+    } as Env,
+    fake.db,
+    'databricks_account_prices',
+    {
+      workspaceClient,
+      async uploadNotebook(wc, workspacePath, notebookName) {
+        assert.equal(wc, workspaceClient);
+        assert.equal(workspacePath, DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH);
+        assert.equal(notebookName, 'pricing_ingest_databricks.ipynb');
+        return workspacePath;
+      },
+    },
+  );
+
+  assert.equal(result.provider, 'Databricks');
+  assert.equal(result.service, 'Account Prices');
+  assert.equal(result.id, 'databricks_account_prices');
+  assert.equal(result.table, 'finops.pricing.databricks_account_prices');
+  assert.equal(result.rawDataTable, DATABRICKS_ACCOUNT_PRICES_RAW_TABLE);
+  assert.equal(result.rawDataPath, null);
+  assert.equal(result.notebookPath, DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH);
+  assert.equal(result.notebookId, '98766');
+  assert.deepEqual(result.metadata, {
+    source: DATABRICKS_ACCOUNT_PRICES_SOURCE_TABLE,
+  });
 });
 
 test('getDatabricksRunLink resolves job run URL on demand', async () => {
@@ -364,6 +476,46 @@ test('deletePricingNotebookData drops Unity Catalog table and deletes pricing_da
   assert.equal(fake.stored('aws_ec2'), null);
 });
 
+test('deletePricingNotebookData drops Databricks pricing table and deletes pricing_data record', async () => {
+  const fake = createFakeDb([
+    {
+      provider: 'Databricks',
+      service: 'Account Prices',
+      id: 'databricks_account_prices',
+      table: 'finops.pricing.databricks_account_prices',
+      rawDataTable: DATABRICKS_ACCOUNT_PRICES_RAW_TABLE,
+      rawDataPath: null,
+      notebookPath: DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH,
+      notebookId: '98765',
+      metadata: { source: DATABRICKS_ACCOUNT_PRICES_SOURCE_TABLE },
+    },
+  ]);
+  let sqlText: string | null = null;
+  const executor = {
+    async run(query: string) {
+      sqlText = query;
+      return [];
+    },
+  };
+
+  const result = await deletePricingNotebookData(
+    { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
+    fake.db,
+    'obo-token',
+    'databricks_account_prices',
+    { executor: executor as never },
+  );
+
+  assert.equal(sqlText, 'DROP TABLE IF EXISTS `finops`.`pricing`.`databricks_account_prices`');
+  assert.deepEqual(result, {
+    id: 'databricks_account_prices',
+    table: 'finops.pricing.databricks_account_prices',
+    droppedTable: true,
+    deletedPricingData: true,
+  });
+  assert.equal(fake.stored('databricks_account_prices'), null);
+});
+
 test('deletePricingNotebookData requires OBO token when dropping Unity Catalog table', async () => {
   const fake = createFakeDb([
     {
@@ -467,6 +619,80 @@ test('submitManagedNotebookRunById submits an RDS run with service-specific para
             raw_table: RDS_RAW_TABLE,
             target_table: 'finops.pricing.aws_rds',
             aws_service_code: 'AmazonRDS',
+          },
+        },
+      },
+    ],
+  });
+});
+
+test('submitManagedNotebookRunById submits a Databricks account prices run with Databricks parameters', async () => {
+  const fake = createFakeDb([
+    {
+      provider: 'Databricks',
+      service: 'Account Prices',
+      id: 'databricks_account_prices',
+      table: 'finops.pricing.databricks_account_prices',
+      rawDataTable: DATABRICKS_ACCOUNT_PRICES_RAW_TABLE,
+      rawDataPath: null,
+      notebookPath: DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH,
+      notebookId: '98765',
+      metadata: { source: DATABRICKS_ACCOUNT_PRICES_SOURCE_TABLE },
+      updatedAt: UPDATED_AT,
+    },
+  ]);
+  let payload: unknown;
+  const workspaceClient = {
+    apiClient: {
+      async request(options: { path: string; method: string; payload?: unknown }) {
+        assert.equal(options.path, '/api/2.2/jobs/runs/submit');
+        assert.equal(options.method, 'POST');
+        payload = options.payload;
+        return { run_id: 67891 };
+      },
+    },
+  } as unknown as WorkspaceClient;
+
+  const result = await submitManagedNotebookRunById(
+    { DATABRICKS_HOST: 'https://example.cloud.databricks.com' } as Env,
+    fake.db,
+    'databricks_account_prices',
+    { workspaceClient },
+  );
+
+  assert.deepEqual(result, {
+    provider: 'Databricks',
+    service: 'Account Prices',
+    id: 'databricks_account_prices',
+    runId: 67891,
+    runStatus: 'pending',
+    runUrl: null,
+  });
+  assert.equal(fake.stored('databricks_account_prices')?.runId, 67891);
+  assert.equal(fake.stored('databricks_account_prices')?.runStatus, 'pending');
+  const submitted = payload as { run_name?: string };
+  assert.match(submitted.run_name ?? '', /^databricks_account_prices-\d+$/);
+  assert.deepEqual(payload, {
+    run_name: submitted.run_name,
+    performance_target: 'PERFORMANCE_OPTIMIZED',
+    environments: [
+      {
+        environment_key: 'pricing_serverless',
+        spec: {
+          environment_version: '4',
+        },
+      },
+    ],
+    tasks: [
+      {
+        task_key: 'databricks_account_prices',
+        environment_key: 'pricing_serverless',
+        notebook_task: {
+          notebook_path: DATABRICKS_PRICING_NOTEBOOK_WORKSPACE_PATH,
+          source: 'WORKSPACE',
+          base_parameters: {
+            source_table: DATABRICKS_ACCOUNT_PRICES_SOURCE_TABLE,
+            target_table: 'finops.pricing.databricks_account_prices',
           },
         },
       },

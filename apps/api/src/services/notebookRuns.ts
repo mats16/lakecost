@@ -7,7 +7,7 @@ import type {
 } from '@finlake/shared';
 import { getDatabricksRunSnapshot } from './databricksRunStatus.js';
 import { DataSourceSetupError } from './dataSourceErrors.js';
-import { ensurePricingDataForId } from './pricingNotebook.js';
+import { ensurePricingDataForId, pricingServiceById } from './pricingNotebook.js';
 import { buildAppWorkspaceClient, type WorkspaceClient } from './statementExecution.js';
 
 interface NotebookRunDeps {
@@ -51,18 +51,33 @@ async function submitPricingNotebookRun(
   if (!pricingData.notebookPath) {
     throw new DataSourceSetupError('Notebook path is not configured.', 400);
   }
-  if (!pricingData.rawDataPath) {
-    throw new DataSourceSetupError('Notebook volume_path parameter is not configured.', 400);
-  }
-  if (!pricingData.rawDataTable) {
+
+  const service = pricingServiceById(pricingData.id);
+  if (service.kind === 'aws' && !pricingData.rawDataTable) {
     throw new DataSourceSetupError('Notebook raw_table parameter is not configured.', 400);
   }
-
-  const sourceUrl =
-    typeof pricingData.metadata.source === 'string' ? pricingData.metadata.source : null;
-  if (!sourceUrl) {
-    throw new DataSourceSetupError('Notebook source_url parameter is not configured.', 400);
+  if (service.kind === 'aws' && !pricingData.rawDataPath) {
+    throw new DataSourceSetupError('Notebook volume_path parameter is not configured.', 400);
   }
+
+  const source =
+    typeof pricingData.metadata.source === 'string' ? pricingData.metadata.source : null;
+  if (!source) {
+    throw new DataSourceSetupError('Notebook source parameter is not configured.', 400);
+  }
+  const baseParameters =
+    service.kind === 'aws'
+      ? {
+          source_url: source,
+          volume_path: pricingData.rawDataPath!,
+          raw_table: pricingData.rawDataTable!,
+          target_table: pricingData.table,
+          aws_service_code: pricingData.service,
+        }
+      : {
+          source_table: source,
+          target_table: pricingData.table,
+        };
 
   let response: JobsSubmitResponse;
   try {
@@ -92,13 +107,7 @@ async function submitPricingNotebookRun(
             notebook_task: {
               notebook_path: pricingData.notebookPath,
               source: 'WORKSPACE',
-              base_parameters: {
-                source_url: sourceUrl,
-                volume_path: pricingData.rawDataPath,
-                raw_table: pricingData.rawDataTable,
-                target_table: pricingData.table,
-                aws_service_code: pricingData.service,
-              },
+              base_parameters: baseParameters,
             },
           },
         ],
@@ -164,10 +173,11 @@ async function ensureRunnablePricingData(
   deps: NotebookRunDeps,
 ): Promise<PricingData> {
   const existing = await db.repos.pricingData.getById(id);
+  const service = pricingServiceById(id);
   if (
     existing?.notebookPath &&
-    existing.rawDataPath &&
-    existing.rawDataTable &&
+    (service.kind !== 'aws' || existing.rawDataPath) &&
+    (service.kind !== 'aws' || existing.rawDataTable) &&
     existing.table &&
     typeof existing.metadata.source === 'string'
   ) {

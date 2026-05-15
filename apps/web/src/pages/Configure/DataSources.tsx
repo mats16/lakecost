@@ -29,6 +29,7 @@ import { VendorLogo } from './VendorLogo';
 import {
   DATA_SOURCE_TEMPLATES,
   PRICING_AWS_TEMPLATE,
+  PRICING_DATABRICKS_TEMPLATE,
   canCreateTemplate,
   displayNameForRow,
   findTemplateForRow,
@@ -57,6 +58,23 @@ const FALLBACK_TEMPLATE: DataSourceTemplate = {
     brandColor: '#475467',
   },
 };
+
+const PRICING_PROVIDER_CONFIGS = [
+  {
+    key: 'aws',
+    template: PRICING_AWS_TEMPLATE,
+    logo: { kind: 'aws' as const },
+    path: '/pricing/aws',
+    matches: (row: PricingNotebookState) => row.id.startsWith('aws_'),
+  },
+  {
+    key: 'databricks',
+    template: PRICING_DATABRICKS_TEMPLATE,
+    logo: { kind: 'databricks' as const },
+    path: '/pricing/databricks',
+    matches: (row: PricingNotebookState) => row.id.startsWith('databricks_'),
+  },
+] as const;
 
 function templateForRow(row: DataSource): DataSourceTemplate {
   return findTemplateForRow(row) ?? FALLBACK_TEMPLATE;
@@ -101,14 +119,19 @@ export function DataSources() {
   const createDs = useCreateDataSource();
 
   const rows = dataSources.data?.items ?? [];
-  const { hasRegisteredPricingData, pricingDataEnabled } = useMemo(() => {
+  const pricingSummaries = useMemo(() => {
     const pricingRows = pricing.data?.items ?? [];
-    const registered = pricingRows.filter(isRegisteredPricing);
-    return {
-      hasRegisteredPricingData: registered.length > 0,
-      pricingDataEnabled: registered.some((row) => Boolean(row.table)),
-    };
+    return PRICING_PROVIDER_CONFIGS.map((config) => {
+      const providerRows = pricingRows.filter(config.matches);
+      return {
+        ...config,
+        registered: providerRows.some(isRegisteredPricing),
+        enabled: providerRows.some((row) => Boolean(row.table)),
+      };
+    });
   }, [pricing.data?.items]);
+  const hasRegisteredPricingData = pricingSummaries.some((summary) => summary.registered);
+  const unregisteredPricingSummaries = pricingSummaries.filter((summary) => !summary.registered);
   const availableTemplates = useMemo(
     () => templates.data?.items ?? DATA_SOURCE_TEMPLATES,
     [templates.data?.items],
@@ -226,38 +249,44 @@ export function DataSources() {
                   </TableRow>
                 );
               })}
-              {hasRegisteredPricingData ? (
-                <TableRow className="cursor-pointer" onClick={() => navigate('/pricing/aws')}>
-                  <TableCell>
-                    <div className="flex min-w-56 items-center gap-3">
-                      <VendorLogo source={PRICING_AWS_TEMPLATE} logo={{ kind: 'aws' }} size={32} />
-                      <div className="font-medium">{PRICING_AWS_TEMPLATE.name}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <ConnectionStatus
-                      enabled={pricingDataEnabled}
-                      label={
-                        pricingDataEnabled
-                          ? t('dataSources.badges.enabled')
-                          : t('dataSources.badges.setupRequired')
-                      }
-                    />
-                  </TableCell>
-                  <TableCell>{t('dataSources.type.pricingData')}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label={t('dataSources.editPricingData')}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ) : null}
+              {pricingSummaries
+                .filter((summary) => summary.registered)
+                .map((summary) => (
+                  <TableRow
+                    key={summary.key}
+                    className="cursor-pointer"
+                    onClick={() => navigate(summary.path)}
+                  >
+                    <TableCell>
+                      <div className="flex min-w-56 items-center gap-3">
+                        <VendorLogo source={summary.template} logo={summary.logo} size={32} />
+                        <div className="font-medium">{summary.template.name}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <ConnectionStatus
+                        enabled={summary.enabled}
+                        label={
+                          summary.enabled
+                            ? t('dataSources.badges.enabled')
+                            : t('dataSources.badges.setupRequired')
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>{t('dataSources.type.pricingData')}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t('dataSources.editPricingData')}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
@@ -294,7 +323,7 @@ export function DataSources() {
         })}
       </div>
 
-      {!hasRegisteredPricingData ? (
+      {unregisteredPricingSummaries.length > 0 ? (
         <>
           <div className="mt-8 mb-4">
             <h3 className="m-0 text-base font-semibold">{t('dataSources.pricingTitle')}</h3>
@@ -302,11 +331,14 @@ export function DataSources() {
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            <DataSourceTile
-              source={PRICING_AWS_TEMPLATE}
-              logo={{ kind: 'aws' }}
-              onClick={() => navigate('/pricing/aws')}
-            />
+            {unregisteredPricingSummaries.map((summary) => (
+              <DataSourceTile
+                key={summary.key}
+                source={summary.template}
+                logo={summary.logo}
+                onClick={() => navigate(summary.path)}
+              />
+            ))}
           </div>
         </>
       ) : null}

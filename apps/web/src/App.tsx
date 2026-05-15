@@ -41,7 +41,8 @@ export function App() {
           <Route path="/tags" element={<GovernedTags />} />
           <Route path="/transformations" element={<Transformations />} />
           <Route path="/pricing" element={<Navigate to="/pricing/aws" replace />} />
-          <Route path="/pricing/aws" element={<Pricing />} />
+          <Route path="/pricing/aws" element={<Pricing provider="aws" />} />
+          <Route path="/pricing/databricks" element={<Pricing provider="databricks" />} />
           <Route path="/credentials" element={<Credentials />} />
           <Route path="/admin" element={<Catalog />} />
         </Route>

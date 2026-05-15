@@ -45,7 +45,7 @@ import {
 } from '../../api/hooks';
 import { useI18n } from '../../i18n';
 import { VendorLogo } from './VendorLogo';
-import { PRICING_AWS_TEMPLATE } from './dataSourceCatalog';
+import { PRICING_AWS_TEMPLATE, PRICING_DATABRICKS_TEMPLATE } from './dataSourceCatalog';
 import {
   catalogTableUrl,
   fileNameFromPath,
@@ -54,7 +54,9 @@ import {
   volumeFileUrl,
 } from './utils';
 
-export function Pricing() {
+type PricingProviderFilter = 'aws' | 'databricks';
+
+export function Pricing({ provider }: { provider: PricingProviderFilter }) {
   const { t } = useI18n();
   const me = useMe();
   const appSettings = useAppSettings();
@@ -67,7 +69,9 @@ export function Pricing() {
   const catalogConfigured = Boolean(appSettings.data?.settings[CATALOG_SETTING_KEY]?.trim());
   const isLoading = pricing.isLoading || appSettings.isLoading;
   const loadError = pricing.error ?? appSettings.error;
-  const rows = pricing.data?.items ?? [];
+  const rows = (pricing.data?.items ?? []).filter((row) =>
+    pricingRowMatchesProvider(row, provider),
+  );
   const selected = rows.find((row) => row.id === selectedId) ?? null;
   const pendingDelete = rows.find((row) => row.id === pendingDeleteId) ?? null;
   const runError = messageOf(runNotebook.error);
@@ -99,7 +103,7 @@ export function Pricing() {
 
   return (
     <>
-      <PricingHeader />
+      <PricingHeader provider={provider} />
 
       <div className="mb-4">
         <p className="text-muted-foreground m-0 text-sm">{t('pricing.desc')}</p>
@@ -174,13 +178,16 @@ export function Pricing() {
   );
 }
 
-function PricingHeader() {
+function PricingHeader({ provider }: { provider: PricingProviderFilter }) {
   const { t } = useI18n();
+  const template = pricingTemplateForProvider(provider);
+  const logo =
+    provider === 'databricks' ? { kind: 'databricks' as const } : { kind: 'aws' as const };
 
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
       <div className="flex items-center gap-3">
-        <VendorLogo source={PRICING_AWS_TEMPLATE} logo={{ kind: 'aws' }} size={44} />
+        <VendorLogo source={template} logo={logo} size={44} />
         <div>
           <Link
             to="/integrations"
@@ -189,11 +196,26 @@ function PricingHeader() {
           >
             {t('dataSources.detail.eyebrow')}
           </Link>
-          <h3 className="m-0 text-xl font-semibold">{PRICING_AWS_TEMPLATE.name}</h3>
+          <h3 className="m-0 text-xl font-semibold">{template.name}</h3>
         </div>
       </div>
     </div>
   );
+}
+
+function pricingTemplateForProvider(provider: PricingProviderFilter) {
+  return provider === 'databricks' ? PRICING_DATABRICKS_TEMPLATE : PRICING_AWS_TEMPLATE;
+}
+
+function pricingRowMatchesProvider(
+  row: PricingNotebookState,
+  provider: PricingProviderFilter,
+): boolean {
+  return provider === 'databricks' ? row.id.startsWith('databricks_') : row.id.startsWith('aws_');
+}
+
+function pricingRowDisplayName(row: PricingNotebookState): string {
+  return row.service;
 }
 
 function PricingBody({
@@ -328,7 +350,7 @@ function PricingRow({
   return (
     <TableRow className="cursor-pointer" onClick={onSelect}>
       <TableCell>
-        <span className="font-mono text-sm">{row.id}</span>
+        <span className="font-mono text-sm">{pricingRowDisplayName(row)}</span>
       </TableCell>
       <TableCell>
         {row.table ? (

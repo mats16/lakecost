@@ -9,6 +9,8 @@ import { buildFocusSilverPipelineSql } from '../src/services/databricksFocusTran
 import {
   AWS_FOCUS_12_WITH_AWS_COLUMNS_QUERY_STATEMENT,
   AWS_EC2_PRICING_TABLE_DEFAULT,
+  DATABRICKS_ACCOUNT_PRICES_TABLE_DEFAULT,
+  DATABRICKS_LIST_PRICES_TABLE_DEFAULT,
   DOWNLOADS_VOLUME_DEFAULT,
   MEDALLION_SCHEMA_DEFAULTS,
   PRICING_SCHEMA_DEFAULT,
@@ -33,6 +35,8 @@ test('pricing object defaults use fixed FinLake names', () => {
   assert.equal(PRICING_SCHEMA_DEFAULT, 'pricing');
   assert.equal(DOWNLOADS_VOLUME_DEFAULT, 'downloads');
   assert.equal(AWS_EC2_PRICING_TABLE_DEFAULT, 'aws_ec2');
+  assert.equal(DATABRICKS_LIST_PRICES_TABLE_DEFAULT, 'databricks_list_prices');
+  assert.equal(DATABRICKS_ACCOUNT_PRICES_TABLE_DEFAULT, 'databricks_account_prices');
 });
 
 test('awsUsageTableName derives canonical AWS silver table name', () => {

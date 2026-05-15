@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import type { DatabaseClient } from '@finlake/db';
-import { PricingNotebookSetupInputSchema, type AwsPricingId, type Env } from '@finlake/shared';
+import { PricingNotebookSetupInputSchema, type Env, type PricingId } from '@finlake/shared';
 import { DataSourceSetupError } from '../services/dataSourceErrors.js';
 import { submitManagedNotebookRunById } from '../services/notebookRuns.js';
 import {
@@ -9,7 +9,7 @@ import {
   pricingNotebookState,
 } from '../services/pricingNotebook.js';
 
-function parsePricingId(req: Request, res: Response): AwsPricingId | null {
+function parsePricingId(req: Request, res: Response): PricingId | null {
   const parsed = PricingNotebookSetupInputSchema.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: { message: 'Invalid input', issues: parsed.error.issues } });
