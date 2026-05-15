@@ -336,6 +336,36 @@ a {
   gap: 16px;
 }
 
+.upper-tabs {
+  display: flex;
+  gap: 28px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.upper-tabs a {
+  margin-bottom: -1px;
+  padding: 4px 0 10px;
+  border-bottom: 3px solid transparent;
+  color: var(--muted-foreground);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    border-color 120ms,
+    color 120ms;
+}
+
+.upper-tabs a:hover {
+  color: var(--foreground);
+}
+
+.upper-tabs a.active {
+  border-bottom-color: var(--primary);
+  color: var(--foreground);
+}
+
 /* Account menu trigger button used in sidebar footer. */
 
 .account-trigger {

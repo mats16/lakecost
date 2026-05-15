@@ -28,7 +28,6 @@ import {
   Settings,
   ShieldCheck,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import {
   dataSourceKeyString,
@@ -59,7 +58,6 @@ import type { DatabricksFocusDraft } from './DataSources';
 import type { AwsFocusDraft } from './useAwsFocusForm';
 import { configString, messageOf, nextTableName } from './utils';
 
-type AwsDetailTab = 'manage' | 'connect';
 type AwsConnectAction = 'service-role' | 'external-location';
 
 function providerRows(rows: DataSource[], templateId: string): DataSource[] {
@@ -136,36 +134,6 @@ function IntegrationHeader({ templateId }: { templateId: 'aws' | 'databricks_foc
   );
 }
 
-function DetailTabButton({
-  active,
-  onClick,
-  children,
-  icon: Icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: string;
-  icon: LucideIcon;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      className={cn(
-        'border-border -mb-px inline-flex cursor-pointer items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors',
-        active
-          ? 'text-foreground border-primary'
-          : 'text-muted-foreground border-transparent hover:text-foreground',
-      )}
-      onClick={onClick}
-    >
-      <Icon className="size-4" aria-hidden="true" />
-      {children}
-    </button>
-  );
-}
-
 export function DatabricksIntegrationDetail() {
   const dataSources = useDataSources();
   const [createdRow, setCreatedRow] = useState<DataSource | null>(null);
@@ -202,8 +170,8 @@ export function AwsIntegrationDetail() {
   const createCredential = useCreateServiceCredential();
   const rows = dataSources.data?.items ?? [];
   const awsRows = useMemo(() => providerRows(rows, 'aws'), [rows]);
-  const [tab, setTab] = useState<AwsDetailTab>('manage');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [connectChooserOpen, setConnectChooserOpen] = useState(false);
   const [connectAction, setConnectAction] = useState<AwsConnectAction | null>(null);
   const [createServiceRoleOpen, setCreateServiceRoleOpen] = useState(false);
   const [serviceAwsAccountId, setServiceAwsAccountId] = useState('');
@@ -216,7 +184,6 @@ export function AwsIntegrationDetail() {
   const template = findTemplateById('aws');
   const input = template ? getTemplateInputConfig(template) : undefined;
   const hasExistingAwsSources = awsRows.length > 0;
-  const activeTab: AwsDetailTab = hasExistingAwsSources ? tab : 'connect';
   const draft =
     template && input
       ? {
@@ -253,10 +220,14 @@ export function AwsIntegrationDetail() {
   );
 
   const closeConnectModal = useCallback(() => setConnectAction(null), []);
+  const closeConnectChooser = useCallback(() => setConnectChooserOpen(false), []);
+  const openConnectAction = (action: AwsConnectAction) => {
+    setConnectChooserOpen(false);
+    setConnectAction(action);
+  };
 
   const onCreated = (row: DataSource) => {
     setConnectAction(null);
-    setTab('manage');
     setSelectedKey(dataSourceKeyString(row));
   };
   const onServiceAccountIdChange = (value: string) => {
@@ -269,6 +240,7 @@ export function AwsIntegrationDetail() {
     }
   };
   const openCreateServiceRole = () => {
+    setConnectChooserOpen(false);
     createCredential.reset();
     setServiceCredentialNameEdited(false);
     setServiceCredentialName(
@@ -301,26 +273,23 @@ export function AwsIntegrationDetail() {
     <>
       <IntegrationHeader templateId="aws" />
       {hasExistingAwsSources ? (
-        <div className="border-border mb-5 flex gap-4 border-b" role="tablist">
-          <DetailTabButton
-            active={activeTab === 'manage'}
-            onClick={() => setTab('manage')}
-            icon={Settings}
-          >
-            {t('dataSources.detail.tabs.manage')}
-          </DetailTabButton>
-          <DetailTabButton
-            active={activeTab === 'connect'}
-            onClick={() => setTab('connect')}
-            icon={Plug}
-          >
-            {t('dataSources.detail.tabs.connect')}
-          </DetailTabButton>
-        </div>
-      ) : null}
-
-      {activeTab === 'manage' ? (
         <div className="grid gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h4 className="m-0 text-base font-semibold">
+                {t('dataSources.detail.awsAccountsTitle')}
+              </h4>
+              <p className="text-muted-foreground mt-1 mb-0 text-sm">
+                {t('dataSources.detail.connectIntro.description')}
+              </p>
+            </div>
+            {draft ? (
+              <Button type="button" className="gap-2" onClick={() => setConnectChooserOpen(true)}>
+                <Plug className="size-4" aria-hidden="true" />
+                {t('dataSources.detail.connectAccount')}
+              </Button>
+            ) : null}
+          </div>
           <AwsAccountsTable
             rows={awsRows}
             locale={locale}
@@ -347,40 +316,82 @@ export function AwsIntegrationDetail() {
       ) : draft ? (
         <div className="grid gap-5">
           <AwsConnectIntro
-            onConnectWithServiceRole={() => setConnectAction('service-role')}
-            onConnectWithExternalLocation={() => setConnectAction('external-location')}
+            onConnectWithServiceRole={() => openConnectAction('service-role')}
+            onConnectWithExternalLocation={() => openConnectAction('external-location')}
             onCreateServiceRole={openCreateServiceRole}
-          />
-          <AwsConnectSetupModal
-            action={connectAction}
-            draft={draft}
-            excludedAccountIds={registeredAccountIds}
-            onCreated={onCreated}
-            onClose={closeConnectModal}
-          />
-          <CreateCredentialModal
-            open={createServiceRoleOpen}
-            awsAccountId={serviceAwsAccountId}
-            roleName={serviceRoleName}
-            createPending={createCredential.isPending}
-            canSubmit={canCreateServiceCredential}
-            validAccountId={validServiceAccountId}
-            validRoleName={validServiceRoleName}
-            validServiceCredentialName={validServiceCredentialName}
-            createError={createServiceCredentialError}
-            setServiceAwsAccountId={onServiceAccountIdChange}
-            setServiceRoleName={setServiceRoleName}
-            onSubmitService={onSubmitServiceCredential}
-            onClose={() => setCreateServiceRoleOpen(false)}
-          />
-          <AwsSetupModal
-            credential={setupModalCredential}
-            artifacts={setupArtifacts}
-            onClose={() => setSetupModalCredential(null)}
           />
         </div>
       ) : null}
+      <AwsConnectChooserModal
+        open={connectChooserOpen}
+        onConnectWithServiceRole={() => openConnectAction('service-role')}
+        onConnectWithExternalLocation={() => openConnectAction('external-location')}
+        onCreateServiceRole={openCreateServiceRole}
+        onClose={closeConnectChooser}
+      />
+      {draft ? (
+        <AwsConnectSetupModal
+          action={connectAction}
+          draft={draft}
+          excludedAccountIds={registeredAccountIds}
+          onCreated={onCreated}
+          onClose={closeConnectModal}
+        />
+      ) : null}
+      <CreateCredentialModal
+        open={createServiceRoleOpen}
+        awsAccountId={serviceAwsAccountId}
+        roleName={serviceRoleName}
+        createPending={createCredential.isPending}
+        canSubmit={canCreateServiceCredential}
+        validAccountId={validServiceAccountId}
+        validRoleName={validServiceRoleName}
+        validServiceCredentialName={validServiceCredentialName}
+        createError={createServiceCredentialError}
+        setServiceAwsAccountId={onServiceAccountIdChange}
+        setServiceRoleName={setServiceRoleName}
+        onSubmitService={onSubmitServiceCredential}
+        onClose={() => setCreateServiceRoleOpen(false)}
+      />
+      <AwsSetupModal
+        credential={setupModalCredential}
+        artifacts={setupArtifacts}
+        onClose={() => setSetupModalCredential(null)}
+      />
     </>
+  );
+}
+
+function AwsConnectActions({
+  onConnectWithServiceRole,
+  onConnectWithExternalLocation,
+  onCreateServiceRole,
+}: {
+  onConnectWithServiceRole: () => void;
+  onConnectWithExternalLocation: () => void;
+  onCreateServiceRole: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex flex-wrap gap-3">
+      <Button type="button" className="gap-2" onClick={onConnectWithServiceRole}>
+        <ShieldCheck className="size-4" aria-hidden="true" />
+        {t('dataSources.detail.connectIntro.actions.serviceRole')}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="gap-2"
+        onClick={onConnectWithExternalLocation}
+      >
+        <HardDrive className="size-4" aria-hidden="true" />
+        {t('dataSources.detail.connectIntro.actions.externalLocation')}
+      </Button>
+      <Button type="button" variant="outline" className="gap-2" onClick={onCreateServiceRole}>
+        <KeyRound className="size-4" aria-hidden="true" />
+        {t('dataSources.detail.connectIntro.actions.createServiceRole')}
+      </Button>
+    </div>
   );
 }
 
@@ -436,26 +447,81 @@ function AwsConnectIntro({
           </p>
         </section>
       </div>
-      <div className="mt-2 flex flex-wrap gap-3">
-        <Button type="button" className="gap-2" onClick={onConnectWithServiceRole}>
-          <ShieldCheck className="size-4" aria-hidden="true" />
-          {t('dataSources.detail.connectIntro.actions.serviceRole')}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-2"
-          onClick={onConnectWithExternalLocation}
-        >
-          <HardDrive className="size-4" aria-hidden="true" />
-          {t('dataSources.detail.connectIntro.actions.externalLocation')}
-        </Button>
-        <Button type="button" variant="outline" className="gap-2" onClick={onCreateServiceRole}>
-          <KeyRound className="size-4" aria-hidden="true" />
-          {t('dataSources.detail.connectIntro.actions.createServiceRole')}
-        </Button>
+      <div className="mt-2">
+        <AwsConnectActions
+          onConnectWithServiceRole={onConnectWithServiceRole}
+          onConnectWithExternalLocation={onConnectWithExternalLocation}
+          onCreateServiceRole={onCreateServiceRole}
+        />
       </div>
     </section>
+  );
+}
+
+function AwsConnectChooserModal({
+  open,
+  onConnectWithServiceRole,
+  onConnectWithExternalLocation,
+  onCreateServiceRole,
+  onClose,
+}: {
+  open: boolean;
+  onConnectWithServiceRole: () => void;
+  onConnectWithExternalLocation: () => void;
+  onCreateServiceRole: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
+      role="presentation"
+      onMouseDown={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="aws-connect-chooser-title"
+        className="bg-background border-border grid w-full max-w-2xl gap-5 rounded-lg border p-5 shadow-xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 id="aws-connect-chooser-title" className="m-0 text-base font-semibold">
+              {t('dataSources.detail.connectAccount')}
+            </h3>
+            <p className="text-muted-foreground mt-1 mb-0 text-sm">
+              {t('dataSources.detail.connectIntro.description')}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/40 grid size-8 place-items-center rounded-md transition-colors"
+            aria-label={t('common.close')}
+            onClick={onClose}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+        <AwsConnectActions
+          onConnectWithServiceRole={onConnectWithServiceRole}
+          onConnectWithExternalLocation={onConnectWithExternalLocation}
+          onCreateServiceRole={onCreateServiceRole}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -473,15 +539,23 @@ function AwsConnectSetupModal({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const [createProgressOpen, setCreateProgressOpen] = useState(false);
+  const [createProgressComplete, setCreateProgressComplete] = useState(false);
 
   useEffect(() => {
     if (!action) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape' && !createProgressOpen) onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [action, onClose]);
+  }, [action, createProgressOpen, onClose]);
+
+  useEffect(() => {
+    if (!action) return;
+    setCreateProgressOpen(false);
+    setCreateProgressComplete(false);
+  }, [action]);
 
   if (!action) return null;
 
@@ -497,18 +571,29 @@ function AwsConnectSetupModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
+      className={cn(
+        'fixed inset-0 z-[60] flex items-center justify-center p-4',
+        createProgressComplete ? 'bg-transparent' : 'bg-black/55',
+      )}
       role="presentation"
-      onMouseDown={onClose}
+      onMouseDown={createProgressOpen ? undefined : onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="aws-connect-setup-modal-title"
-        className="bg-background border-border grid max-h-[88vh] w-full max-w-3xl grid-rows-[auto_1fr] rounded-lg border shadow-xl"
+        className={cn(
+          'bg-background border-border grid max-h-[88vh] w-full max-w-3xl grid-rows-[auto_1fr] rounded-lg border shadow-xl',
+          createProgressComplete ? 'contents' : null,
+        )}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4 p-5">
+        <div
+          className={cn(
+            'flex items-start justify-between gap-4 p-5',
+            createProgressComplete ? 'hidden' : null,
+          )}
+        >
           <div className="min-w-0">
             <h3 id="aws-connect-setup-modal-title" className="text-base font-semibold">
               {t(titleKey)}
@@ -524,7 +609,9 @@ function AwsConnectSetupModal({
             <X className="size-4" aria-hidden="true" />
           </button>
         </div>
-        <div className="min-h-0 overflow-y-auto p-5">
+        <div
+          className={cn('min-h-0 overflow-y-auto p-5', createProgressComplete ? 'contents' : null)}
+        >
           <AwsFocusSection
             key={action}
             row={null}
@@ -533,6 +620,8 @@ function AwsConnectSetupModal({
             initialSetupMode={setupMode}
             hideSetupMode
             onCreated={onCreated}
+            onCreateProgressOpenChange={setCreateProgressOpen}
+            onCreateProgressCompleteChange={setCreateProgressComplete}
           />
         </div>
       </div>

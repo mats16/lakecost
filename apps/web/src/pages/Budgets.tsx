@@ -11,18 +11,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
-  Card,
-  CardContent,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
   Field,
   FieldGroup,
   FieldLabel,
@@ -101,31 +95,26 @@ export function Budgets() {
         }
       />
 
-      <Card>
-        <CardContent>
-          <h3 className="text-muted-foreground mt-0 mb-3 text-sm font-medium">
-            {t('budgets.existing')}
-          </h3>
-          {deleteBudget.isError ? (
-            <Alert variant="destructive" className="mb-3">
-              <AlertCircle />
-              <AlertDescription>
-                {t('budgets.deleteFailed')}: {(deleteBudget.error as Error).message}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {list.isLoading ? (
-            <div className="text-muted-foreground inline-flex items-center gap-2 text-sm">
-              <Spinner /> {t('common.loading')}
-            </div>
-          ) : !list.data || list.data.items.length === 0 ? (
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle>{t('budgets.empty')}</EmptyTitle>
-                <EmptyDescription>{t('budgets.subtitle')}</EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          ) : (
+      <section>
+        <h3 className="m-0 text-base font-semibold">{t('budgets.existing')}</h3>
+
+        {deleteBudget.isError ? (
+          <Alert variant="destructive" className="mt-4 mb-3">
+            <AlertCircle />
+            <AlertDescription>
+              {t('budgets.deleteFailed')}: {(deleteBudget.error as Error).message}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {list.isLoading ? (
+          <div className="text-muted-foreground mt-4 inline-flex items-center gap-2 text-sm">
+            <Spinner /> {t('common.loading')}
+          </div>
+        ) : !list.data || list.data.items.length === 0 ? (
+          <p className="text-muted-foreground mt-4 text-sm italic">{t('budgets.empty')}</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -181,9 +170,9 @@ export function Budgets() {
                 ))}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </section>
 
       <BudgetFormDialog
         open={createModalOpen}

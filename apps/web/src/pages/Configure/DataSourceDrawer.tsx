@@ -285,6 +285,8 @@ export function AwsFocusSection({
   excludedAccountIds,
   initialSetupMode,
   hideSetupMode,
+  onCreateProgressOpenChange,
+  onCreateProgressCompleteChange,
 }: {
   row: DataSource | null;
   draft?: AwsFocusDraft;
@@ -292,8 +294,17 @@ export function AwsFocusSection({
   excludedAccountIds?: string[];
   initialSetupMode?: AwsSetupMode;
   hideSetupMode?: boolean;
+  onCreateProgressOpenChange?: (open: boolean) => void;
+  onCreateProgressCompleteChange?: (complete: boolean) => void;
 }) {
-  const form = useAwsFocusForm(row, { draft, onCreated, excludedAccountIds, initialSetupMode });
+  const form = useAwsFocusForm(row, {
+    draft,
+    onCreated,
+    excludedAccountIds,
+    initialSetupMode,
+    onCreateProgressOpenChange,
+    onCreateProgressCompleteChange,
+  });
   return (
     <>
       <AwsSourceForm form={form} hideSetupMode={hideSetupMode} />
@@ -314,243 +325,253 @@ function AwsSourceForm({
   const serviceCredentialsUrl = '/credentials';
   const externalLocationsUrl = form.workspaceUrl ? `${form.workspaceUrl}/explore/locations` : null;
   return (
-    <AwsSourceFormShell
-      hideSetupMode={hideSetupMode}
-      header={
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm">{t('dataSources.aws.title')}</CardTitle>
-            <a
-              href={AWS_BCM_DATA_EXPORTS_URL}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={t('dataSources.aws.openDataExports')}
-              className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded-sm transition-colors"
-            >
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-            </a>
-          </div>
-        </CardHeader>
-      }
-    >
-      <div className="grid gap-3">
-        {!form.registered && !hideSetupMode ? (
-          <div className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">{t('dataSources.aws.setupMode')}</span>
-            <Select
-              value={form.setupMode}
-              onValueChange={(value) => form.onSetupModeChange(value as typeof form.setupMode)}
-              disabled={form.savePending || form.creatingExport}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="z-[100]">
-                <SelectItem value="create">
-                  {t('dataSources.aws.createExternalLocationAndExport')}
-                </SelectItem>
-                <SelectItem value="existing">
-                  {t('dataSources.aws.useExistingExternalLocation')}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        ) : null}
+    <>
+      <div className={hideSetupMode && form.createProgressComplete ? 'hidden' : undefined}>
+        <AwsSourceFormShell
+          hideSetupMode={hideSetupMode}
+          header={
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm">{t('dataSources.aws.title')}</CardTitle>
+                <a
+                  href={AWS_BCM_DATA_EXPORTS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={t('dataSources.aws.openDataExports')}
+                  className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded-sm transition-colors"
+                >
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                </a>
+              </div>
+            </CardHeader>
+          }
+        >
+          <div className="grid gap-3">
+            {!form.registered && !hideSetupMode ? (
+              <div className="grid gap-1 text-xs">
+                <span className="text-muted-foreground">{t('dataSources.aws.setupMode')}</span>
+                <Select
+                  value={form.setupMode}
+                  onValueChange={(value) => form.onSetupModeChange(value as typeof form.setupMode)}
+                  disabled={form.savePending || form.creatingExport}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-[100]">
+                    <SelectItem value="create">
+                      {t('dataSources.aws.createExternalLocationAndExport')}
+                    </SelectItem>
+                    <SelectItem value="existing">
+                      {t('dataSources.aws.useExistingExternalLocation')}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
 
-        <label className="grid gap-1 text-xs">
-          <span className="text-muted-foreground">
-            {t('dataSources.aws.awsAccountId')} ({t('dataSources.aws.from')}{' '}
-            {form.setupMode === 'create' ? (
-              <SourceLabelLink href={serviceCredentialsUrl}>
-                {t('dataSources.aws.finLakeServiceRoleSource')}
-              </SourceLabelLink>
-            ) : (
-              <SourceLabelLink href={credentialsUrl}>
-                {t('dataSources.aws.storageCredentialSource')}
-              </SourceLabelLink>
-            )}
-            )
-          </span>
-          <Select
-            value={form.awsAccountId}
-            onValueChange={form.onAccountChange}
-            disabled={form.registered || form.loadingInputs || form.savePending}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue
-                placeholder={
-                  form.setupMode === 'create'
-                    ? t('dataSources.aws.serviceAccountIdPlaceholder')
-                    : t('dataSources.aws.awsAccountIdPlaceholder')
-                }
-              />
-            </SelectTrigger>
-            <SelectContent className="z-[100]">
-              {form.accountOptions.map((accountId) => (
-                <SelectItem key={accountId} value={accountId}>
-                  {accountId}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-
-        {form.setupMode === 'existing' ? (
-          <label className="grid gap-1 text-xs">
-            <span className="text-muted-foreground">
-              {t('dataSources.aws.s3Bucket')} ({t('dataSources.aws.from')}{' '}
-              <SourceLabelLink href={externalLocationsUrl}>
-                {t('dataSources.aws.externalLocationSource')}
-              </SourceLabelLink>
-              )
-            </span>
-            <Select
-              value={form.externalLocationName}
-              onValueChange={form.onLocationChange}
-              disabled={
-                form.registered || !form.awsAccountId || form.loadingInputs || form.savePending
-              }
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('dataSources.aws.s3UrlPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent className="z-[100]">
-                {form.locationOptions.map((loc) => (
-                  <SelectItem key={loc.name} value={loc.name}>
-                    {s3BucketLabel(loc)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        ) : (
-          <div className="grid gap-2">
-            <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">{t('dataSources.aws.s3Bucket')}</span>
-                <Input
-                  value={form.createBucketName}
-                  onChange={(e) => form.setCreateBucketName(e.target.value)}
-                  disabled={form.registered || form.savePending || form.creatingExport}
-                  placeholder={form.awsAccountId ? `finlake-${form.awsAccountId}` : 'finlake-'}
-                />
-              </label>
-              {!form.registered ? (
-                <label className="flex min-h-9 items-center gap-2 text-xs sm:pb-2">
-                  <input
-                    type="checkbox"
-                    checked={form.createBucketIfMissing}
-                    disabled={form.savePending || form.creatingExport}
-                    onChange={(e) => form.setCreateBucketIfMissing(e.target.checked)}
+            <label className="grid gap-1 text-xs">
+              <span className="text-muted-foreground">
+                {t('dataSources.aws.awsAccountId')} ({t('dataSources.aws.from')}{' '}
+                {form.setupMode === 'create' ? (
+                  <SourceLabelLink href={serviceCredentialsUrl}>
+                    {t('dataSources.aws.finLakeServiceRoleSource')}
+                  </SourceLabelLink>
+                ) : (
+                  <SourceLabelLink href={credentialsUrl}>
+                    {t('dataSources.aws.storageCredentialSource')}
+                  </SourceLabelLink>
+                )}
+                )
+              </span>
+              <Select
+                value={form.awsAccountId}
+                onValueChange={form.onAccountChange}
+                disabled={form.registered || form.loadingInputs || form.savePending}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue
+                    placeholder={
+                      form.setupMode === 'create'
+                        ? t('dataSources.aws.serviceAccountIdPlaceholder')
+                        : t('dataSources.aws.awsAccountIdPlaceholder')
+                    }
                   />
-                  <span className="text-muted-foreground whitespace-nowrap">
-                    {t('dataSources.aws.createBucketIfMissing')}
-                  </span>
-                </label>
-              ) : null}
-            </div>
-            {form.createBucketName && !form.selectedS3Bucket ? (
+                </SelectTrigger>
+                <SelectContent className="z-[100]">
+                  {form.accountOptions.map((accountId) => (
+                    <SelectItem key={accountId} value={accountId}>
+                      {accountId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+
+            {form.setupMode === 'existing' ? (
+              <label className="grid gap-1 text-xs">
+                <span className="text-muted-foreground">
+                  {t('dataSources.aws.s3Bucket')} ({t('dataSources.aws.from')}{' '}
+                  <SourceLabelLink href={externalLocationsUrl}>
+                    {t('dataSources.aws.externalLocationSource')}
+                  </SourceLabelLink>
+                  )
+                </span>
+                <Select
+                  value={form.externalLocationName}
+                  onValueChange={form.onLocationChange}
+                  disabled={
+                    form.registered || !form.awsAccountId || form.loadingInputs || form.savePending
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('dataSources.aws.s3UrlPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent className="z-[100]">
+                    {form.locationOptions.map((loc) => (
+                      <SelectItem key={loc.name} value={loc.name}>
+                        {s3BucketLabel(loc)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            ) : (
+              <div className="grid gap-2">
+                <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-muted-foreground">{t('dataSources.aws.s3Bucket')}</span>
+                    <Input
+                      value={form.createBucketName}
+                      onChange={(e) => form.setCreateBucketName(e.target.value)}
+                      disabled={form.registered || form.savePending || form.creatingExport}
+                      placeholder={form.awsAccountId ? `finlake-${form.awsAccountId}` : 'finlake-'}
+                    />
+                  </label>
+                  {!form.registered ? (
+                    <label className="flex min-h-9 items-center gap-2 text-xs sm:pb-2">
+                      <input
+                        type="checkbox"
+                        checked={form.createBucketIfMissing}
+                        disabled={form.savePending || form.creatingExport}
+                        onChange={(e) => form.setCreateBucketIfMissing(e.target.checked)}
+                      />
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        {t('dataSources.aws.createBucketIfMissing')}
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
+                {form.createBucketName && !form.selectedS3Bucket ? (
+                  <Alert>
+                    <Info />
+                    <AlertDescription>{t('dataSources.aws.invalidBucketName')}</AlertDescription>
+                  </Alert>
+                ) : null}
+              </div>
+            )}
+
+            {form.selectedS3Url ? (
+              <>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-muted-foreground">
+                      {t('dataSources.aws.s3PathPrefix')}
+                    </span>
+                    <S3PrefixInput
+                      form={form}
+                      disabled={form.registered || form.savePending}
+                      placeholder="bcm-data-export"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs">
+                    <span className="text-muted-foreground">{t('dataSources.aws.exportName')}</span>
+                    <Input
+                      value={form.exportName}
+                      onChange={(e) => form.setExportName(e.target.value)}
+                      disabled={form.registered || form.savePending}
+                    />
+                  </label>
+                </div>
+
+                {form.exportDestinationPreview ? (
+                  <div className="text-muted-foreground break-all text-xs">
+                    {t('dataSources.aws.exportDestination')}:{' '}
+                    <span className="text-foreground font-mono">
+                      {form.exportDestinationPreview}
+                    </span>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+
+            {!form.registered && form.setupMode === 'existing' ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" disabled={form.saveDisabled} onClick={form.onSave}>
+                  {form.savePending ? <Spinner /> : null}
+                  {t('dataSources.aws.saveExternalLocation')}
+                </Button>
+                {form.savedAt && !form.dirty && !form.savePending ? (
+                  <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!form.registered && form.setupMode === 'create' && form.selectedS3Url ? (
+              <div className="grid gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <AwsExportPanel form={form} />
+                  {form.savedAt && !form.dirty && !form.savePending ? (
+                    <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
+            {!form.registered &&
+            form.setupMode === 'existing' &&
+            !form.storageCredentialsLoading &&
+            form.accountOptions.length === 0 ? (
               <Alert>
                 <Info />
-                <AlertDescription>{t('dataSources.aws.invalidBucketName')}</AlertDescription>
+                <AlertDescription>{t('dataSources.aws.noStorageCredentials')}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {!form.registered &&
+            form.setupMode === 'create' &&
+            !form.serviceCredentialsLoading &&
+            form.serviceAccountOptions.length === 0 ? (
+              <Alert>
+                <Info />
+                <AlertDescription>{t('dataSources.aws.noServiceCredentials')}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            {!form.registered &&
+            form.setupMode === 'existing' &&
+            form.awsAccountId &&
+            !form.loadingInputs &&
+            form.linkedLocations.length === 0 ? (
+              <Alert>
+                <Info />
+                <AlertDescription>
+                  {t('dataSources.aws.noLinkedExternalLocations')}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {form.errorMessage ? (
+              <Alert variant="destructive">
+                <Info />
+                <AlertDescription>{form.errorMessage}</AlertDescription>
               </Alert>
             ) : null}
           </div>
-        )}
-
-        {form.selectedS3Url ? (
-          <>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">{t('dataSources.aws.s3PathPrefix')}</span>
-                <S3PrefixInput
-                  form={form}
-                  disabled={form.registered || form.savePending}
-                  placeholder="bcm-data-export"
-                />
-              </label>
-              <label className="grid gap-1 text-xs">
-                <span className="text-muted-foreground">{t('dataSources.aws.exportName')}</span>
-                <Input
-                  value={form.exportName}
-                  onChange={(e) => form.setExportName(e.target.value)}
-                  disabled={form.registered || form.savePending}
-                />
-              </label>
-            </div>
-
-            {form.exportDestinationPreview ? (
-              <div className="text-muted-foreground break-all text-xs">
-                {t('dataSources.aws.exportDestination')}:{' '}
-                <span className="text-foreground font-mono">{form.exportDestinationPreview}</span>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-
-        {!form.registered && form.setupMode === 'existing' ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" disabled={form.saveDisabled} onClick={form.onSave}>
-              {form.savePending ? <Spinner /> : null}
-              {t('dataSources.aws.saveExternalLocation')}
-            </Button>
-            {form.savedAt && !form.dirty && !form.savePending ? (
-              <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!form.registered && form.setupMode === 'create' && form.selectedS3Url ? (
-          <div className="grid gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <AwsExportPanel form={form} />
-              {form.savedAt && !form.dirty && !form.savePending ? (
-                <span className="text-muted-foreground text-xs">{t('settings.saved')}</span>
-              ) : null}
-            </div>
-            <AwsCreateResourceProgressModal form={form} />
-          </div>
-        ) : null}
-
-        {!form.registered &&
-        form.setupMode === 'existing' &&
-        !form.storageCredentialsLoading &&
-        form.accountOptions.length === 0 ? (
-          <Alert>
-            <Info />
-            <AlertDescription>{t('dataSources.aws.noStorageCredentials')}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {!form.registered &&
-        form.setupMode === 'create' &&
-        !form.serviceCredentialsLoading &&
-        form.serviceAccountOptions.length === 0 ? (
-          <Alert>
-            <Info />
-            <AlertDescription>{t('dataSources.aws.noServiceCredentials')}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {!form.registered &&
-        form.setupMode === 'existing' &&
-        form.awsAccountId &&
-        !form.loadingInputs &&
-        form.linkedLocations.length === 0 ? (
-          <Alert>
-            <Info />
-            <AlertDescription>{t('dataSources.aws.noLinkedExternalLocations')}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {form.errorMessage ? (
-          <Alert variant="destructive">
-            <Info />
-            <AlertDescription>{form.errorMessage}</AlertDescription>
-          </Alert>
-        ) : null}
+        </AwsSourceFormShell>
       </div>
-    </AwsSourceFormShell>
+      <AwsCreateResourceProgressModal form={form} />
+    </>
   );
 }
 

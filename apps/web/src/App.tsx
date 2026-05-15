@@ -13,7 +13,7 @@ import { Transformations } from './pages/Configure/Transformations';
 import { GovernedTags } from './pages/Configure/GovernedTags';
 import { Pricing } from './pages/Configure/Pricing';
 import { Credentials } from './pages/ExternalData/Credentials';
-import { ExploreStub } from './pages/Explore/ExploreStub';
+import { CostExplore } from './pages/Explore/CostExplore';
 import { Genie } from './pages/Explore/Genie';
 import { DatabricksOptimize } from './pages/Optimize/DatabricksOptimize';
 import { OptimizeStub } from './pages/Optimize/OptimizeStub';
@@ -24,12 +24,9 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/overview" replace />} />
         <Route path="/overview" element={<Dashboard />} />
+        <Route path="/cost-explore" element={<CostExplore />} />
         <Route path="/budgets" element={<Budgets />} />
         <Route path="/genie" element={<Genie />} />
-        <Route
-          path="/query"
-          element={<ExploreStub titleKey="explore.query.title" descKey="explore.query.desc" />}
-        />
         <Route path="/optimize" element={<Navigate to="/optimize/databricks" replace />} />
         <Route path="/optimize/databricks" element={<DatabricksOptimize />} />
         <Route

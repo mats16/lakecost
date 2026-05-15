@@ -1,15 +1,21 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   AlertDescription,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   AlertTitle,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Skeleton,
+  Spinner,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -24,15 +30,29 @@ import type {
   GovernedTagSyncResult,
 } from '@finlake/shared';
 import { AlertCircle, CheckCircle2, ExternalLink, Plus, RefreshCcw } from 'lucide-react';
+import { toast } from 'sonner';
 import { useGovernedTags, useMe, useSyncGovernedTags } from '../../api/hooks';
 import { useI18n } from '../../i18n';
 import { messageOf } from './utils';
 
 export function GovernedTags() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   const governedTags = useGovernedTags();
   const syncTags = useSyncGovernedTags();
   const me = useMe();
+  const lastToastSyncedAt = useRef<string | null>(null);
+
+  useEffect(() => {
+    const result = syncTags.data;
+    if (!result || result.syncedAt === lastToastSyncedAt.current) return;
+    if (result.platform !== 'databricks') return;
+    const failed = result.tags.filter((tag) => tag.status === 'failed').length;
+    if (failed > 0) return;
+    lastToastSyncedAt.current = result.syncedAt;
+    toast.success(t('governedTags.syncDatabricksComplete'), {
+      description: t('governedTags.syncedDatabricks'),
+    });
+  }, [syncTags.data, t]);
 
   const rows = governedTags.data?.items ?? [];
   const awsAccounts = governedTags.data?.awsAccounts ?? [];
@@ -42,8 +62,8 @@ export function GovernedTags() {
   const workspaceUrl = me.data?.workspaceUrl ?? null;
   const result = syncTags.data ?? null;
 
-  const syncDatabricks = (tagKey: string) => {
-    syncTags.mutate({ platform: 'databricks', tagKey });
+  const syncDatabricks = (tagKey: string, enabled: boolean) => {
+    syncTags.mutate({ platform: 'databricks', tagKey, enabled });
   };
 
   const syncAws = (tagKey: string, awsAccountId: string) => {
@@ -51,123 +71,132 @@ export function GovernedTags() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <CardTitle>{t('governedTags.title')}</CardTitle>
-            </div>
-            <CardDescription>{t('governedTags.desc')}</CardDescription>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="h-7 gap-1.5 px-3"
-            aria-label={t('governedTags.refresh')}
-            onClick={() => governedTags.refetch()}
-            disabled={governedTags.isFetching || syncTags.isPending}
-          >
-            <RefreshCcw
-              className={governedTags.isFetching ? 'animate-spin' : undefined}
-              aria-hidden="true"
-            />
-            {t('governedTags.refresh')}
-          </Button>
+    <>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <p className="text-muted-foreground m-0 text-sm">{t('governedTags.desc')}</p>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="h-7 gap-1.5 px-3"
+          aria-label={t('governedTags.refresh')}
+          onClick={() => governedTags.refetch()}
+          disabled={governedTags.isFetching || syncTags.isPending}
+        >
+          <RefreshCcw
+            className={governedTags.isFetching ? 'animate-spin' : undefined}
+            aria-hidden="true"
+          />
+          {t('governedTags.refresh')}
+        </Button>
+      </div>
+
+      {loadError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.loadFailed')}</AlertTitle>
+          <AlertDescription>{loadError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {syncError ? (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.syncFailed')}</AlertTitle>
+          <AlertDescription>{syncError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {result ? <SyncResult result={result} /> : null}
+
+      {governedTags.data?.warnings.length ? (
+        <Alert className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.warningTitle')}</AlertTitle>
+          <AlertDescription>
+            <ul className="m-0 list-disc pl-4">
+              {governedTags.data.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {!hasAwsAccounts && !governedTags.isLoading ? (
+        <Alert className="mb-4">
+          <AlertCircle />
+          <AlertTitle>{t('governedTags.noAwsAccountsTitle')}</AlertTitle>
+          <AlertDescription>{t('governedTags.noAwsAccountsDesc')}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {governedTags.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         </div>
-      </CardHeader>
-      <CardContent>
-        {loadError ? (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.loadFailed')}</AlertTitle>
-            <AlertDescription>{loadError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {syncError ? (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.syncFailed')}</AlertTitle>
-            <AlertDescription>{syncError}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {result ? <SyncResult result={result} /> : null}
-
-        {governedTags.data?.warnings.length ? (
-          <Alert className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.warningTitle')}</AlertTitle>
-            <AlertDescription>
-              <ul className="m-0 list-disc pl-4">
-                {governedTags.data.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {!hasAwsAccounts && !governedTags.isLoading ? (
-          <Alert className="mb-4">
-            <AlertCircle />
-            <AlertTitle>{t('governedTags.noAwsAccountsTitle')}</AlertTitle>
-            <AlertDescription>{t('governedTags.noAwsAccountsDesc')}</AlertDescription>
-          </Alert>
-        ) : null}
-
-        {governedTags.isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('governedTags.columns.tag')}</TableHead>
-                  <TableHead>{t('governedTags.columns.databricks')}</TableHead>
-                  <TableHead>{t('governedTags.columns.aws')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <GovernedTagTableRow
-                    key={row.definition.key}
-                    row={row}
-                    locale={locale}
-                    workspaceUrl={workspaceUrl}
-                    syncPending={syncTags.isPending}
-                    onSyncDatabricks={syncDatabricks}
-                    onSyncAws={syncAws}
+      ) : (
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('governedTags.columns.tag')}</TableHead>
+                <TableHead>{t('governedTags.columns.allowedValues')}</TableHead>
+                <TableHead>
+                  <ColumnHeader
+                    title={t('governedTags.columns.databricks')}
+                    subtitle={t('governedTags.columns.databricksDetail')}
                   />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                </TableHead>
+                <TableHead>
+                  <ColumnHeader
+                    title={t('governedTags.columns.aws')}
+                    subtitle={t('governedTags.columns.awsDetail')}
+                  />
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <GovernedTagTableRow
+                  key={row.definition.key}
+                  row={row}
+                  workspaceUrl={workspaceUrl}
+                  syncPending={syncTags.isPending}
+                  onSyncDatabricks={syncDatabricks}
+                  onSyncAws={syncAws}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ColumnHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <span className="flex flex-col leading-tight">
+      <span>{title}</span>
+      <span className="text-muted-foreground text-xs font-normal">{subtitle}</span>
+    </span>
   );
 }
 
 function GovernedTagTableRow({
   row,
-  locale,
   workspaceUrl,
   syncPending,
   onSyncDatabricks,
   onSyncAws,
 }: {
   row: GovernedTagRow;
-  locale: 'en' | 'ja';
   workspaceUrl: string | null;
   syncPending: boolean;
-  onSyncDatabricks: (tagKey: string) => void;
+  onSyncDatabricks: (tagKey: string, enabled: boolean) => void;
   onSyncAws: (tagKey: string, awsAccountId: string) => void;
 }) {
   const { t } = useI18n();
@@ -176,26 +205,17 @@ function GovernedTagTableRow({
       <TableCell className="min-w-52">
         <span className="font-mono text-sm font-medium">{row.definition.key}</span>
       </TableCell>
+      <TableCell className="min-w-52">
+        <AllowedValuesCell status={row.databricks} />
+      </TableCell>
       <TableCell className="min-w-44">
-        {row.databricks.status === 'governed' ? (
-          <DatabricksStatusBadge
-            status={row.databricks}
-            tagKey={row.definition.key}
-            locale={locale}
-            workspaceUrl={workspaceUrl}
-          />
-        ) : (
-          <button
-            type="button"
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-primary px-3 text-xs font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label={t('governedTags.syncDatabricksTag', { tag: row.definition.key })}
-            disabled={syncPending}
-            onClick={() => onSyncDatabricks(row.definition.key)}
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('governedTags.createGovernedTag')}
-          </button>
-        )}
+        <DatabricksGovernedSwitch
+          status={row.databricks}
+          tagKey={row.definition.key}
+          workspaceUrl={workspaceUrl}
+          syncPending={syncPending}
+          onSyncDatabricks={onSyncDatabricks}
+        />
       </TableCell>
       <TableCell className="min-w-72">
         <div className="flex flex-wrap items-center gap-2">
@@ -218,42 +238,120 @@ function GovernedTagTableRow({
   );
 }
 
-function DatabricksStatusBadge({
+function AllowedValuesCell({ status }: { status: GovernedTagDatabricksStatus }) {
+  const { t } = useI18n();
+  if (status.status !== 'governed' || status.allowedValues.length === 0) {
+    return (
+      <span className="text-muted-foreground text-xs">{t('governedTags.allowedValuesAny')}</span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {status.allowedValues.map((value) => (
+        <Badge key={value} variant="outline" className="font-mono">
+          {value}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function DatabricksGovernedSwitch({
   status,
   tagKey,
-  locale,
   workspaceUrl,
+  syncPending,
+  onSyncDatabricks,
 }: {
   status: GovernedTagDatabricksStatus;
   tagKey: string;
-  locale: 'en' | 'ja';
   workspaceUrl: string | null;
+  syncPending: boolean;
+  onSyncDatabricks: (tagKey: string, enabled: boolean) => void;
 }) {
   const { t } = useI18n();
+  const isGoverned = status.status === 'governed';
+  const [pendingDelete, setPendingDelete] = useState(false);
   const governedTagUrl = workspaceUrl
     ? `${workspaceUrl.replace(/\/$/, '')}/governance/governed-tags/${encodeURIComponent(tagKey)}`
     : null;
+
+  const handleToggle = (checked: boolean) => {
+    if (!checked && isGoverned) {
+      setPendingDelete(true);
+      return;
+    }
+    onSyncDatabricks(tagKey, checked);
+  };
+
+  const confirmDelete = () => {
+    setPendingDelete(false);
+    onSyncDatabricks(tagKey, false);
+  };
+
   return (
-    <div className="flex flex-col gap-1">
-      {governedTagUrl ? (
-        <a href={governedTagUrl} target="_blank" rel="noreferrer" className="w-fit">
-          <Badge variant="secondary" className="gap-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {t('governedTags.status.governed')}
-            <ExternalLink className="h-3 w-3" />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Switch
+          checked={isGoverned}
+          disabled={syncPending}
+          aria-label={t(
+            isGoverned ? 'governedTags.disableDatabricksTag' : 'governedTags.enableDatabricksTag',
+            { tag: tagKey },
+          )}
+          onCheckedChange={handleToggle}
+        />
+        {isGoverned && governedTagUrl ? (
+          <a href={governedTagUrl} target="_blank" rel="noreferrer" className="w-fit">
+            <Badge variant="secondary" className="gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {t('governedTags.status.governed')}
+              <ExternalLink className="h-3 w-3" />
+            </Badge>
+          </a>
+        ) : isGoverned || status.status === 'error' ? (
+          <Badge variant={isGoverned ? 'secondary' : 'outline'} className="w-fit gap-1.5">
+            {isGoverned ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+            {t(`governedTags.status.${status.status}`)}
           </Badge>
-        </a>
-      ) : (
-        <Badge variant="secondary" className="w-fit gap-1.5">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          {t('governedTags.status.governed')}
-        </Badge>
-      )}
-      {status.updatedAt ? (
-        <span className="text-muted-foreground text-xs">
-          {formatDate(status.updatedAt, locale)}
-        </span>
+        ) : null}
+      </div>
+      {status.message ? (
+        <span className="text-muted-foreground text-xs">{status.message}</span>
       ) : null}
+      <AlertDialog
+        open={pendingDelete}
+        onOpenChange={(next) => {
+          if (!next && !syncPending) setPendingDelete(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('governedTags.confirmDeleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('governedTags.confirmDeleteDesc', { tag: tagKey })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={syncPending}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                confirmDelete();
+              }}
+              disabled={syncPending}
+            >
+              {syncPending ? (
+                <>
+                  <Spinner /> {t('governedTags.confirmDeleteInProgress')}
+                </>
+              ) : (
+                t('governedTags.confirmDeleteAction')
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -326,6 +424,7 @@ function SyncResult({ result }: { result: GovernedTagSyncResult }) {
   const failedCount = tagCounts.failed + accountCounts.failed;
   const successCount = tagCounts.synced + accountCounts.synced;
   const isFailure = failedCount > 0;
+  if (result.platform === 'databricks' && !isFailure) return null;
   const isPartialFailure = isFailure && successCount > 0;
   const platformKey = result.platform === 'aws' ? 'Aws' : 'Databricks';
   const titleKey = isFailure
@@ -380,13 +479,4 @@ function countStatuses<T extends { status: string }>(items: T[]) {
     synced: items.filter((item) => item.status === 'synced').length,
     failed: items.filter((item) => item.status === 'failed').length,
   };
-}
-
-function formatDate(value: string, locale: 'en' | 'ja'): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat(locale === 'ja' ? 'ja-JP' : 'en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
 }

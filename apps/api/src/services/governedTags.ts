@@ -20,6 +20,7 @@ import {
   type GovernedTagsResponse,
 } from '@finlake/shared';
 import { logger } from '../config/logger.js';
+import { mapWithConcurrency } from '../utils/mapWithConcurrency.js';
 import {
   AWS_BCM_REGION,
   AWS_SERVICE_ROLE_NAME,
@@ -29,11 +30,14 @@ import { requireAppWorkspaceClient } from './servicePrincipalIdentity.js';
 import { listAccessibleServiceCredentials } from './serviceCredentials.js';
 import { WorkspaceServiceError } from './workspaceClientErrors.js';
 
+const DATABRICKS_TAG_SYNC_CONCURRENCY = 4;
+
 interface TagPolicyLike {
   id?: string;
   tag_key: string;
   description?: string;
   update_time?: string;
+  values?: Array<{ name: string }>;
 }
 
 export class GovernedTagsServiceError extends WorkspaceServiceError {}
@@ -86,7 +90,7 @@ export async function syncGovernedTags(
   body: GovernedTagSyncBody,
 ): Promise<GovernedTagSyncResult> {
   if (body.platform === 'databricks') {
-    return syncDatabricksGovernedTags(env, body.tagKey);
+    return syncDatabricksGovernedTags(env, body.tagKey, body.enabled ?? true);
   }
   return syncAwsCostAllocationTags(env, body.awsAccountId, body.tagKey);
 }
@@ -94,6 +98,7 @@ export async function syncGovernedTags(
 async function syncDatabricksGovernedTags(
   env: Env,
   tagKey?: string,
+  enabled = true,
 ): Promise<GovernedTagSyncResult> {
   const syncedAt = new Date().toISOString();
   const definitions = tagKey
@@ -134,33 +139,49 @@ async function syncDatabricksGovernedTags(
       awsAccounts: [],
     };
   }
-  const tags: GovernedTagSyncTagResult[] = [];
-  for (const definition of definitions) {
-    const tagPolicy = {
-      tag_key: definition.key,
-      description: definition.description,
-      values:
-        definition.allowedValues.length > 0
-          ? definition.allowedValues.map((name) => ({ name }))
-          : undefined,
-    };
-    try {
-      if (existing.has(definition.key)) {
-        await wc.tagPolicies.updateTagPolicy({
-          tag_key: definition.key,
-          tag_policy: tagPolicy,
-          update_mask: definition.allowedValues.length > 0 ? 'description,values' : 'description',
-        });
-        tags.push({ key: definition.key, status: 'synced', message: 'Updated tag policy' });
-      } else {
-        await wc.tagPolicies.createTagPolicy({ tag_policy: tagPolicy });
-        tags.push({ key: definition.key, status: 'synced', message: 'Created tag policy' });
+  const tags: GovernedTagSyncTagResult[] = await mapWithConcurrency(
+    definitions,
+    DATABRICKS_TAG_SYNC_CONCURRENCY,
+    async (definition): Promise<GovernedTagSyncTagResult> => {
+      if (!enabled) {
+        try {
+          if (!existing.has(definition.key)) {
+            return { key: definition.key, status: 'synced', message: 'Tag policy already missing' };
+          }
+          await wc.tagPolicies.deleteTagPolicy({ tag_key: definition.key });
+          return { key: definition.key, status: 'synced', message: 'Deleted tag policy' };
+        } catch (err) {
+          logger.error({ err, tagKey: definition.key }, 'Databricks governed tag delete failed');
+          return { key: definition.key, status: 'failed', message: (err as Error).message };
+        }
       }
-    } catch (err) {
-      logger.error({ err, tagKey: definition.key }, 'Databricks governed tag sync failed');
-      tags.push({ key: definition.key, status: 'failed', message: (err as Error).message });
-    }
-  }
+
+      const tagPolicy = {
+        tag_key: definition.key,
+        description: definition.description,
+        values:
+          definition.allowedValues.length > 0
+            ? definition.allowedValues.map((name) => ({ name }))
+            : undefined,
+      };
+      try {
+        if (existing.has(definition.key)) {
+          await wc.tagPolicies.updateTagPolicy({
+            tag_key: definition.key,
+            tag_policy: tagPolicy,
+            update_mask: definition.allowedValues.length > 0 ? 'description,values' : 'description',
+          });
+          return { key: definition.key, status: 'synced', message: 'Updated tag policy' };
+        } else {
+          await wc.tagPolicies.createTagPolicy({ tag_policy: tagPolicy });
+          return { key: definition.key, status: 'synced', message: 'Created tag policy' };
+        }
+      } catch (err) {
+        logger.error({ err, tagKey: definition.key }, 'Databricks governed tag sync failed');
+        return { key: definition.key, status: 'failed', message: (err as Error).message };
+      }
+    },
+  );
 
   return { platform: 'databricks', syncedAt, tags, awsAccounts: [] };
 }
@@ -366,12 +387,19 @@ function databricksStatusFor(
 ): GovernedTagDatabricksStatus {
   const policy = policies.get(key);
   if (!policy) {
-    return { status: 'missing', policyId: null, updatedAt: null, message: null };
+    return {
+      status: 'missing',
+      policyId: null,
+      updatedAt: null,
+      allowedValues: [],
+      message: null,
+    };
   }
   return {
     status: 'governed',
     policyId: policy.id ?? null,
     updatedAt: policy.update_time ?? null,
+    allowedValues: (policy.values ?? []).map((value) => value.name).filter(Boolean),
     message: null,
   };
 }

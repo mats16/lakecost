@@ -290,6 +290,8 @@ interface UseAwsFocusFormOptions {
   onCreated?: (row: DataSource) => void;
   excludedAccountIds?: string[];
   initialSetupMode?: AwsSetupMode;
+  onCreateProgressOpenChange?: (open: boolean) => void;
+  onCreateProgressCompleteChange?: (complete: boolean) => void;
 }
 
 export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusFormOptions = {}) {
@@ -345,6 +347,14 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
   );
   const [createProgressModalOpen, setCreateProgressModalOpen] = useState(false);
   const [createdRowAfterProgress, setCreatedRowAfterProgress] = useState<DataSource | null>(null);
+
+  useEffect(() => {
+    options.onCreateProgressOpenChange?.(createProgressModalOpen);
+  }, [createProgressModalOpen, options.onCreateProgressOpenChange]);
+
+  useEffect(() => {
+    options.onCreateProgressCompleteChange?.(Boolean(createdRowAfterProgress));
+  }, [createdRowAfterProgress, options.onCreateProgressCompleteChange]);
 
   // --- Sync local state when server data changes ---
   useEffect(() => setAwsAccountId(remoteAwsAccountId), [remoteAwsAccountId]);
@@ -1014,6 +1024,7 @@ export function useAwsFocusForm(row: DataSource | null, options: UseAwsFocusForm
     savePending,
     createResourceSteps,
     createProgressModalOpen,
+    createProgressComplete: Boolean(createdRowAfterProgress),
 
     // Source form actions
     onSetupModeChange,
