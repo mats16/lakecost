@@ -39,6 +39,7 @@ interface NavItem {
   labelKey: string;
   icon?: LucideIcon;
   end?: boolean;
+  activePrefixes?: string[];
 }
 
 interface NavGroup {
@@ -60,7 +61,7 @@ export const CONFIGURE: NavGroup = {
   icon: Bolt,
   matchPrefix: '/integrations',
   items: [
-    { to: '/integrations', labelKey: 'nav.dataSources' },
+    { to: '/integrations', labelKey: 'nav.dataSources', activePrefixes: ['/pricing'] },
     { to: '/transformations', labelKey: 'nav.transformations' },
     { to: '/tags', labelKey: 'nav.tags' },
     { to: '/credentials', labelKey: 'nav.credentials' },
@@ -126,8 +127,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const appSettings = useAppSettings();
   const catalogName = appSettings.data?.settings.catalog_name?.trim() || null;
   const databricksItems = buildDatabricksItems(catalogName);
-  const onConfigureRoute = CONFIGURE.items.some((item) => location.pathname.startsWith(item.to));
-  const onOptimizeRoute = OPTIMIZE.items.some((item) => location.pathname.startsWith(item.to));
+  const onConfigureRoute = CONFIGURE.items.some((item) => isNavItemActive(location.pathname, item));
+  const onOptimizeRoute = OPTIMIZE.items.some((item) => isNavItemActive(location.pathname, item));
   const [configureOpen, setConfigureOpen] = useState(onConfigureRoute);
   const [optimizeOpen, setOptimizeOpen] = useState(onOptimizeRoute);
   const [theme, setTheme] = useState<ThemeMode>(detectInitialTheme);
@@ -239,7 +240,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                     key={item.to}
                     to={item.to}
                     end={item.end}
-                    className={({ isActive }) => (isActive ? 'active' : '')}
+                    className={({ isActive }) =>
+                      isActive ||
+                      item.activePrefixes?.some((p) => matchesPathPrefix(location.pathname, p))
+                        ? 'active'
+                        : ''
+                    }
                   >
                     <span>{t(item.labelKey)}</span>
                   </NavLink>
@@ -283,6 +289,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       {appSettings.isSuccess && !catalogName ? <CatalogSetupModal /> : null}
     </div>
   );
+}
+
+export function isNavItemActive(pathname: string, item: NavItem): boolean {
+  return (
+    matchesPathPrefix(pathname, item.to) ||
+    (item.activePrefixes?.some((p) => matchesPathPrefix(pathname, p)) ?? false)
+  );
+}
+
+export function matchesPathPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
 function ThemeToggle({ theme, onToggle }: { theme: ThemeMode; onToggle: () => void }) {
