@@ -866,15 +866,13 @@ export const en = {
       searchAws: 'Search by account ID, ARN, or name...',
       connected: 'Connected',
       awsEmpty: 'No AWS accounts match this view.',
+      awsAccountsTitle: 'AWS accounts',
+      connectAccount: 'Connect account',
       selectedSettings: 'Settings for AWS account {account}',
       configureAccount: 'Configure AWS account {account}',
       moreActions: 'More actions',
       openInAws: 'Open in AWS',
       remove: 'Remove',
-      tabs: {
-        manage: 'Manage',
-        connect: 'Connect',
-      },
       connectIntro: {
         title: 'Connect Your Account',
         description:

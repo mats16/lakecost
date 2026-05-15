@@ -875,15 +875,13 @@ export const ja: Dictionary = {
       searchAws: 'アカウント ID、ARN、名前で検索...',
       connected: '接続済み',
       awsEmpty: '表示できる AWS アカウントがありません。',
+      awsAccountsTitle: 'AWS アカウント',
+      connectAccount: 'アカウントを接続',
       selectedSettings: 'AWS アカウント {account} の設定',
       configureAccount: 'AWS アカウント {account} を設定',
       moreActions: 'その他の操作',
       openInAws: 'AWS で開く',
       remove: '削除',
-      tabs: {
-        manage: 'Manage',
-        connect: 'Connect',
-      },
       connectIntro: {
         title: 'アカウントを接続',
         description:
