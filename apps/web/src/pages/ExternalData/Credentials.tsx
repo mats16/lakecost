@@ -367,9 +367,7 @@ function ServiceCredentialTable({
   const { t } = useI18n();
 
   if (rows.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm italic">{t('credentials.emptyDesc')}</p>
-    );
+    return <p className="text-muted-foreground text-sm italic">{t('credentials.emptyDesc')}</p>;
   }
 
   return (

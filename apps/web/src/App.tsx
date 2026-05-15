@@ -27,10 +27,7 @@ export function App() {
         <Route
           path="/cost-explore"
           element={
-            <ExploreStub
-              titleKey="explore.costExplore.title"
-              descKey="explore.costExplore.desc"
-            />
+            <ExploreStub titleKey="explore.costExplore.title" descKey="explore.costExplore.desc" />
           }
         />
         <Route path="/budgets" element={<Budgets />} />
