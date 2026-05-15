@@ -98,6 +98,11 @@ interface DateRange {
   end: string;
 }
 
+interface PresetRanges {
+  current: DateRange;
+  previous: DateRange;
+}
+
 interface FilterOption {
   value: string;
   label: string;
@@ -151,7 +156,7 @@ export function CostExplore() {
   const [aggregation, setAggregation] = useState<Aggregation>('cumulative');
   const [tableView, setTableView] = useState<TableView>('cumulative');
   const [changeDisplay, setChangeDisplay] = useState<ChangeDisplay>('percent');
-  const [chartType, setChartType] = useState<ChartType>('line');
+  const [chartType, setChartType] = useState<ChartType>('stackedBar');
   const [groupBy, setGroupBy] = useState<CostExploreGroupKey[]>([]);
   const [filters, setFilters] = useState<CostExploreFilters>({});
   const [costMetric, setCostMetric] = useState<CostExploreCostMetric>('EffectiveCost');
@@ -163,8 +168,9 @@ export function CostExplore() {
     [dataSources.data?.items],
   );
   const settings = useMemo(() => appSettings.data?.settings ?? {}, [appSettings.data?.settings]);
-  const range = useMemo(() => presetRange(datePreset), [datePreset]);
-  const previous = useMemo(() => previousRange(range), [range]);
+  const presetRanges = useMemo(() => rangeForPreset(datePreset), [datePreset]);
+  const range = presetRanges.current;
+  const previous = presetRanges.previous;
   const sqlGrain: CostExploreDateGrain = aggregation === 'cumulative' ? 'daily' : aggregation;
   const sqlEnabled = dataSources.isSuccess && appSettings.isSuccess;
 
@@ -343,12 +349,6 @@ export function CostExplore() {
             badge={formatDelta(changePct)}
             loading={loading}
           />
-          <MetricTile
-            label={t('explore.costExplore.metrics.previousCosts')}
-            value={formatUsd(previousCost)}
-            detail={rangeLabel(previous, locale)}
-            loading={loading}
-          />
         </div>
         <ChartTypeToggle value={chartType} onChange={setChartType} />
       </div>
@@ -416,6 +416,11 @@ export function CostExplore() {
         </CardContent>
       </Card>
 
+      <div className="mb-3 flex flex-wrap justify-end gap-3">
+        <ChangeDisplayToggle value={changeDisplay} onChange={setChangeDisplay} />
+        <TableViewToggle value={tableView} onChange={setTableView} />
+      </div>
+
       <Card>
         <CardContent className="p-0">
           {loading ? (
@@ -431,10 +436,6 @@ export function CostExplore() {
             </div>
           ) : (
             <>
-              <div className="border-border flex flex-wrap justify-end gap-3 border-b px-4 py-3">
-                <ChangeDisplayToggle value={changeDisplay} onChange={setChangeDisplay} />
-                <TableViewToggle value={tableView} onChange={setTableView} />
-              </div>
               {tableView === 'byDate' ? (
                 <DailyCostTable
                   groupBy={groupBy}
@@ -451,6 +452,7 @@ export function CostExplore() {
                   groupBy={groupBy}
                   rows={summaryRows}
                   range={range}
+                  previousRange={previous}
                   locale={locale}
                   formatUsd={formatUsd}
                   changeDisplay={changeDisplay}
@@ -578,6 +580,7 @@ function SummaryCostTable({
   groupBy,
   rows,
   range,
+  previousRange,
   locale,
   formatUsd,
   changeDisplay,
@@ -586,6 +589,7 @@ function SummaryCostTable({
   groupBy: CostExploreGroupKey[];
   rows: SummaryRow[];
   range: DateRange;
+  previousRange: DateRange;
   locale: string;
   formatUsd: (value: number) => string;
   changeDisplay: ChangeDisplay;
@@ -609,7 +613,10 @@ function SummaryCostTable({
               />
             </TableHead>
             <TableHead className="text-right">
-              {t('explore.costExplore.columns.previousCost')}
+              <ColumnWithPeriod
+                label={t('explore.costExplore.columns.previousCost')}
+                period={rangeLabel(previousRange, locale)}
+              />
             </TableHead>
             <TableHead className="text-right">{t('explore.costExplore.columns.change')}</TableHead>
             <TableHead className="text-right">{t('explore.costExplore.columns.actions')}</TableHead>
@@ -1211,40 +1218,76 @@ function countActiveFilters(filters: CostExploreFilters): number {
   );
 }
 
-function presetRange(preset: DatePreset): DateRange {
-  const end = stableTomorrow();
-  const start = new Date(end);
+function rangeForPreset(preset: DatePreset): PresetRanges {
+  const tomorrow = stableTomorrow();
+  const today = addDays(tomorrow, -1);
+
   switch (preset) {
-    case 'thisMonth':
-      start.setDate(1);
-      return dateRange(start, end);
+    case 'thisMonth': {
+      const currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const currentEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const previousStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const previousEnd = currentStart;
+      return {
+        current: dateRange(currentStart, currentEnd),
+        previous: dateRange(previousStart, previousEnd),
+      };
+    }
     case 'lastMonth': {
-      const currentMonth = new Date(end.getFullYear(), end.getMonth(), 1);
-      const lastMonth = new Date(end.getFullYear(), end.getMonth() - 1, 1);
-      return dateRange(lastMonth, currentMonth);
+      const currentStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const currentEnd = new Date(today.getFullYear(), today.getMonth(), 1);
+      const previousStart = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+      const previousEnd = currentStart;
+      return {
+        current: dateRange(currentStart, currentEnd),
+        previous: dateRange(previousStart, previousEnd),
+      };
     }
     case 'last30':
-      start.setDate(end.getDate() - 30);
-      return dateRange(start, end);
+      return rollingRange(tomorrow, 30);
     case 'last90':
-      start.setDate(end.getDate() - 90);
-      return dateRange(start, end);
-    case 'ytd':
-      return dateRange(new Date(end.getFullYear(), 0, 1), end);
+      return rollingRange(tomorrow, 90);
+    case 'ytd': {
+      const currentStart = new Date(today.getFullYear(), 0, 1);
+      const currentEnd = tomorrow;
+      const previousStart = new Date(today.getFullYear() - 1, 0, 1);
+      const previousDisplayEnd = sameMonthDayInYear(today, today.getFullYear() - 1);
+      const previousEnd = addDays(previousDisplayEnd, 1);
+      return {
+        current: dateRange(currentStart, currentEnd),
+        previous: dateRange(previousStart, previousEnd),
+      };
+    }
   }
 }
 
-function previousRange(range: DateRange): DateRange {
-  const start = new Date(range.start);
-  const end = new Date(range.end);
-  const duration = end.getTime() - start.getTime();
-  const previousEnd = new Date(start);
-  const previousStart = new Date(start.getTime() - duration);
-  return dateRange(previousStart, previousEnd);
+function rollingRange(end: Date, days: number): PresetRanges {
+  const currentStart = addDays(end, -days);
+  const currentEnd = end;
+  const previousStart = addDays(currentStart, -days);
+  const previousEnd = currentStart;
+  return {
+    current: dateRange(currentStart, currentEnd),
+    previous: dateRange(previousStart, previousEnd),
+  };
 }
 
 function dateRange(start: Date, end: Date): DateRange {
   return { start: start.toISOString(), end: end.toISOString() };
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function sameMonthDayInYear(date: Date, year: number): Date {
+  const next = new Date(year, date.getMonth(), date.getDate());
+  if (next.getMonth() !== date.getMonth()) {
+    return new Date(year, date.getMonth() + 1, 0);
+  }
+  return next;
 }
 
 function dailyPeriods(range: DateRange, locale: string): Array<{ value: string; label: string }> {
